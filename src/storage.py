@@ -685,6 +685,18 @@ class PortfolioFxRate(Base):
     )
 
 
+class AgentHolding(Base):
+    """Lightweight holdings managed through the MCP/Agent conversation surface."""
+
+    __tablename__ = 'agent_holdings'
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    stock_id = Column(String(32), nullable=False, unique=True, index=True)
+    stock_name = Column(String(128), nullable=False)
+    created_at = Column(DateTime, default=datetime.now, index=True)
+    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)
+
+
 class ConversationMessage(Base):
     """
     Agent 对话历史记录表

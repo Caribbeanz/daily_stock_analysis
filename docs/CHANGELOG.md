@@ -11,6 +11,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 <!-- 新条目格式：- [类型] 描述（类型取值：新功能/改进/修复/文档/测试/chore）-->
 <!-- 每条独立一行追加到本段末尾，无需分类标题，合并时冲突最小 -->
 
+- [新功能] 新增适配 hermer-agent 的 MCP stdio 持仓服务，支持查看、新增、删除 Agent 持仓。
+- [新功能] MCP 服务新增 `analyze_stock` / `get_analysis_status` 个股分析工具，支持股票代码或中文名称，异步提交后查询结果。
+
 ## [3.28.0] - 2026-07-26
 
 ### 发布亮点
