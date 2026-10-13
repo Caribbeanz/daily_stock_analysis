@@ -177,6 +177,9 @@ class RiskEngine:
 
         close = snapshot.close
         cost = position.avg_cost
+        # 破线档位用于"保护浮盈"，但对**亏损持仓**其语义是减仓止损，不能叫"止盈"（FR-18 人话结论）。
+        in_profit = bool(math.isfinite(close) and cost > 0 and close >= cost)
+        break_verb = "止盈" if in_profit else "减仓"
         plan: List[Dict[str, Any]] = []
 
         for target, ratio in zip(rules.targets, _cycle_pad(rules.target_ratios, len(rules.targets))):
@@ -202,7 +205,7 @@ class RiskEngine:
                     "trigger": f"破 MA{period}",
                     "price": _round(ma_value),
                     "ratio": _round(ratio),
-                    "reason": f"跌破 MA{period}，止盈 {ratio * 100:.0f}%",
+                    "reason": f"跌破 MA{period}，{break_verb} {ratio * 100:.0f}%",
                     "triggered": bool(math.isfinite(close) and close < ma_value),
                 }
             )
@@ -322,7 +325,9 @@ class RiskEngine:
             and math.isfinite(ma20)
             and close < ma20
         ):
-            decision.position_advice = advice
+            # 注意：破线止盈档位（take_profit.ma_break）若含 20，会在此前的分支 2 提前返回；
+            # 本分支是为「配置未覆盖 MA20」时兜底，复用按破位均线分级的减仓建议（FR-4.2）。
+            decision.position_advice = self._ma_break_advice(snapshot)
             decision.is_urgent = self.rules.urgency.ma20_breach and close < ma20
             decision.reasons.append("trigger:ma20_break")
             return decision

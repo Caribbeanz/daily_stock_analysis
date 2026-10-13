@@ -126,6 +126,47 @@ def test_take_profit_plan_empty_without_position():
     assert engine.compute_take_profit_plan(s, PositionView(symbol="x")) == []
 
 
+# ---------------- 破线档位措辞：区分盈亏（B2 修复回归） ---------------- #
+def test_ma_break_reason_says_take_profit_when_in_profit():
+    engine = RiskEngine()
+    # 现价 11.2 高于成本 10.0（浮盈），但跌破 MA5(11.5) → 触发破线档且属"止盈"
+    s = snap(close=11.2, ma={5: 11.5, 10: 11.8, 20: 12.0, 60: 10.0}, low_20=10.0)
+    plan = engine.compute_take_profit_plan(s, pos(avg_cost=10.0))
+    ma_break = [t for t in plan if t["kind"] == "ma_break" and t["triggered"]]
+    assert ma_break, "应触发破线档位"
+    assert "止盈" in ma_break[0]["reason"]
+    assert "减仓" not in ma_break[0]["reason"]
+
+
+def test_ma_break_reason_says_reduce_when_at_loss():
+    engine = RiskEngine()
+    # 成本 12.0、现价 10.5 → 亏损，破 MA5 应表述为"减仓"而非"止盈"
+    s = snap(close=10.5, ma={5: 11.0, 10: 11.2, 20: 11.5, 60: 12.0}, low_20=10.0)
+    plan = engine.compute_take_profit_plan(s, pos(avg_cost=12.0, peak_price=12.0))
+    ma_break = [t for t in plan if t["kind"] == "ma_break" and t["triggered"]]
+    assert ma_break, "应触发破线档位"
+    assert "减仓" in ma_break[0]["reason"]
+    assert "止盈" not in ma_break[0]["reason"]
+
+
+# ---------------- 破 MA20 兜底分支（B1 修复回归：此前引用未定义变量 advice） ---------------- #
+def test_evaluate_hold_ma20_break_fallback_without_ma20_tier():
+    from src.core.rule_config import TakeProfitRules
+
+    # 破线档位仅含 MA5/MA10 → 跌破 MA20 时不会在止盈分支提前返回，落到兜底分支
+    rules = RiskRuleSet(
+        take_profit=TakeProfitRules(ma_break=(5, 10), ma_break_ratios=(0.5, 0.5)),
+    )
+    engine = RiskEngine(rules)
+    # close=10.0：>ma5(9.8)、>ma10(9.9)，故未触发破线止盈档；<ma20(10.5) 触发兜底
+    s = snap(close=10.0, ma={5: 9.8, 10: 9.9, 20: 10.5, 60: 9.0}, low_20=9.5)
+    decision = engine.evaluate_hold(s, pos(avg_cost=10.0))
+    advice = decision.position_advice
+    assert advice["action"] == "reduce"
+    assert advice["ratio"] == pytest.approx(0.50)  # 破 MA20 → 减 50%
+    assert "MA20" in advice["reason"]
+
+
 # --------------------------------------------------------------------------- #
 # 仓位
 # --------------------------------------------------------------------------- #
