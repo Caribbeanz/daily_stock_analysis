@@ -1056,6 +1056,9 @@ class Config:
     feishu_chat_id: Optional[str] = None  # 目标群会话 chat_id（群聊模式），或用户 open_id（P2P 模式）
     feishu_receive_id_type: str = "chat_id"  # 接收者 ID 类型: "chat_id"(群聊) / "open_id"(私聊)
     feishu_domain: str = "feishu"  # 飞书域名: "feishu"(feishu.cn) / "lark"(larksuite.com)
+    # 飞书机器人对话（P2 · FR-14.3.1 / 决议 D4）：本人 open_id 白名单。
+    # 命中者视为"可写"（P2.1 写操作仍未开放）；未命中的群成员一律只读。
+    feishu_owner_open_id: Optional[str] = None
 
     # 高抛低吸助手 · H5 基址（P2 · FR-14.0.2）
     # 内网直连地址，如 http://192.168.1.10:8000；留空则推送不附个股详情链接
@@ -2039,6 +2042,7 @@ class Config:
             feishu_chat_id=os.getenv('FEISHU_CHAT_ID'),
             feishu_receive_id_type=os.getenv('FEISHU_RECEIVE_ID_TYPE', 'chat_id'),
             feishu_domain=os.getenv('FEISHU_DOMAIN', 'feishu'),
+            feishu_owner_open_id=os.getenv('FEISHU_OWNER_OPEN_ID'),
             hslb_h5_base_url=os.getenv('HSLB_H5_BASE_URL'),
             telegram_bot_token=os.getenv('TELEGRAM_BOT_TOKEN'),
             telegram_chat_id=os.getenv('TELEGRAM_CHAT_ID'),

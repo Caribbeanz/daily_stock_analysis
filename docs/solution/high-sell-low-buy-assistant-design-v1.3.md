@@ -188,7 +188,8 @@
 
 > **实施进度（2026-10-13）**：P0 ✅ 已实施；**P1 ✅ 已实施**（**164 项测试通过**，见 `docs/solution/high-sell-low-buy-assistant-p1-implementation-v1.3.md`）；飞书通道 ✅ 已打通并实测发送成功；**事件源 ✅ 已接线**（FR-20，情报源 + 预警源）；**持仓录入 ✅ 已就绪**（覆盖语义 CLI，风控真实计算已解锁）。
 > **P2 方案已定稿（2026-10-13）**：见 `docs/solution/high-sell-low-buy-assistant-p2-design-v1.1.md`（H5 + AI 对话 + 结构化记忆）。§6 待决 D1~D7 **已全部决议锁定**（D1 复用 dsa-web 加移动布局层；D2 写操作全确认、白名单不外扩；D3 独立 intent + action_service 层；D4 飞书写操作仅 `open_id` 白名单；D5 阈值 12000 + 每周一次压缩、原文不自动删；**D6 不做外网访问、仅内网直连**；D7 不引入 CI 打包）。实施按 P2.0 → P2.1 → P2.2 →（P2.3 ∥ P2.4）。
-> **P2.0 移动底座 ✅ 已实施（2026-10-13）**：见 `docs/solution/high-sell-low-buy-assistant-p2-implementation-v1.0.md`——移动布局层（`MobileShell` 底部四 Tab）+ 个股详情页（`/m/stocks/:code`，人话结论 + 四要素 + 迷你 K 线 + 多因子明细 + 事件与风险）+ 推送深链（`HSLB_H5_BASE_URL`）；后端新增 `GET /api/v1/stocks/{code}/overview`；**后端回归 195 passed / 前端 `tsc -b` 0 error**。持仓编辑按 D3 归入 P2.2。
+> **P2.0 移动底座 ✅ 已实施（2026-10-13）**：见 `docs/solution/high-sell-low-buy-assistant-p2-implementation-v1.1.md` §0~§8——移动布局层（`MobileShell` 底部四 Tab）+ 个股详情页（`/m/stocks/:code`，人话结论 + 四要素 + 迷你 K 线 + 多因子明细 + 事件与风险）+ 推送深链（`HSLB_H5_BASE_URL`）；后端新增 `GET /api/v1/stocks/{code}/overview`。持仓编辑按 D3 归入 P2.2。
+> **P2.1 AI 对话（读）✅ 已实施（2026-10-13）**：见同文档 §9——名词表（21 条，FR-14.3.2）+ 意图解析（规则优先/LLM 兜底，`src/agent/intent/resolver.py`）+ 读对话编排（`src/services/chat_read_service.py`，强制附风险提示 FR-14.3.8）+ 统一读入口 `POST /api/v1/chat/ask`、`GET /api/v1/chat/glossary` + 飞书只读入站 `POST /api/v1/chat/feishu/events`（open_id 白名单，决议 D4）+ H5 详情页「就地问」。**写操作一律只识别不执行**（决议 D3，留 P2.2）。**后端回归 265 passed / 0 skipped；前端 `tsc -b` 0 error**。
 
 > **质量门结果（2026-10-13 已决）**：按"**调规则参数 + 调整门口径**"双轨处理（方案 C）——
 > ① 参数侧：止损加缓冲 + ATR 自适应放宽、建仓加"趋势强度 + MACD 动能"过滤门槛；

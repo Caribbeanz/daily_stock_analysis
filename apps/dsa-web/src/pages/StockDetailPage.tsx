@@ -1,7 +1,7 @@
 import type React from 'react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
-import { ArrowLeft, ChevronDown, RefreshCw, Star } from 'lucide-react';
+import { ArrowLeft, ChevronDown, MessageCircleQuestion, RefreshCw, Star } from 'lucide-react';
 import { stocksApi, type StockKLinePoint, type StockOverview } from '../api/stocks';
 import { createParsedApiError, parseApiError, type ParsedApiError } from '../api/error';
 import { ApiErrorAlert } from '../components/common/ApiErrorAlert';
@@ -105,6 +105,18 @@ const StockDetailPage: React.FC = () => {
     await toggleWatchlist(symbol);
   }, [symbol, toggleWatchlist]);
 
+  /**
+   * 「就地问」（FR-14.0.2 / FR-14.3.4）：带上下文进入对话页。
+   *
+   * 复用对话页既有的 `?stock=` 追问入口——进入即自动带上标的上下文与追问话术，
+   * 用户无需重复交代"我问的是哪只"。对话为**只读**，不产生任何写副作用。
+   */
+  const handleAsk = useCallback(() => {
+    if (!symbol) return;
+    const name = overview?.name || symbol;
+    navigate(`/chat?stock=${encodeURIComponent(symbol)}&name=${encodeURIComponent(name)}`);
+  }, [navigate, overview?.name, symbol]);
+
   if (isLoading) {
     return (
       <div className="flex min-h-[50vh] flex-col items-center justify-center gap-3 text-sm text-secondary-text">
@@ -136,6 +148,14 @@ const StockDetailPage: React.FC = () => {
               : ''}
           </p>
         </div>
+        <button
+          type="button"
+          onClick={handleAsk}
+          className="inline-flex items-center gap-1 rounded-xl border border-border/70 bg-card/80 px-3 py-2 text-xs font-medium text-secondary-text transition-colors hover:text-foreground"
+        >
+          <MessageCircleQuestion className="h-3.5 w-3.5" />
+          {t('stockDetail.ask')}
+        </button>
         <button
           type="button"
           onClick={() => void handleWatchlistToggle()}
