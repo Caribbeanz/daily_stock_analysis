@@ -20,6 +20,72 @@ from api.v1.schemas.research_artifact import ResearchArtifact
 StockProfileStatus = Literal["fresh", "partial", "unavailable"]
 
 
+class StockOverviewFactor(BaseModel):
+    """个股详情 · 多因子明细的一行。"""
+
+    key: str = Field(..., description="因子键")
+    label: str = Field(..., description="因子名称")
+    value: str = Field(..., description="因子取值（已格式化）")
+    tone: Literal["positive", "negative", "warning", "neutral"] = Field(
+        "neutral", description="展示语义（前端决定配色）"
+    )
+
+
+class StockOverviewQuote(BaseModel):
+    """个股详情 · 行情快照（可能缺失）。"""
+
+    current_price: Optional[float] = Field(None, description="现价")
+    change_percent: Optional[float] = Field(None, description="涨跌幅 (%)")
+    update_time: Optional[str] = Field(None, description="行情时间")
+
+
+class StockOverviewResponse(BaseModel):
+    """个股详情聚合视图（H5 主入口 · FR-14.2.1）。
+
+    结论与四要素**同源于 decision_signals**（NFR-9）；
+    行情 / 事件缺失时通过 ``degraded`` 显式说明，不伪装成正常。
+    """
+
+    symbol: str = Field(..., description="标的代码")
+    name: str = Field("", description="标的名称")
+    as_of: str = Field("", description="数据日期 YYYY-MM-DD")
+    generated_at: str = Field("", description="生成时间")
+
+    action: str = Field("watch", description="动作")
+    action_label: str = Field("观望", description="动作中文标签")
+    scenario: str = Field("unknown", description="场景")
+    scenario_label: str = Field("趋势不明", description="场景中文标签")
+    conclusion: str = Field("", description="一句话人话结论（顶部大字号）")
+    reason: str = Field("", description="理由")
+    score: Optional[int] = Field(None, description="综合评分 0-100")
+    confidence: Optional[float] = Field(None, description="置信度 0-1")
+    is_urgent: bool = Field(False, description="是否需立即处理")
+
+    entry_low: Optional[float] = Field(None, description="建仓区间下沿")
+    entry_high: Optional[float] = Field(None, description="建仓区间上沿")
+    entry_zone: str = Field("-", description="建仓区间展示串")
+    stop_loss: Optional[float] = Field(None, description="止损价")
+    target_price: Optional[float] = Field(None, description="目标价")
+    position_ratio: Optional[float] = Field(None, description="仓位建议 0-1")
+    position_ratio_label: str = Field("-", description="仓位建议展示串")
+    position_reason: str = Field("", description="仓位建议理由")
+    discipline: str = Field("", description="操作纪律卡一行")
+
+    watch_conditions: str = Field("", description="纪律 / 观察条件")
+    risk_summary: str = Field("", description="风控摘要")
+    factors: List[StockOverviewFactor] = Field(default_factory=list, description="多因子明细")
+
+    events: List[str] = Field(default_factory=list, description="事件与风险")
+    quote: Optional[StockOverviewQuote] = Field(None, description="行情快照")
+    distance_to_stop_pct: Optional[float] = Field(None, description="现价距止损 (%)")
+    distance_to_target_pct: Optional[float] = Field(None, description="现价距目标 (%)")
+
+    signal_id: Optional[int] = Field(None, description="信号 ID（溯源）")
+    signal_created_at: Optional[str] = Field(None, description="信号生成时间")
+    degraded: List[str] = Field(default_factory=list, description="降级说明（数据缺失原因）")
+    disclaimer: str = Field("", description="免责声明")
+
+
 class StockQuote(BaseModel):
     """股票实时行情"""
     

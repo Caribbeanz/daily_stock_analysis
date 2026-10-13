@@ -78,6 +78,10 @@ export default {
         hover: 'hsl(var(--hover))',
         'secondary-bg': 'hsl(var(--secondary))',
         'muted-bg': 'hsl(var(--muted))',
+        // 涨跌语义色（中国市场惯例：涨红跌绿 · FR-14.0.3）
+        'price-up': 'hsl(var(--price-up))',
+        'price-down': 'hsl(var(--price-down))',
+        'price-flat': 'hsl(var(--price-flat))',
         'secondary-text': 'hsl(var(--secondary-text))',
         'muted-text': 'hsl(var(--muted-text))',
         // 设计令牌 (Design Tokens)

@@ -9,15 +9,24 @@ import { cn } from '../../utils/cn';
 import { ThemeToggle } from '../theme/ThemeToggle';
 import { UiLanguageToggle } from '../i18n/UiLanguageToggle';
 import { useUiLanguage } from '../../contexts/UiLanguageContext';
+import { useIsMobile } from '../../hooks/useMediaQuery';
+import { MobileShell } from '../mobile/MobileShell';
 
 type ShellProps = {
   children?: React.ReactNode;
 };
 
+/**
+ * 应用壳层：按视口自动切换布局（P2 · FR-14.0.4）。
+ *
+ * - 移动端（≤1023px）：`MobileShell`（底部 Tab 四入口 + 更多抽屉）；
+ * - 桌面端：侧边栏 + 顶部悬浮工具条（保持原行为）。
+ */
 export const Shell: React.FC<ShellProps> = ({ children }) => {
   const [mobileOpen, setMobileOpen] = useState(false);
   const collapsed = false;
   const { t } = useUiLanguage();
+  const isMobile = useIsMobile();
 
   useEffect(() => {
     if (!mobileOpen) {
@@ -35,6 +44,10 @@ export const Shell: React.FC<ShellProps> = ({ children }) => {
       window.removeEventListener('resize', handleResize);
     };
   }, [mobileOpen]);
+
+  if (isMobile) {
+    return <MobileShell>{children}</MobileShell>;
+  }
 
   return (
     <div className="min-h-screen bg-background text-foreground">

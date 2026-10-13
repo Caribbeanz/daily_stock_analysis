@@ -1056,6 +1056,11 @@ class Config:
     feishu_chat_id: Optional[str] = None  # 目标群会话 chat_id（群聊模式），或用户 open_id（P2P 模式）
     feishu_receive_id_type: str = "chat_id"  # 接收者 ID 类型: "chat_id"(群聊) / "open_id"(私聊)
     feishu_domain: str = "feishu"  # 飞书域名: "feishu"(feishu.cn) / "lark"(larksuite.com)
+
+    # 高抛低吸助手 · H5 基址（P2 · FR-14.0.2）
+    # 内网直连地址，如 http://192.168.1.10:8000；留空则推送不附个股详情链接
+    # （D6 决议：仅内网访问，不做外网映射；推送文案自带完整摘要，链接只是增强）。
+    hslb_h5_base_url: Optional[str] = None
     
     # Telegram 配置（需要同时配置 Bot Token 和 Chat ID）
     telegram_bot_token: Optional[str] = None  # Bot Token（@BotFather 获取）
@@ -2034,6 +2039,7 @@ class Config:
             feishu_chat_id=os.getenv('FEISHU_CHAT_ID'),
             feishu_receive_id_type=os.getenv('FEISHU_RECEIVE_ID_TYPE', 'chat_id'),
             feishu_domain=os.getenv('FEISHU_DOMAIN', 'feishu'),
+            hslb_h5_base_url=os.getenv('HSLB_H5_BASE_URL'),
             telegram_bot_token=os.getenv('TELEGRAM_BOT_TOKEN'),
             telegram_chat_id=os.getenv('TELEGRAM_CHAT_ID'),
             telegram_message_thread_id=os.getenv('TELEGRAM_MESSAGE_THREAD_ID'),

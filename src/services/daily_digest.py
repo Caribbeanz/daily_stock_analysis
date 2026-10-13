@@ -206,6 +206,9 @@ class DailyDigest:
     collapsed: List[DigestItem] = field(default_factory=list)
     events: List[str] = field(default_factory=list)
     state: Dict[str, Any] = field(default_factory=dict)
+    # H5 基址（P2 · FR-14.0.2）：内网直连地址，如 http://192.168.1.10:8000。
+    # 为空时**不生成任何链接**（推送文案自带完整摘要，链接仅作增强 · D6-I1）。
+    h5_base_url: str = ""
 
     @property
     def counts(self) -> Dict[str, int]:
@@ -231,6 +234,13 @@ class DailyDigest:
         return "今日无操作信号，持仓按纪律持有即可"
 
     # ---------------- 渲染 ---------------- #
+    def detail_url(self, symbol: str) -> str:
+        """H5 个股详情深链（FR-14.0.2）；未配置基址时返回空串。"""
+        base = (self.h5_base_url or "").strip().rstrip("/")
+        if not base or not symbol:
+            return ""
+        return f"{base}/m/stocks/{symbol}?from=push"
+
     def to_markdown(self, *, max_watch: int = 10) -> str:
         lines: List[str] = []
         lines.append(f"【高抛低吸助手 · 每日概览】{self.as_of}")
@@ -241,13 +251,13 @@ class DailyDigest:
         if self.urgent:
             lines.append(f"一、⚠️ 紧急（{len(self.urgent)}）")
             for idx, item in enumerate(self.urgent, 1):
-                lines.extend(_render_item(idx, item, with_detail=True))
+                lines.extend(_render_item(idx, item, with_detail=True, detail_url=self.detail_url(item.symbol)))
             lines.append("")
 
         if self.highlight:
             lines.append(f"二、★ 重点信号（{len(self.highlight)}）")
             for idx, item in enumerate(self.highlight, 1):
-                lines.extend(_render_item(idx, item, with_detail=True))
+                lines.extend(_render_item(idx, item, with_detail=True, detail_url=self.detail_url(item.symbol)))
             lines.append("")
 
         if self.watch:
@@ -298,7 +308,13 @@ class DailyDigest:
         }
 
 
-def _render_item(index: int, item: DigestItem, *, with_detail: bool) -> List[str]:
+def _render_item(
+    index: int,
+    item: DigestItem,
+    *,
+    with_detail: bool,
+    detail_url: str = "",
+) -> List[str]:
     lines = [f"{index}. {item.one_line()}"]
     discipline = item.discipline_line()
     if discipline:
@@ -306,6 +322,8 @@ def _render_item(index: int, item: DigestItem, *, with_detail: bool) -> List[str
     if with_detail:
         for detail in item.detail_lines():
             lines.append(f"   · {detail}")
+        if detail_url:
+            lines.append(f"   ↗ 详情 {detail_url}")
     return lines
 
 
@@ -384,6 +402,7 @@ def build_digest(
     previous_state: Optional[Dict[str, Any]] = None,
     collapse_repeat_watch: bool = True,
     now: Optional[datetime] = None,
+    h5_base_url: str = "",
 ) -> DailyDigest:
     """组装每日概览。
 
@@ -393,12 +412,15 @@ def build_digest(
         events: 事件与风险文案列表（由调用方从事件源注入）。
         previous_state: 上一交易日的 ``{"symbols": {symbol: action}}``，用于降噪折叠。
         collapse_repeat_watch: 是否折叠"与昨日一致"的观望/持有项。
+        h5_base_url: H5 基址（内网直连），配置后紧急/重点项会附带个股详情深链；
+            留空则**完全保持原文案**（D6-I1：链接只是增强，关键信息必须在文案里）。
     """
     now = now or datetime.now()
     digest = DailyDigest(
         as_of=as_of or now.strftime("%Y-%m-%d"),
         generated_at=now.strftime("%Y-%m-%d %H:%M:%S"),
         events=[str(e) for e in (events or []) if str(e).strip()],
+        h5_base_url=str(h5_base_url or "").strip(),
     )
 
     previous_symbols: Dict[str, str] = {}

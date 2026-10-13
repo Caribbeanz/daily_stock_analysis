@@ -11,3 +11,4 @@ export type {
   UseTaskStreamOptions,
   UseTaskStreamResult,
 } from './useTaskStream';
+export { MOBILE_QUERY, useIsMobile, useMediaQuery } from './useMediaQuery';

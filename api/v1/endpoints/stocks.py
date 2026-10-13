@@ -24,6 +24,7 @@ from api.v1.schemas.stocks import (
     ExtractItem,
     KLineData,
     StockHistoryResponse,
+    StockOverviewResponse,
     StockProfileResponse,
     StockQuote,
 )
@@ -40,6 +41,7 @@ from src.services.import_parser import (
     parse_import_from_text,
 )
 from src.services.stock_service import StockService
+from src.services.stock_overview_service import StockOverviewService
 from src.services.stock_profile_service import InvalidStockProfileCode, StockProfileService
 from src.services.run_diagnostics import sanitize_diagnostic_text
 from src.services.stock_list_parser import split_stock_list
@@ -592,4 +594,36 @@ def get_stock_history(
                 "error": "internal_error",
                 "message": f"获取历史行情失败: {str(e)}"
             }
+        )
+
+
+@router.get(
+    "/{stock_code}/overview",
+    response_model=StockOverviewResponse,
+    responses={
+        400: {"description": "股票代码无效", "model": ErrorResponse},
+        500: {"description": "服务器错误", "model": ErrorResponse},
+    },
+    summary="获取个股详情聚合视图（H5 主入口）",
+    description=(
+        "一屏聚合：人话结论 + 四要素（建仓区间 / 止损 / 目标 / 仓位建议）"
+        "+ 多因子明细 + 事件与风险。结论与四要素同源于 decision_signals（NFR-9）；"
+        "行情或事件缺失时通过 degraded 显式说明，不阻断整屏。"
+    ),
+)
+def get_stock_overview(
+    stock_code: str,
+    with_quote: bool = Query(True, description="是否附带实时行情（离线场景可关）"),
+) -> StockOverviewResponse:
+    """Return aggregated stock overview for the H5 detail page."""
+    normalized = _validate_and_normalize_stock_code(stock_code)
+    try:
+        payload = StockOverviewService().load(normalized, with_quote=with_quote)
+        return StockOverviewResponse(**payload)
+    except Exception as exc:
+        sanitized = sanitize_diagnostic_text(str(exc), max_length=300) or "internal overview error"
+        logger.error("获取个股详情聚合失败: %s", sanitized)
+        raise HTTPException(
+            status_code=500,
+            detail={"error": "internal_error", "message": "获取个股详情失败"},
         )

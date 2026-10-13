@@ -132,6 +132,7 @@ class P1PushService:
         out_dir: str = _DEFAULT_OUT_DIR,
         history_days: int = 240,
         backtester: Any = None,
+        h5_base_url: Optional[str] = None,
     ):
         self._builder = builder
         self._signal_service = signal_service
@@ -145,6 +146,24 @@ class P1PushService:
         self.out_dir = out_dir
         self.history_days = history_days
         self._backtester = backtester
+        self._h5_base_url = h5_base_url
+
+    # ---------------- H5 深链（P2 · FR-14.0.2） ---------------- #
+    def _resolve_h5_base_url(self) -> str:
+        """解析 H5 基址：显式注入 > Config > 环境变量 > ''（不生成链接）。"""
+        if self._h5_base_url is not None:
+            return str(self._h5_base_url).strip()
+        try:
+            from src.config import get_config
+
+            configured = getattr(get_config(), "hslb_h5_base_url", None)
+            if configured:
+                return str(configured).strip()
+        except Exception:  # pragma: no cover - 配置不可用时不阻断推送
+            pass
+        import os
+
+        return str(os.getenv("HSLB_H5_BASE_URL", "") or "").strip()
 
     # ---------------- 懒加载依赖 ---------------- #
     @property
@@ -255,6 +274,7 @@ class P1PushService:
             events=self._collect_events(),
             previous_state=previous_state,
             now=now,
+            h5_base_url=self._resolve_h5_base_url(),
         )
         result.counts = digest.counts
         result.headline = digest.headline()

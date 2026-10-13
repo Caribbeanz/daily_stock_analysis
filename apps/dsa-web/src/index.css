@@ -70,6 +70,11 @@
   --warning: var(--color-warning);
   --danger: var(--color-danger);
 
+  /* 涨跌语义色（中国市场惯例：涨红跌绿 · FR-14.0.3，四端统一） */
+  --price-up: 0 90% 55%;
+  --price-down: 152 69% 40%;
+  --price-flat: 220 9% 46%;
+
   /* Sentiment indicator colors (Fear & Greed Index) - Adjustable via CSS */
   --sentiment-greed: var(--color-cyan);
   --sentiment-neutral: var(--color-purple);
@@ -348,6 +353,11 @@
   --success: var(--color-success);
   --warning: var(--color-warning);
   --danger: var(--color-danger);
+
+  /* 涨跌语义色（暗色主题下提亮，保证深底可读 · FR-14.0.3） */
+  --price-up: 0 96% 66%;
+  --price-down: 152 62% 52%;
+  --price-flat: 220 9% 65%;
 
   /* Sentiment indicator colors (Dark theme) - Adjustable via CSS */
   --sentiment-greed: var(--color-cyan);
