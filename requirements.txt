@@ -72,3 +72,7 @@ jinja2>=3.1.0               # Jinja2 template engine for report rendering
 fastapi>=0.109.0            # Modern Python Web framework
 uvicorn[standard]>=0.27.0   # ASGI server
 python-multipart>=0.0.6     # FastAPI File/Form upload support
+
+# 高抛低吸助手 P1 · 关键信号附图（K 线图渲染）
+# 若缺失，p1_push_service 会自动跳过附图并继续推送（优雅降级），不影响文字推送。
+Pillow>=10.0.0              # K 线图 PNG 渲染（蜡烛/均线/成交量/MACD）

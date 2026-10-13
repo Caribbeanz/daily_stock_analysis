@@ -1,0 +1,61 @@
+# 高抛低吸助手 · 场景与信号规则（P0）
+# ---------------------------------------------------------------------------
+# 需求依据：FR-3 趋势研判 / FR-4~6 三场景 / FR-17 建仓加仓 / FR-18 提醒—技术支撑映射。
+# 本文件即 FR-18 映射表的"可执行固化物"：每条提醒的动作与指标阈值在此声明。
+# ---------------------------------------------------------------------------
+
+version: 1
+
+# 趋势判定
+trend:
+  ma_periods: [5, 10, 20, 60]
+  sideways_ma_spread_pct: 0.02   # MA 相互间距 < 2% 视为均线纠缠（震荡）
+  slope_lookback: 1              # 斜率回看根数
+
+# 指标阈值（FR-3 / FR-5 / FR-6）
+thresholds:
+  bias_overheat: 10.0        # BIAS > +10% 过热
+  bias_oversold: -10.0       # BIAS < -10% 超跌
+  rsi_overbought: 70.0
+  rsi_oversold: 30.0
+  rsi_dip_buy: 20.0          # 抄底参考
+  kdj_j_overbought: 100.0
+  kdj_j_oversold: 0.0
+  volume_surge_ratio: 1.5    # 放量阈值（量比）
+  boll_dip_tolerance: 0.01   # 触及布林下轨的容忍度
+
+# 交易成本（FR-6.3：做 T 价差必须覆盖成本，否则越做越亏）
+trade_cost:
+  round_trip_pct: 0.001      # A 股来回手续费+印花税约 0.1%
+  min_t_range_pct: 0.015     # 做 T 最小价差 ≥ 1.5%
+
+# FR-17.1 建仓口径（多信号共振，明确不用单一金叉）
+build:
+  require_weekly_uptrend: true
+  weekly_ma_fast: 5
+  weekly_ma_slow: 10
+  daily_buy_points:
+    - pullback_after_breakout    # ① 放量突破平台后回踩 MA20/MA60 不破
+    - bottom_volume_reversal     # ② 底部放量 + MACD金叉/底背离 + 重新站上 MA20
+  pullback_ma: [20, 60]
+  breakout_lookback: 20
+  breakout_buffer_pct: 0.005
+  exclude_events: [limit_up, limit_down, gap]   # 当日异动排除
+  # —— 建仓过滤门槛（2026-10-13 调参：滤除弱趋势/动能不足的低质量买点）——
+  min_trend_strength: medium     # 日线趋势强度下限：weak | medium | strong
+  require_macd_positive: true    # 要求 MACD 柱 > 0（动能向上）才允许建仓
+
+# FR-4 上涨趋势分级动作
+up_market:
+  reduce_on_ma5: 0.20        # 破 MA5 减仓比例
+  reduce_on_ma10: 0.30       # 破 MA10
+  reduce_on_ma20: 0.50       # 破 MA20（趋势转弱）
+
+# FR-5 下跌趋势
+down_market:
+  stop_loss_lookback_low: 20
+  dip_buy_enabled: true      # 止跌确认后才分批加
+
+# FR-6 震荡趋势
+sideways_market:
+  box_lookback: 20           # 箱体回看天数

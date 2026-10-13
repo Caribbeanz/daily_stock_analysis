@@ -760,6 +760,37 @@ class ConversationSummary(Base):
     updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now, index=True)
 
 
+class WatchlistItem(Base):
+    """高抛低吸助手 · 自选标的（个股 / 场内基金 ETF·LOF）。
+
+    P0 新增：现有自选股仅为 ``config.stock_list``（逗号分隔代码串），无法表达
+    标的类型与跟踪指数；本表承载 ``asset_type`` 等，与 ``config.stock_list``
+    保持单向同步（配置 → 表）。
+    """
+
+    __tablename__ = 'watchlist_items'
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    symbol = Column(String(16), nullable=False, index=True)
+    name = Column(String(64))
+    asset_type = Column(String(8), nullable=False, default='stock', index=True)  # stock|etf|lof
+    market = Column(String(8), nullable=False, default='cn', index=True)
+    track_index = Column(String(64))  # 场内基金跟踪指数；个股为空
+    enabled = Column(Boolean, nullable=False, default=True, index=True)
+    sort_order = Column(Integer, nullable=False, default=0)
+    note = Column(Text)
+    created_at = Column(DateTime, default=datetime.now, index=True)
+    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now, index=True)
+
+    __table_args__ = (
+        UniqueConstraint('symbol', 'asset_type', name='uix_watchlist_symbol_asset_type'),
+        Index('ix_watchlist_enabled_sort', 'enabled', 'sort_order'),
+    )
+
+    def __repr__(self) -> str:
+        return f"<WatchlistItem {self.symbol} {self.asset_type} enabled={self.enabled}>"
+
+
 class AgentProviderTurn(Base):
     """Provider protocol trace required for thinking/tool-call roundtrip."""
 

@@ -6,6 +6,8 @@
 #   定时模式: docker-compose -f ./docker/docker-compose.yml up -d
 #   FastAPI模式: docker-compose -f ./docker/docker-compose.yml up -d server
 #   同时启动: docker-compose -f ./docker/docker-compose.yml up -d analyzer server
+#   高抛低吸助手(P1 每日20:00推送): docker-compose -f ./docker/docker-compose.yml up -d hslb
+#   全部启动: docker-compose -f ./docker/docker-compose.yml up -d analyzer server hslb
 
 name: daily-stock-analysis
 version: '3.8'
@@ -70,3 +72,10 @@ services:
     # 若使用 network_mode: host，则以下 ports 映射无效，端口由 command 中的 --port 指定
     ports:
       - "${API_PORT:-8000}:${API_PORT:-8000}"
+
+  # 高抛低吸助手 · P1 每日推送（默认 20:00，纯代码调度，不依赖 OS 计划任务）
+  # 时间由 .env 的 HSLB_SCHEDULE_TIME 控制；日志见 ./logs（容器内 /app/logs）
+  hslb:
+    <<: *common
+    container_name: stock-hslb
+    command: ["python", "-m", "src.services.p1_scheduler"]

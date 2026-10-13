@@ -83,6 +83,9 @@ verify_*.py
 !.claude/skills/
 !.claude/skills/**
 
+# ignore WorkBuddy local workspace artifacts (memory / session data)
+.workbuddy/
+
 # ignore static files
 static/
 /apps/dsa-desktop/dist/
