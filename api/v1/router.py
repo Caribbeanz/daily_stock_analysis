@@ -28,6 +28,7 @@ from api.v1.endpoints import (
     memory,
     portfolio,
     review,
+    screen,
     stocks,
     system_config,
     usage,
@@ -71,6 +72,12 @@ router.include_router(
     review.router,
     prefix="/review",
     tags=["Review"]
+)
+
+router.include_router(
+    screen.router,
+    prefix="/screen",
+    tags=["Screen"]
 )
 
 router.include_router(

@@ -2,7 +2,7 @@
 
 | 项目   | 说明                                                              |
 | ---- | --------------------------------------------------------------- |
-| 文档状态 | **已实施中**（方案通过评审；P0/P1 已落地，质量门已通过，飞书通道已打通，事件源已接线，持仓可录入；P2.0~P2.4 移动端、对话读·写、结构化记忆、审计与实时均已实施——P2 全部子期完成；**P3 周度复盘 + 完整回测报告已实施——P3 完成**）                          |
+| 文档状态 | **已实施完毕**（方案通过评审；P0/P1 已落地，质量门已通过，飞书通道已打通，事件源已接线，持仓可录入；P2.0~P2.4 移动端、对话读·写、结构化记忆、审计与实时均已实施；P3 周度复盘 + 完整回测报告已实施；**P4 大屏看板已实施 —— P0~P4 全部完成**）                          |
 | 版本   | v1.3（v1.2 → v1.3：补 P1 两处缺口——事件与风险板块接真实事件源、持仓录入解锁风控真实计算）                                   |
 | 更新日期 | 2026-10-14                                                      |
 | 需求依据 | `docs/requirements/high-sell-low-buy-assistant-requirements-v0.7.md`（需求基线 v0.7，已收口） |
@@ -53,7 +53,7 @@
 | FR-13 | 报告呈现 | `src/md2img.py`、`share_image.py`、`report_language.py` | 改造 | 统一视觉模板（涨红跌绿） |
 | FR-14.2 | H5 | `apps/dsa-web/`（Vite+React+TS） | 改造 | 建议详情/持仓/历史/参数 |
 | FR-14.3 | AI 对话 | `src/agent/`（orchestrator/agents/conversation/web_intent_*）+ `bot/` | 改造 | 写操作意图、复合指令、回执 |
-| FR-14.1 | 大屏 | `apps/dsa-web/` 复用 | 改造（二期） | 大屏布局适配 |
+| FR-14.1 | 大屏 | `apps/dsa-web/` 复用 | 改造（二期 ✅ 已实施） | 大屏布局适配 |
 | **FR-15** | **对话留档与记忆压缩** | `src/agent/memory.py` + **`conversation_summaries`（滚动摘要，已有）** | **改造扩展** | 在滚动摘要之上补"结构化长期记忆"（持仓/偏好变更） |
 | FR-16 | 复用 Agent 体系 | `src/agent/` | 复用 | 已确认复用，不引入外部黑盒 |
 | FR-17 | 建仓/加仓信号 | `bull_trend`(回踩低吸)、`volume_breakout` | 改造 | 周线趋势条件 + 金字塔加仓 |
@@ -163,7 +163,7 @@
 
 - **H5**：改造 `apps/dsa-web/`（Vite+React+TS）→ 建议详情+K线、持仓录入/修改、历史信号与复盘、参数/权重调节；移动适配 + 二次确认（FR-14.2.6）。
 - **AI 对话**：复用 `src/agent/`（orchestrator 分流）+ `bot/`（渠道）；新增**写操作意图**（改持仓/调权重/设止损）与**复合指令**（一句话多指令，FR-14.3.7）；操作后**必须回执**。
-- **大屏（二期）**：复用 H5 内容做大屏布局适配（浏览器全屏、免登录常驻）。
+- **大屏（二期）** ✅：复用 H5 内容做大屏布局适配（浏览器全屏、免登录常驻）。见 `docs/solution/high-sell-low-buy-assistant-p4-implementation-v1.0.md`——一屏快照 `src/services/screen_service.py` + `GET /api/v1/screen/snapshot`（**只读**，已加入鉴权白名单）+ H5 `/screen` 路由（鉴权判断之前渲染、无 Shell、全屏、大字号、涨红跌绿、数据截止显著标注、手动 + 定时刷新、端间实时同步）。
 
 ### 3.8 对话留档与记忆压缩（FR-15）— **新建一层**
 
@@ -182,7 +182,7 @@
 | **P1 每日推送闭环** | 20:00 调度 + 概览/紧急分级 + 飞书推送 + K线图 + 事件与风险 | 每天 20:00 收到可执行的飞书推送 | 时效、降噪、免责声明（NFR-2/3/5） |
 | **P2 H5 + AI 对话** | dsa-web 改造 + Agent 写操作/复合指令/回执 + 记忆压缩 | 手机可看详情/改持仓；对话可问可改 | 四端同源（NFR-9）；操作可追溯（NFR-11） |
 | **P3 复盘 + 回测** ✅ | 周六复盘 + 回测（近3年，601919/601288） | 复盘报告 + 策略有效性报告 | 胜率/盈亏比/最大回撤（FR-12.2） |
-| **P4 大屏（二期）** | 大屏适配 | 大屏展示页 | 远距离可读、免登录常驻 |
+| **P4 大屏（二期）** ✅ | 大屏适配 | 大屏展示页 | 远距离可读、免登录常驻 |
 
 > **回测排期（R3，已决）**：采用 **"P1 上线前的规则体检关卡（gate）"**——P0 内核建成后，先用近 3 年数据回测 601919 / 601288，确认 P0 规则有效（胜率 / 盈亏比 / 最大回撤达标）**才开每日推送**；**P3 仍产出完整回测报告**。即：回测不单独占一期，而是作为 **P0 → P1 之间的质量门**。
 
@@ -194,6 +194,7 @@
 > **P2.3 结构化记忆 ✅ 已实施（2026-10-14）**：见同文档 **§11**——`ChatMemory` 表（`memory_type ∈ {position_change, preference, confirmed_action, analysis_conclusion}`）+ `ChatMemoryCursor` 压缩游标（FR-15.3）+ 规则优先/LLM 兜底抽取（`src/services/chat_memory_service.py`）+ 压缩节奏（token 阈值 12000 + 每周兜底 + 会话结束增量，决议 D5）+ 记忆管理 API `GET/DELETE /api/v1/memory`、`POST /api/v1/memory/clear`（强确认）+ H5「记忆」页（列表 / 来源回链 / 软删 / 硬删 / 恢复 / 一键清空）。已确认写操作经 `action_service` 审计钩子落 `confirmed_action` 记忆。**后端回归 357 passed / 0 skipped；前端 `tsc -b` 0 error**。
 > **P2.4 审计与实时 ✅ 已实施（2026-10-14）**：见同文档 **§12**——`ActionAudit` 表全量留痕（`before`/`after` + `source`/`actor`/`confirmed`/`status`，可回放）+ 审计仓储/服务（`src/repositories/action_audit_repo.py` / `src/services/action_audit_service.py`）+ **撤销**（由 before/after 反向构造 `WriteOp`，同样经 `action_service` 二次确认并留痕，NFR-11）+ 审计 API `GET /api/v1/actions/audit`（列表 / 详情 / 统计）、`POST /api/v1/actions/audit/{id}/undo`（撤销预览）+ 域事件总线 `src/services/domain_event_bus.py` + SSE `GET /api/v1/actions/stream`（`invalidate` 端间刷新，FR-14.0.5）+ H5「操作记录」页（`/audit`，列表 / 筛选 / 查看变更 / 撤销 / 实时连接指示）。**后端回归 395 passed / 0 skipped；前端 `tsc -b` 0 error**。
 > **P3 周度复盘 + 完整回测报告 ✅ 已实施（2026-10-14）**：见 `docs/solution/high-sell-low-buy-assistant-p3-implementation-v1.0.md`——**周六复盘**（`src/services/weekly_review_service.py`，FR-11.1~11.4：①本周信号回顾与胜率 ②持仓盈亏与执行回填 ③大盘/板块周度总结 ④下周关注与关键价位）+ 执行回填（`ExecutionFeedback` 表 + `src/repositories/execution_feedback_repo.py`，数据管理、**不经 `action_service`**，决议 D3）+ 复盘 API `GET /api/v1/review/weekly`、`GET/POST /api/v1/review/execution` + 纯代码周六调度（`src/services/p1_scheduler.py` 非侵入轮询 + 独立 ledger，`--weekly/--weekly-time/--weekly-weekday`）+ **完整回测报告**（`RuleBacktester` 扩展：场景分档 FR-12.3、局限性与免责说明 FR-12.4、`profit_factor=∞` JSON 安全化）+ 回测 API `POST /api/v1/backtest/rule-report` + H5「复盘」页（`/review`，周度复盘 / 策略回测 双 Tab）。**后端回归 438 passed / 0 skipped；前端 `tsc -b` 0 error**。
+> **P4 大屏看板 ✅ 已实施（2026-10-14）**：见 `docs/solution/high-sell-low-buy-assistant-p4-implementation-v1.0.md`——**一屏快照**（`src/services/screen_service.py`：指数条 + 自选股卡片〔人话结论/四要素/评分/距止损·目标/持仓盈亏〕+ 持仓汇总 + 事件提醒 + 本周复盘摘要 + 数据截止）+ **只读 API** `GET /api/v1/screen/snapshot`（已加入鉴权 `EXEMPT_PATHS`，支撑 FR-14.1.4 免登录常驻）+ **大屏页面**（`apps/dsa-web/src/pages/ScreenPage.tsx`，路由 `/screen`：**在鉴权判断之前渲染、不套 Shell**、大字号远距离可读、涨红跌绿、**显著标注数据截止时间**、手动刷新 + 定时刷新倒计时 + 全屏、端间 SSE 变更自动重取）+ 配置 `HSLB_SCREEN_REFRESH_SECONDS` / `HSLB_SCREEN_CACHE_SECONDS`。**不做盘中监控**（NG4 / FR-14.1.1）；卡片结论**复用 H5 同一 `StockOverviewService`**（NFR-9），缺数据处**如实降级不伪造**（NFR-8）。**后端回归 472 passed / 0 skipped；前端 `tsc -b` 0 error**。
 
 > **质量门结果（2026-10-13 已决）**：按"**调规则参数 + 调整门口径**"双轨处理（方案 C）——
 > ① 参数侧：止损加缓冲 + ATR 自适应放宽、建仓加"趋势强度 + MACD 动能"过滤门槛；

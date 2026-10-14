@@ -373,7 +373,7 @@ FEISHU_CHAT_ID=ou_e949ea38b809a3fc890576ad2dcc4f68
 4. **持仓需人工录入真实数据**：`position_service` 机制已就绪，**需求方真实持仓（8 只，成本价 / 数量）已于 2026-10-13 录入**（`--set SYMBOL:COST:QTY`，覆盖语义），风控已进入持仓优先分支（`risk.action()`）。
 5. **周六复盘**（需求 FR-11）**已实现**，见 `docs/solution/high-sell-low-buy-assistant-p3-implementation-v1.0.md` 与本文 §6（`p1_scheduler` 新增周六窗口）。
 6. **回测口径**：只评估"建仓侧 + 出场风控"，不含持仓中加仓/减仓时序；单笔期望 vs 买入持有不可直接比较。
-7. **未做**：**P2 H5 + AI 对话 ✅ 已完成**；**（P3）周六复盘与完整回测报告 ✅ 已完成**；P4 大屏待做。
+7. **未做**：**P2 H5 + AI 对话 ✅ 已完成**；**（P3）周六复盘与完整回测报告 ✅ 已完成**；**P4 大屏 ✅ 已完成**（见 `docs/solution/high-sell-low-buy-assistant-p4-implementation-v1.0.md`）——P0~P4 全部落地。
 
 ---
 

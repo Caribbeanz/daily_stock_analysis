@@ -25,6 +25,9 @@ EXEMPT_PATHS = frozenset({
     "/docs",
     "/redoc",
     "/openapi.json",
+    # 大屏（P4 · FR-14.1.4）：浏览器全屏、**免登录常驻**，需在鉴权开启时仍可拉取。
+    # 该端点**只读**（仅聚合本人自选股 / 持仓的行情与结论），不含任何写能力与密钥。
+    "/api/v1/screen/snapshot",
 })
 
 

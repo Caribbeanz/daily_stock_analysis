@@ -27,6 +27,7 @@ const StockDetailPage = lazy(() => import('./pages/StockDetailPage'));
 const MemoryPage = lazy(() => import('./pages/MemoryPage'));
 const AuditPage = lazy(() => import('./pages/AuditPage'));
 const ReviewPage = lazy(() => import('./pages/ReviewPage'));
+const ScreenPage = lazy(() => import('./pages/ScreenPage'));
 
 const AppContent: React.FC = () => {
   const location = useLocation();
@@ -36,6 +37,16 @@ const AppContent: React.FC = () => {
   useEffect(() => {
     useAgentChatStore.getState().setCurrentRoute(location.pathname);
   }, [location.pathname]);
+
+  // 大屏（P4 · FR-14.1.4）：**免登录常驻**，在鉴权判断之前独立渲染，
+  // 且不套 Shell（无侧边栏，浏览器全屏即可长期无人值守）。
+  if (location.pathname === '/screen') {
+    return (
+      <StandaloneRouteBoundary>
+        <ScreenPage />
+      </StandaloneRouteBoundary>
+    );
+  }
 
   if (isLoading) {
     return <PageLoadingFallback />;

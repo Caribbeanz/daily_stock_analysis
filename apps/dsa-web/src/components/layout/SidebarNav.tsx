@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Activity, BarChart3, Bell, Brain, BriefcaseBusiness, ClipboardCheck, Gauge, History, Home, LogOut, MessageSquareQuote, Search, Settings2 } from 'lucide-react';
+import { Activity, BarChart3, Bell, Brain, BriefcaseBusiness, ClipboardCheck, Gauge, History, Home, LogOut, MessageSquareQuote, Monitor, Search, Settings2 } from 'lucide-react';
 import { NavLink } from 'react-router-dom';
 import { SCREENING_CONFIG_CHANGED_EVENT, SYSTEM_CONFIG_CHANGED_EVENT, screeningApi } from '../../api/screening';
 import { useAuth } from '../../contexts/AuthContext';
@@ -38,6 +38,7 @@ const NAV_ITEMS: NavItem[] = [
   { key: 'memory', labelKey: 'layout.nav.memory', to: '/memory', icon: Brain },
   { key: 'audit', labelKey: 'layout.nav.audit', to: '/audit', icon: History },
   { key: 'review', labelKey: 'layout.nav.review', to: '/review', icon: ClipboardCheck },
+  { key: 'screen', labelKey: 'layout.nav.screen', to: '/screen', icon: Monitor },
   { key: 'usage', labelKey: 'layout.nav.usage', to: '/usage', icon: Gauge },
   { key: 'settings', labelKey: 'layout.nav.settings', to: '/settings', icon: Settings2 },
 ];

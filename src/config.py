@@ -1070,6 +1070,12 @@ class Config:
     hslb_memory_enabled: bool = True
     hslb_memory_compression_tokens: int = 12000
     hslb_memory_weekly_seconds: int = 7 * 24 * 3600
+
+    # 高抛低吸助手 · 大屏看板（P4 · FR-14.1）
+    # refresh_seconds 为快照响应里返回给前端的**建议自动刷新间隔**（秒，纯展示节奏，
+    # 不做盘中监控）；cache_seconds 为相同入参快照的短暂缓存，防止手动刷新打爆数据源。
+    hslb_screen_refresh_seconds: int = 300
+    hslb_screen_cache_seconds: int = 15
     
     # Telegram 配置（需要同时配置 Bot Token 和 Chat ID）
     telegram_bot_token: Optional[str] = None  # Bot Token（@BotFather 获取）
@@ -2062,6 +2068,18 @@ class Config:
                 7 * 24 * 3600,
                 field_name='HSLB_MEMORY_WEEKLY_SECONDS',
                 minimum=60,
+            ),
+            hslb_screen_refresh_seconds=parse_env_int(
+                os.getenv('HSLB_SCREEN_REFRESH_SECONDS'),
+                300,
+                field_name='HSLB_SCREEN_REFRESH_SECONDS',
+                minimum=30,
+            ),
+            hslb_screen_cache_seconds=parse_env_int(
+                os.getenv('HSLB_SCREEN_CACHE_SECONDS'),
+                15,
+                field_name='HSLB_SCREEN_CACHE_SECONDS',
+                minimum=0,
             ),
             telegram_bot_token=os.getenv('TELEGRAM_BOT_TOKEN'),
             telegram_chat_id=os.getenv('TELEGRAM_CHAT_ID'),
