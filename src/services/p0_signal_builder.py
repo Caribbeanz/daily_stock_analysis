@@ -111,14 +111,31 @@ class P0SignalBuilder:
         scenario_rules: Optional[ScenarioRuleSet] = None,
         signal_service: Optional[Any] = None,
         history_days: int = _DEFAULT_HISTORY_DAYS,
+        stop_loss_overrides: Optional[Dict[str, float]] = None,
     ):
         self.watchlist = watchlist_service or WatchlistService()
         self.risk_engine = risk_engine or RiskEngine(risk_rules or load_risk_rules())
         self.scenario_engine = scenario_engine or ScenarioEngine(scenario_rules or load_scenario_rules())
         self._signal_service = signal_service
         self.history_days = history_days
+        # 单标的止损覆盖（P2.2「设置止损」）：None 时惰性读取规则文件，只读一次。
+        self._stop_loss_overrides = stop_loss_overrides
+        self._stop_loss_overrides_loaded = stop_loss_overrides is not None
 
     # ---------------- 依赖 ---------------- #
+    @property
+    def stop_loss_overrides(self) -> Dict[str, float]:
+        """单标的止损覆盖表（懒加载，用于风控止损优先）。"""
+        if not self._stop_loss_overrides_loaded:
+            try:
+                from src.core.rule_config import load_stop_loss_overrides
+
+                self._stop_loss_overrides = load_stop_loss_overrides()
+            except Exception as exc:  # 读取失败不阻断主流程（回落到技术位计算）
+                logger.warning("读取止损覆盖失败，回落技术位计算：%s", exc)
+                self._stop_loss_overrides = {}
+            self._stop_loss_overrides_loaded = True
+        return self._stop_loss_overrides or {}
     @property
     def signal_service(self):
         if self._signal_service is None:
@@ -292,16 +309,28 @@ class P0SignalBuilder:
         snapshot: IndicatorSnapshot,
         position: Optional[PositionView],
     ) -> RiskDecision:
+        override = self._stop_loss_override_for(position)
         if position is not None and position.has_position():
-            return self.risk_engine.evaluate_hold(snapshot, position)
+            return self.risk_engine.evaluate_hold(snapshot, position, stop_loss_override=override)
         if scenario.action == "buy" and scenario.sub_action == "build":
             return self.risk_engine.evaluate_build(snapshot)
         if scenario.action == "buy" and scenario.sub_action == "dip_buy":
             return self.risk_engine.evaluate_dip_buy(snapshot)
         decision = RiskDecision()
-        decision.stop_loss = self.risk_engine.compute_stop_loss(snapshot, position)
+        decision.stop_loss = self.risk_engine.compute_stop_loss(
+            snapshot, position, stop_loss_override=override
+        )
         decision.position_advice = {"action": "watch", "ratio": 0.0, "reason": "无明确买点，观望"}
         return decision
+
+    def _stop_loss_override_for(self, position: Optional[PositionView]) -> Optional[float]:
+        """按标代码取用户显式止损（无持仓或无覆盖时返回 None）。"""
+        if position is None:
+            return None
+        symbol = str(getattr(position, "symbol", "") or "").strip().upper()
+        if not symbol:
+            return None
+        return self.stop_loss_overrides.get(symbol)
 
     @staticmethod
     def _resolve_action(scenario: ScenarioDecision, risk: RiskDecision, has_position: bool) -> str:

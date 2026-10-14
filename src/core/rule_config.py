@@ -21,6 +21,8 @@ import yaml
 
 __all__ = [
     "RULES_DIR",
+    "FACTOR_KEYS",
+    "FACTOR_LABELS",
     "StopLossRules",
     "TrailRules",
     "TakeProfitRules",
@@ -35,8 +37,11 @@ __all__ = [
     "DownMarketRules",
     "SidewaysMarketRules",
     "ScenarioRuleSet",
+    "FactorWeightRules",
     "load_risk_rules",
     "load_scenario_rules",
+    "load_factor_weights",
+    "load_stop_loss_overrides",
 ]
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -250,6 +255,42 @@ class ScenarioRuleSet:
 
 
 # --------------------------------------------------------------------------- #
+# 四因子权重（FR-7.2；P2.2 支持对话 / 表单调节）
+# --------------------------------------------------------------------------- #
+# 维度键：technical（技术面）/ market（行业·大盘·板块）/ news（消息面）/ fundamental（基本面）
+FACTOR_KEYS: Tuple[str, ...] = ("technical", "market", "news", "fundamental")
+FACTOR_LABELS: Dict[str, str] = {
+    "technical": "技术面",
+    "market": "行业/大盘/板块",
+    "news": "消息面",
+    "fundamental": "基本面",
+}
+
+
+@dataclass(frozen=True)
+class FactorWeightRules:
+    """四因子权重（合计 1.0）。默认按 FR-7.2「偏技术面」配置。"""
+
+    technical: float = 0.45
+    market: float = 0.25
+    news: float = 0.15
+    fundamental: float = 0.15
+    version: int = 1
+
+    def as_dict(self) -> Dict[str, float]:
+        return {
+            "technical": self.technical,
+            "market": self.market,
+            "news": self.news,
+            "fundamental": self.fundamental,
+        }
+
+    @property
+    def total(self) -> float:
+        return sum(self.as_dict().values())
+
+
+# --------------------------------------------------------------------------- #
 # 加载入口
 # --------------------------------------------------------------------------- #
 def load_risk_rules(path: Optional[Path] = None) -> RiskRuleSet:
@@ -363,3 +404,48 @@ def load_scenario_rules(path: Optional[Path] = None) -> ScenarioRuleSet:
         ),
         version=_int(data.get("version"), defaults.version),
     )
+
+
+# --------------------------------------------------------------------------- #
+# P2.2 覆盖层加载（四因子权重 / 单标的止损覆盖）
+# --------------------------------------------------------------------------- #
+def load_factor_weights(path: Optional[Path] = None) -> FactorWeightRules:
+    """读取四因子权重；文件缺失或字段缺失时回退 FR-7.2 默认值。
+
+    权重不必在文件里恰好合计 1.0，读取时**按总和归一化**，避免半成品配置
+    导致结果不可解释（写入口只允许合计 1.0，这里是防御性兜底）。
+    """
+    data = _load_yaml(path or (RULES_DIR / "factor_weights.yaml"))
+    weights = _section(data, "weights")
+    defaults = FactorWeightRules()
+    raw = {
+        key: max(0.0, _float(weights.get(key), float(getattr(defaults, key))))
+        for key in FACTOR_KEYS
+    }
+    total = sum(raw.values())
+    if total <= 0:
+        return defaults
+    normalized = {key: value / total for key, value in raw.items()}
+    return FactorWeightRules(**normalized, version=_int(data.get("version"), defaults.version))
+
+
+def load_stop_loss_overrides(path: Optional[Path] = None) -> Dict[str, float]:
+    """读取"单标的止损覆盖"（人工指定止损价），键为标的代码、值为止损价。
+
+    用于 FR-9 / P2.2 的「设置止损」：用户显式设定的止损优先于技术位计算值。
+    文件缺失或值为非法数时返回空表 / 跳过该项（不阻断主流程）。
+    """
+    data = _load_yaml(path or (RULES_DIR / "stop_loss_overrides.yaml"))
+    raw = data.get("overrides") if isinstance(data.get("overrides"), Mapping) else {}
+    result: Dict[str, float] = {}
+    for symbol, value in (raw or {}).items():
+        code = str(symbol or "").strip().upper()
+        if not code:
+            continue
+        try:
+            price = float(value)
+        except (TypeError, ValueError):
+            continue
+        if price > 0:
+            result[code] = price
+    return result

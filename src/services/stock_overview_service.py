@@ -26,7 +26,7 @@ import logging
 import math
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any, Callable, Dict, List, Optional, Sequence
+from typing import Any, Callable, Dict, List, Mapping, Optional, Sequence
 
 from src.services.daily_digest import ACTION_LABELS, DISCLAIMER, SCENARIO_LABELS
 
@@ -142,6 +142,10 @@ class StockOverview:
     degraded: List[str] = field(default_factory=list)
     disclaimer: str = DISCLAIMER
 
+    # 四因子权重与加权合成（FR-7；权重可经 P2.2 写入口调节）
+    factor_weights: Dict[str, float] = field(default_factory=dict)
+    synthesis: Dict[str, Any] = field(default_factory=dict)
+
     def to_dict(self) -> Dict[str, Any]:
         return {
             "symbol": self.symbol,
@@ -177,6 +181,8 @@ class StockOverview:
             "signal_created_at": self.signal_created_at,
             "degraded": list(self.degraded),
             "disclaimer": self.disclaimer,
+            "factor_weights": dict(self.factor_weights),
+            "synthesis": dict(self.synthesis),
         }
 
 
@@ -338,6 +344,7 @@ def build_overview(
     signal: Optional[Dict[str, Any]] = None,
     events: Optional[Sequence[str]] = None,
     quote: Optional[Dict[str, Any]] = None,
+    factor_weights: Optional[Mapping[str, float]] = None,
     now: Optional[datetime] = None,
 ) -> StockOverview:
     """把信号 + 行情 + 事件组装成一屏详情（纯函数，不触网不读库）。"""
@@ -405,6 +412,18 @@ def build_overview(
     )
     overview.factors = build_factors(signal)
 
+    # 四因子权重 + 加权合成（FR-7；权重为空则跳过，保持向后兼容）
+    if factor_weights:
+        try:
+            from src.services import factor_weight_service
+
+            normalized_weights = {str(k): float(v) for k, v in factor_weights.items()}
+            overview.factor_weights = normalized_weights
+            scores = factor_weight_service.derive_dimension_scores(signal, overview.events)
+            overview.synthesis = factor_weight_service.synthesize(scores, normalized_weights)
+        except Exception as exc:  # 合成失败不阻断整屏（NFR-8）
+            logger.warning("四因子权重合成失败：%s", exc)
+
     if isinstance(quote, dict) and quote:
         current = _finite(quote.get("current_price"))
         overview.quote = {
@@ -438,12 +457,14 @@ class StockOverviewService:
         stock_service: Any = None,
         event_collector: Optional[Callable[[str], List[str]]] = None,
         quote_loader: Optional[Callable[[str], Optional[Dict[str, Any]]]] = None,
+        factor_weights: Optional[Dict[str, float]] = None,
     ):
         self._signal_service = signal_service
         self._event_source = event_source
         self._stock_service = stock_service
         self._event_collector = event_collector
         self._quote_loader = quote_loader
+        self._factor_weights = factor_weights
 
     # ---------------- 依赖 ---------------- #
     @property
@@ -515,6 +536,18 @@ class StockOverviewService:
             degraded.append("行情获取失败，现价与距离已隐藏")
             return None
 
+    def _load_factor_weights(self) -> Dict[str, float]:
+        """读取四因子权重（惰性；失败则返回空表 → 跳过合成，不影响整屏）。"""
+        if self._factor_weights is not None:
+            return dict(self._factor_weights)
+        try:
+            from src.core.rule_config import load_factor_weights
+
+            return load_factor_weights().as_dict()
+        except Exception as exc:  # pragma: no cover - 配置异常不应阻断整屏
+            logger.warning("读取四因子权重失败：%s", exc)
+            return {}
+
     # ---------------- 公共入口 ---------------- #
     def load(self, symbol: str, *, with_quote: bool = True) -> Dict[str, Any]:
         """聚合个股详情；任何子块失败都降级而非抛错（NFR-8）。"""
@@ -530,6 +563,7 @@ class StockOverviewService:
             signal=signal,
             events=events,
             quote=quote,
+            factor_weights=self._load_factor_weights(),
         )
         # 合并子块降级说明（build_overview 自身也会写入降级项）
         for reason in degraded:

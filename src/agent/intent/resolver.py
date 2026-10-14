@@ -30,7 +30,7 @@ from typing import Any, Callable, Dict, List, Optional, Sequence
 
 from src.services import glossary as glossary_service
 
-__all__ = ["Intent", "IntentKind", "resolve", "WriteOp"]
+__all__ = ["Intent", "IntentKind", "resolve", "WriteOp", "parse_write_ops"]
 
 # LLM 兜底签名：接收用户原话，返回 {"kind": str, "symbols": [...], "terms": [...]}
 LLMFallback = Callable[[str], Optional[Dict[str, Any]]]
@@ -128,6 +128,159 @@ _PORTFOLIO_PATTERNS = (
 _GLOSSARY_QUESTION = re.compile(r"(是什么|啥意思|什么意思|含义|解释|怎么理解|科普|啥是|什么是|代表什么)")
 _GLOSSARY_PURE = re.compile(r"^[\s\w/（）()+\-]{1,20}$")
 
+# --------------------------------------------------------------------------- #
+# 写指令：分句 + 参数抽取（P2.2）
+# --------------------------------------------------------------------------- #
+# 复合指令拆分：连接词 / 顿号外的标点（顿号常用于并列名词，不拆，避免误切）
+_CLAUSE_SPLIT = re.compile(
+    r"(?:并且|并(?=把|将|帮|给|设|调|改|加|删|移|去掉|清空|录入|更新))"
+    r"|(?:同时|然后|再(?=把|将|设|调|改|加|删|移))"
+    r"|[；;]|[，,]"
+)
+
+_NUM = r"([0-9]+(?:\.[0-9]+)?)"
+_PERCENT = re.compile(_NUM + r"\s*%")
+_LABELED_VALUE = re.compile(r"(?:设为|改成|改为|设成|调到|调整到|调为|设置为|为|到)\s*" + _NUM)
+_COST_VALUE = re.compile(
+    r"(?:成本价|成本|均价|买入价|建仓价)\s*(?:设为|设成|为|是|[:：=])?\s*" + _NUM
+)
+_QTY_VALUE = re.compile(
+    r"(?:数量|股数|持仓量|份额|股)\s*(?:设为|设成|为|是|[:：=])?\s*" + _NUM
+)
+
+# 维度关键词 → 四因子键（与 rule_config.FACTOR_KEYS 对齐）
+_FACTOR_KEYWORDS: Sequence[tuple[str, tuple[str, ...]]] = (
+    ("technical", ("技术面", "技术", "k线", "指标面")),
+    ("market", ("行业", "大盘", "板块", "市场面", "指数")),
+    ("news", ("消息面", "消息", "新闻", "公告", "情绪")),
+    ("fundamental", ("基本面", "业绩", "估值", "财务")),
+)
+
+
+def _split_clauses(text: str) -> List[str]:
+    """把一句话按连接词 / 标点拆成多条子指令。"""
+    parts = [part.strip() for part in _CLAUSE_SPLIT.split(text) if part and part.strip()]
+    return parts or [text.strip()]
+
+
+def _clause_codes(clause: str) -> List[str]:
+    try:
+        from src.agent.stock_scope import extract_stock_codes
+
+        return [str(code).strip().upper() for code in extract_stock_codes(clause) if code]
+    except Exception:  # 解析失败降级为"无标的"
+        return []
+
+
+def _extract_number(clause: str, codes: Sequence[str]) -> Optional[float]:
+    """抽取写指令里的目标数值；优先取标签（设为/调到…）后的数字。"""
+    labeled = _LABELED_VALUE.search(clause)
+    if labeled:
+        return float(labeled.group(1))
+    candidates = [
+        float(m.group(1))
+        for m in re.finditer(_NUM, clause)
+    ]
+    # 排除标代码本身
+    code_values = set()
+    for code in codes:
+        try:
+            code_values.add(float(code))
+        except (TypeError, ValueError):
+            continue
+    filtered = [value for value in candidates if value not in code_values]
+    return filtered[-1] if filtered else None
+
+
+def _parse_ratio_value(clause: str, codes: Sequence[str]) -> Optional[float]:
+    """抽取权重 / 仓位比例（支持 60% / 0.6 / 60 三种写法）。"""
+    percent = _PERCENT.search(clause)
+    if percent:
+        return float(percent.group(1)) / 100.0
+    number = _extract_number(clause, codes)
+    if number is None:
+        return None
+    return number / 100.0 if number > 1.0 else number
+
+
+def _parse_factor_key(clause: str) -> Optional[str]:
+    for key, keywords in _FACTOR_KEYWORDS:
+        if any(keyword in clause for keyword in keywords):
+            return key
+    return None
+
+
+def _parse_single_write(clause: str) -> Optional[WriteOp]:
+    """把单条子指令解析为 ``WriteOp``（含结构化参数）；无法识别返回 ``None``。"""
+    text = str(clause or "").strip()
+    if not text or not _WRITE_HINT.search(text) or not _MUTATING_VERB.search(text):
+        return None
+
+    op_name = ""
+    for pattern, op in _WRITE_RULES:
+        if pattern.search(text):
+            op_name = op
+            break
+    if not op_name:
+        return None
+
+    codes = _clause_codes(clause)
+    params: Dict[str, Any] = {}
+    if codes:
+        params["symbol"] = codes[0]
+
+    if op_name == "set_weight":
+        factor = _parse_factor_key(text)
+        if factor:
+            params["factor"] = factor
+        value = _parse_ratio_value(text, codes)
+        if value is not None:
+            params["value"] = value
+    elif op_name == "set_stop_loss":
+        value = _extract_number(text, codes)
+        if value is not None:
+            params["value"] = value
+    elif op_name == "set_position_ratio":
+        value = _parse_ratio_value(text, codes)
+        if value is not None:
+            params["value"] = value
+    elif op_name == "set_position":
+        cost_match = _COST_VALUE.search(text)
+        qty_match = _QTY_VALUE.search(text)
+        if cost_match:
+            params["cost"] = float(cost_match.group(1))
+        if qty_match:
+            params["quantity"] = float(qty_match.group(1))
+        if "cost" not in params and "quantity" not in params:
+            # 退化：无标签时若出现两个数值，按"成本, 数量"顺序解析
+            numbers = [
+                float(m.group(1))
+                for m in re.finditer(_NUM, text)
+                if m.group(1) not in codes
+            ]
+            if len(numbers) >= 2:
+                params["cost"], params["quantity"] = numbers[0], numbers[1]
+
+    return WriteOp(op=op_name, params=params)
+
+
+def parse_write_ops(text: str) -> List[WriteOp]:
+    """解析一句话中的**全部**写指令（复合指令逐条返回）。
+
+    例：``"把技术面权重调到 60% 并把 600519 止损设为 15 元"`` →
+    ``[WriteOp(set_weight, {factor: technical, value: 0.6}),
+       WriteOp(set_stop_loss, {symbol: 600519, value: 15.0})]``
+    """
+    raw = str(text or "").strip()
+    if not raw:
+        return []
+    ops: List[WriteOp] = []
+    for clause in _split_clauses(raw):
+        parsed = _parse_single_write(clause)
+        if parsed is not None:
+            ops.append(parsed)
+    return ops
+
 
 def _extract_symbols(text: str, symbol_hint: Optional[str]) -> List[str]:
     """抽取标的代码；失败不阻断（只影响上下文，不影响分流）。"""
@@ -165,15 +318,20 @@ def _rule_resolve(text: str, symbols: List[str], terms: List[str]) -> Optional[I
             reason="命中下单/委托类越界指令",
         )
 
-    # 2) 写操作（识别即可，执行在 P2.2）
+    # 2) 写操作（识别 + 参数抽取即可，执行在 P2.2 的 action_service）
     if _WRITE_HINT.search(stripped) and _MUTATING_VERB.search(stripped):
-        ops = [WriteOp(op=op) for pattern, op in _WRITE_RULES if pattern.search(stripped)]
+        ops = parse_write_ops(stripped)
         if not ops:
             ops = [WriteOp(op="unknown_write")]
+        merged_symbols = list(symbols)
+        for op in ops:
+            code = str(op.params.get("symbol") or "").strip().upper()
+            if code and code not in merged_symbols:
+                merged_symbols.append(code)
         return Intent(
             kind=IntentKind.WRITE_INTENT,
             text=stripped,
-            symbols=symbols,
+            symbols=merged_symbols,
             terms=terms,
             write_ops=ops,
             confidence=0.8,

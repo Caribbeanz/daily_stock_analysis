@@ -98,6 +98,8 @@ class RiskEngine:
         self,
         snapshot: IndicatorSnapshot,
         position: Optional[PositionView] = None,
+        *,
+        stop_loss_override: Optional[float] = None,
     ) -> float:
         """技术位止损为主，可叠加固定百分比；支持"缓冲 + ATR 自适应"放宽。
 
@@ -106,11 +108,26 @@ class RiskEngine:
         2. 技术位再向下留 ``buffer_pct`` 缓冲（避免下影线扫损）；
         3. 若 ``atr_mult > 0``：与 ``close − atr_mult × ATR`` 取**更宽（更低）**者，
            使高波动标的的止损随波动率自适应，避免被正常波动震出。
+
+        ``stop_loss_override``：用户**显式设定**的止损价（P2.2「设置止损」），
+        命中时**直接采用**，不再叠加技术位 / 保本上移——用户意图优先。
+        本引擎保持纯函数（无 IO），覆盖值由调用方从规则文件读取后传入。
         """
         rules = self.rules.stop_loss
         close = snapshot.close
         technical: Optional[float] = None
         percent: Optional[float] = None
+
+        # 用户显式止损：直接生效（仍不高于现价，避免"止损位高于市价"的悖论）
+        if stop_loss_override is not None:
+            try:
+                override_value = float(stop_loss_override)
+            except (TypeError, ValueError):
+                override_value = float("nan")
+            if math.isfinite(override_value) and override_value > 0:
+                if math.isfinite(close):
+                    return _round(min(override_value, close))
+                return _round(override_value)
 
         ma_below = [snapshot.ma.get(p) for p in rules.ma]
         ma_below = _finite(*ma_below)
@@ -286,10 +303,14 @@ class RiskEngine:
         self,
         snapshot: IndicatorSnapshot,
         position: PositionView,
+        *,
+        stop_loss_override: Optional[float] = None,
     ) -> RiskDecision:
         """持仓风控：止损优先 → 分批止盈 → 破线减仓 → 防守。"""
         decision = RiskDecision()
-        decision.stop_loss = self.compute_stop_loss(snapshot, position)
+        decision.stop_loss = self.compute_stop_loss(
+            snapshot, position, stop_loss_override=stop_loss_override
+        )
         decision.take_profit_plan = self.compute_take_profit_plan(snapshot, position)
 
         close = snapshot.close

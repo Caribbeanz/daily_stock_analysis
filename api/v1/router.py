@@ -12,6 +12,7 @@ API v1 路由聚合
 from fastapi import APIRouter
 
 from api.v1.endpoints import (
+    actions,
     agent,
     alerts,
     screening,
@@ -50,6 +51,12 @@ router.include_router(
     chat.router,
     prefix="/chat",
     tags=["Chat"]
+)
+
+router.include_router(
+    actions.router,
+    prefix="/actions",
+    tags=["Actions"]
 )
 
 router.include_router(

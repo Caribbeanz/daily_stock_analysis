@@ -1,10 +1,11 @@
 import type React from 'react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
-import { ArrowLeft, ChevronDown, MessageCircleQuestion, RefreshCw, Star } from 'lucide-react';
+import { ArrowLeft, ChevronDown, MessageCircleQuestion, RefreshCw, SlidersHorizontal, Star } from 'lucide-react';
 import { stocksApi, type StockKLinePoint, type StockOverview } from '../api/stocks';
 import { createParsedApiError, parseApiError, type ParsedApiError } from '../api/error';
 import { ApiErrorAlert } from '../components/common/ApiErrorAlert';
+import { ActionConfirmCard } from '../components/actions/ActionConfirmCard';
 import { MiniKLineChart } from '../components/mobile/MiniKLineChart';
 import { useWatchlist } from '../hooks/useWatchlist';
 import { useUiLanguage } from '../contexts/UiLanguageContext';
@@ -58,6 +59,12 @@ const StockDetailPage: React.FC = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<ParsedApiError | null>(null);
   const [showFactors, setShowFactors] = useState(false);
+  // P2.2 写操作（FR-14.2.4）：调整表单 → 预览确认卡 → 二次确认后落库
+  const [showAdjust, setShowAdjust] = useState(false);
+  const [stopLossInput, setStopLossInput] = useState('');
+  const [costInput, setCostInput] = useState('');
+  const [quantityInput, setQuantityInput] = useState('');
+  const [pendingMessage, setPendingMessage] = useState('');
 
   const { isLoading: watchlistLoading, isInWatchlist, toggleWatchlist, refresh: refreshWatchlist } = useWatchlist();
 
@@ -117,6 +124,24 @@ const StockDetailPage: React.FC = () => {
     navigate(`/chat?stock=${encodeURIComponent(symbol)}&name=${encodeURIComponent(name)}`);
   }, [navigate, overview?.name, symbol]);
 
+  /**
+   * 组装写指令（FR-14.2.4）：表单 → 自然语言指令 → 交给确认卡预览。
+   *
+   * **不直接落库**：先调用 `/actions/preview` 让用户看到"将要做什么"，
+   * 二次确认后才由后端 `action_service` 单一写点执行（决议 D2 / D3）。
+   */
+  const handlePreviewAdjust = useCallback(() => {
+    if (!symbol) return;
+    const parts: string[] = [];
+    if (stopLossInput.trim()) {
+      parts.push(`把 ${symbol} 止损设为 ${stopLossInput.trim()}`);
+    }
+    if (costInput.trim() && quantityInput.trim()) {
+      parts.push(`把 ${symbol} 持仓成本设为 ${costInput.trim()} 数量 ${quantityInput.trim()} 股`);
+    }
+    setPendingMessage(parts.join('，'));
+  }, [symbol, stopLossInput, costInput, quantityInput]);
+
   if (isLoading) {
     return (
       <div className="flex min-h-[50vh] flex-col items-center justify-center gap-3 text-sm text-secondary-text">
@@ -158,6 +183,19 @@ const StockDetailPage: React.FC = () => {
         </button>
         <button
           type="button"
+          onClick={() => setShowAdjust((prev) => !prev)}
+          className={cn(
+            'inline-flex items-center gap-1 rounded-xl border px-3 py-2 text-xs font-medium transition-colors',
+            showAdjust
+              ? 'border-primary/60 bg-primary/10 text-primary'
+              : 'border-border/70 bg-card/80 text-secondary-text hover:text-foreground',
+          )}
+        >
+          <SlidersHorizontal className="h-3.5 w-3.5" />
+          {t('stockDetail.adjust')}
+        </button>
+        <button
+          type="button"
           onClick={() => void handleWatchlistToggle()}
           disabled={watchlistLoading}
           className={cn(
@@ -176,6 +214,73 @@ const StockDetailPage: React.FC = () => {
         <p className="rounded-xl border border-primary/30 bg-primary/5 px-3 py-1.5 text-[11px] text-primary">
           {t('stockDetail.fromPush')}
         </p>
+      ) : null}
+
+      {showAdjust ? (
+        <section className="glass-panel-lg flex flex-col gap-3 px-4 py-4" data-testid="stock-adjust-panel">
+          <p className="label-uppercase">{t('stockDetail.adjustTitle')}</p>
+          <label className="flex items-center gap-2 text-xs text-secondary-text">
+            <span className="w-20 shrink-0">{t('stockDetail.adjustStopLoss')}</span>
+            <input
+              type="number"
+              inputMode="decimal"
+              step="0.001"
+              value={stopLossInput}
+              onChange={(event) => setStopLossInput(event.target.value)}
+              placeholder={t('stockDetail.adjustStopLossPlaceholder')}
+              className="min-w-0 flex-1 rounded-lg border border-border/70 bg-card/80 px-2 py-1.5 text-xs text-foreground outline-none focus:border-primary/60"
+            />
+          </label>
+          <div className="flex flex-wrap gap-2">
+            <label className="flex flex-1 items-center gap-2 text-xs text-secondary-text">
+              <span className="shrink-0">{t('stockDetail.adjustCost')}</span>
+              <input
+                type="number"
+                inputMode="decimal"
+                step="0.001"
+                value={costInput}
+                onChange={(event) => setCostInput(event.target.value)}
+                className="min-w-0 flex-1 rounded-lg border border-border/70 bg-card/80 px-2 py-1.5 text-xs text-foreground outline-none focus:border-primary/60"
+              />
+            </label>
+            <label className="flex flex-1 items-center gap-2 text-xs text-secondary-text">
+              <span className="shrink-0">{t('stockDetail.adjustQuantity')}</span>
+              <input
+                type="number"
+                inputMode="numeric"
+                step="1"
+                value={quantityInput}
+                onChange={(event) => setQuantityInput(event.target.value)}
+                className="min-w-0 flex-1 rounded-lg border border-border/70 bg-card/80 px-2 py-1.5 text-xs text-foreground outline-none focus:border-primary/60"
+              />
+            </label>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={handlePreviewAdjust}
+              disabled={!stopLossInput.trim() && !(costInput.trim() && quantityInput.trim())}
+              className="rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground transition-opacity disabled:opacity-50"
+            >
+              {t('stockDetail.adjustPreview')}
+            </button>
+            <span className="text-[10px] text-secondary-text">{t('stockDetail.adjustHint')}</span>
+          </div>
+
+          {pendingMessage ? (
+            <ActionConfirmCard
+              message={pendingMessage}
+              symbol={symbol}
+              onExecuted={() => {
+                setPendingMessage('');
+                setStopLossInput('');
+                setCostInput('');
+                setQuantityInput('');
+                void load();
+              }}
+            />
+          ) : null}
+        </section>
       ) : null}
 
       {error ? <ApiErrorAlert error={error} /> : null}

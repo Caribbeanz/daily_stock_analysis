@@ -137,3 +137,64 @@ def test_rules_win_over_llm():
     intent = resolve("KDJ 是什么", llm=fake_llm)
     assert intent.kind is IntentKind.GLOSSARY
     assert called["n"] == 0, "规则已判定时不应外呼 LLM"
+
+
+# --------------------------------------------------------------------------- #
+# P2.2 写指令：参数抽取 + 复合指令逐条拆分
+# --------------------------------------------------------------------------- #
+def _ops(text: str):
+    from src.agent.intent.resolver import parse_write_ops
+
+    return parse_write_ops(text)
+
+
+def test_parse_weight_op_with_factor_and_value():
+    ops = _ops("把技术面权重调到 60%")
+    assert len(ops) == 1
+    assert ops[0].op == "set_weight"
+    assert ops[0].params["factor"] == "technical"
+    assert abs(ops[0].params["value"] - 0.6) < 1e-9
+
+
+def test_parse_weight_accepts_plain_ratio():
+    ops = _ops("技术面权重设为 0.6，大盘 0.2，消息 0.1，基本面 0.1")
+    factors = {op.params.get("factor") for op in ops}
+    assert "technical" in factors
+
+
+def test_parse_stop_loss_op():
+    ops = _ops("把 600519 止损设为 15 元")
+    assert ops[0].op == "set_stop_loss"
+    assert ops[0].params["symbol"] == "600519"
+    assert abs(ops[0].params["value"] - 15.0) < 1e-9
+
+
+def test_parse_position_op_with_cost_and_quantity():
+    ops = _ops("把 601919 持仓成本设为 12.9 数量 200 股")
+    assert ops[0].op == "set_position"
+    assert ops[0].params["symbol"] == "601919"
+    assert abs(ops[0].params["cost"] - 12.9) < 1e-9
+    assert abs(ops[0].params["quantity"] - 200.0) < 1e-9
+
+
+def test_parse_compound_two_instructions():
+    ops = _ops("把技术面权重调到 60% 并把 600519 止损设为 15 元")
+    assert [op.op for op in ops] == ["set_weight", "set_stop_loss"]
+    assert ops[0].params["factor"] == "technical"
+    assert ops[1].params["symbol"] == "600519"
+
+
+def test_parse_compound_with_pause_punctuation():
+    ops = _ops("添加 600519 到自选，同时把基本面权重调到 20%")
+    assert {op.op for op in ops} == {"watchlist_add", "set_weight"}
+
+
+def test_watchlist_add_single_op_not_over_split():
+    ops = _ops("添加 600519 到自选股")
+    assert [op.op for op in ops] == ["watchlist_add"]
+    assert ops[0].params["symbol"] == "600519"
+
+
+def test_parse_write_ops_empty_input():
+    assert _ops("") == []
+    assert _ops("今天天气不错") == []

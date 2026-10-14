@@ -1,17 +1,16 @@
 # -*- coding: utf-8 -*-
-"""高抛低吸助手 · 飞书机器人入站（P2.1 只读 / 决议 D4）
+"""高抛低吸助手 · 飞书机器人入站（P2.1 只读 / P2.2 写确认 / 决议 D4）
 
-职责：把飞书事件订阅回调（``im.message.receive_v1``）转成一次**只读对话**，
-并把回答回帖到飞书。
+职责：把飞书事件订阅回调（``im.message.receive_v1``）转成一次对话并回帖。
 
 权限（P2 决议 D4）：
-- **本人 open_id（白名单）**：可读；
+- **本人 open_id（白名单）**：可读；写操作走**二次确认**——
+  先回"将要做什么"清单，本人回复「确认」后由 ``action_service`` 执行并回执；
 - **群内其他人**：只读 —— 写请求一律回复"无权限"；
-- 写操作在 P2.1 本身也尚未开放（P2.2 才接 ``action_service``），
-  因此本模块对**任何人**的写请求都只回执"P2.2 开放"，不会执行。
+- 任何写操作都收敛到 ``action_service`` 单一写点（决议 D3），飞书不新增旁路。
 
-本模块**不触网、不读库**，发送通过可注入的 ``sender``（默认取项目既有
-``FeishuSender``），便于离线单测。
+本模块**不触网、不读库**：发送通过可注入的 ``sender``（默认取项目既有
+``FeishuSender``），对话/写编排均可注入，便于离线单测。
 """
 
 from __future__ import annotations
@@ -86,17 +85,19 @@ def parse_event(payload: Dict[str, Any]) -> ParsedMessage:
 
 
 class FeishuInboundService:
-    """飞书入站 → 只读对话 → 回帖。"""
+    """飞书入站 → 只读对话 / 写操作二次确认 → 回帖。"""
 
     def __init__(
         self,
         *,
         chat_service: Optional[ChatReadService] = None,
+        write_service: Optional[Any] = None,
         sender: Optional[Sender] = None,
         config: Any = None,
         owner_open_id: Optional[str] = None,
     ) -> None:
         self._chat_service = chat_service
+        self._write_service = write_service
         self._sender = sender
         self._config = config
         self._owner_open_id = owner_open_id
@@ -107,6 +108,15 @@ class FeishuInboundService:
         if self._chat_service is None:
             self._chat_service = ChatReadService()
         return self._chat_service
+
+    @property
+    def write_service(self):
+        """写对话编排（P2.2：本人写操作走二次确认；懒加载）。"""
+        if self._write_service is None:
+            from src.services.chat_write_service import ChatWriteService
+
+            self._write_service = ChatWriteService()
+        return self._write_service
 
     @property
     def config(self) -> Any:
@@ -174,11 +184,38 @@ class FeishuInboundService:
     _last_intent: str = ""
 
     def _build_reply(self, parsed: ParsedMessage, owner: bool) -> str:
+        # 0) 本人 + 存在待确认操作 + 回复了「确认/取消」→ 走写确认流程（P2.2 / D4）
+        if owner:
+            try:
+                if self.write_service.has_pending(parsed.open_id):
+                    action = self.write_service.handles_text(parsed.text)
+                    if action == "confirm":
+                        self._last_intent = "write_confirm"
+                        result = self.write_service.confirm(actor=parsed.open_id, source="feishu")
+                        return str(result.get("receipt") or result.get("message") or "")
+                    if action == "cancel":
+                        self._last_intent = "write_cancel"
+                        result = self.write_service.cancel(actor=parsed.open_id)
+                        return str(result.get("message") or "")
+            except Exception as exc:  # 确认流程异常不应阻断回帖
+                logger.warning("飞书写确认流程失败：%s", exc)
+
         answer = self.chat_service.ask(parsed.text)
         self._last_intent = answer.intent
 
-        # 群内非本人 + 写意图 → 明确"无权限"（D4）
-        if answer.intent == IntentKind.WRITE_INTENT.value and not owner:
-            return "无权限：本群仅可**查询**；写操作（增删自选 / 改持仓 / 调权重 / 止损）仅限本人私聊，且需二次确认。"
+        if answer.intent == IntentKind.WRITE_INTENT.value:
+            # 群内非本人 + 写意图 → 明确"无权限"（D4）
+            if not owner:
+                return "无权限：本群仅可**查询**；写操作（增删自选 / 改持仓 / 调权重 / 止损）仅限本人私聊，且需二次确认。"
+            # 本人写意图 → 生成待确认计划（列出"将要做什么"），等本人回复「确认」
+            try:
+                result = self.write_service.preview_message(
+                    parsed.text, actor=parsed.open_id, source="feishu"
+                )
+                self._last_intent = "write_pending"
+                return str(result.get("message") or result.get("receipt") or "")
+            except Exception as exc:
+                logger.warning("飞书写预览失败：%s", exc)
+                return "写操作预览失败（服务暂不可用），请改用 H5 操作或稍后重试。"
 
         return answer.full_text
