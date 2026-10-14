@@ -104,8 +104,14 @@ class ChatWriteService:
         actor: str = "",
         session_id: str = "",
         source: str = "h5",
+        meta: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
-        """把写指令渲染为"待确认"计划（不落库）。"""
+        """把写指令渲染为"待确认"计划（不落库）。
+
+        Args:
+            meta: 附加确认上下文（如撤销时 ``{"undo_of": <audit_id>}``），
+                确认执行时会并入审计记录。
+        """
         plan = self.action_service.plan(list(ops))
         if not plan.items:
             return {"status": "nothing_to_do", "message": "没有识别到可执行的写操作。", "items": []}
@@ -124,6 +130,7 @@ class ChatWriteService:
             session_id=session_id,
             source=source,
             summary=plan.summary(),
+            meta=meta,
         )
         message = _CONFIRM_TEMPLATE.format(
             count=len(plan.items),
@@ -157,8 +164,14 @@ class ChatWriteService:
             }
 
         plan: ActionPlan = pending.payload
+        audit_context: Dict[str, Any] = dict(pending.meta or {})
+        if pending.session_id:
+            audit_context.setdefault("session_id", pending.session_id)
         plan = self.action_service.execute_token_plan(
-            plan, actor=actor or pending.actor, source=source or pending.source
+            plan,
+            actor=actor or pending.actor,
+            source=source or pending.source,
+            audit_context=audit_context or None,
         )
         items = [item.to_dict() for item in plan.items]
         ok = all(item.status == "ok" for item in plan.items)

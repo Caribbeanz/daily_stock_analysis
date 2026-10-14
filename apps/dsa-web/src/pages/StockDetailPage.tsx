@@ -8,6 +8,7 @@ import { ApiErrorAlert } from '../components/common/ApiErrorAlert';
 import { ActionConfirmCard } from '../components/actions/ActionConfirmCard';
 import { MiniKLineChart } from '../components/mobile/MiniKLineChart';
 import { useWatchlist } from '../hooks/useWatchlist';
+import { useActionStream } from '../hooks/useActionStream';
 import { useUiLanguage } from '../contexts/UiLanguageContext';
 import { cn } from '../utils/cn';
 
@@ -103,6 +104,19 @@ const StockDetailPage: React.FC = () => {
     void load();
     void refreshWatchlist();
   }, [load, refreshWatchlist]);
+
+  // 端间实时刷新（FR-14.0.5）：任一端改动持仓 / 权重 / 自选后自动重取本页
+  useActionStream({
+    onInvalidate: (payload) => {
+      const affects = payload.scopes.some((scope) =>
+        ['portfolio', 'weights', 'watchlist'].includes(scope),
+      );
+      if (affects) {
+        void load();
+        void refreshWatchlist();
+      }
+    },
+  });
 
   const quote = overview?.quote ?? null;
   const inWatchlist = isInWatchlist(symbol);

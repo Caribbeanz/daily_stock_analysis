@@ -56,6 +56,7 @@ class PendingAction:
     summary: str = ""
     created_at: float = 0.0
     expires_at: float = 0.0
+    meta: Dict[str, Any] = field(default_factory=dict)
 
     def is_expired(self, now: Optional[float] = None) -> bool:
         return (now if now is not None else time.time()) >= self.expires_at
@@ -69,6 +70,7 @@ class PendingAction:
             "summary": self.summary,
             "created_at": self.created_at,
             "expires_at": self.expires_at,
+            "meta": dict(self.meta),
         }
 
 
@@ -98,6 +100,7 @@ class ConfirmationStore:
         source: str = "",
         summary: str = "",
         ttl_seconds: Optional[float] = None,
+        meta: Optional[Dict[str, Any]] = None,
     ) -> PendingAction:
         now = self._clock()
         ttl = self.ttl_seconds if ttl_seconds is None else float(ttl_seconds)
@@ -110,6 +113,7 @@ class ConfirmationStore:
             summary=str(summary or ""),
             created_at=now,
             expires_at=now + ttl,
+            meta=dict(meta or {}),
         )
         with self._lock:
             self._purge_locked(now)

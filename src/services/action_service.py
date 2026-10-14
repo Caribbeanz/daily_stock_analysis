@@ -28,7 +28,7 @@ set_weight    调四因子权重（FR-7）        RuleOverrideService
 - ``execute`` 必须显式 ``confirmed=True``（由上层令牌校验后传入），
   未确认一律拒绝——"无确认不落库"是硬约束（FR-14.2.6 / 决议 D2）；
 - 逐条独立：一条失败不影响其余（复合指令逐条回执）；
-- 审计：每次执行通过可注入 ``audit_sink`` 落审计（P2.4 接入持久化与查询）。
+- 审计：每次执行通过可注入 ``audit_sink`` 落审计（P2.4 已接入持久化 / 查询 / 撤销）。
 """
 
 from __future__ import annotations
@@ -289,8 +289,13 @@ class ActionService:
         actor: str = "",
         source: str = "",
         confirmed: bool = False,
+        audit_context: Optional[Dict[str, Any]] = None,
     ) -> ActionPlan:
         """执行写操作（**必须 confirmed=True**，即已通过二次确认）。
+
+        Args:
+            audit_context: 附加审计上下文（如撤销时 ``{"undo_of": <id>}``），
+                会以 setdefault 方式并入审计记录，不覆盖核心字段。
 
         Returns:
             ActionPlan（``items[].status`` ∈ ok / rejected / failed，``receipt`` 为人话回执）。
@@ -303,7 +308,14 @@ class ActionService:
             if not item.valid:
                 item.status = "rejected"
                 item.receipt = item.error or item.description
-                self._audit(item, actor=actor, source=source, confirmed=True, status="rejected")
+                self._audit(
+                    item,
+                    actor=actor,
+                    source=source,
+                    confirmed=True,
+                    status="rejected",
+                    audit_context=audit_context,
+                )
                 continue
             try:
                 receipt = self._apply(item)
@@ -313,16 +325,37 @@ class ActionService:
                 logger.warning("写操作执行失败（op=%s）：%s", item.op, exc)
                 item.status = "failed"
                 item.receipt = str(exc)
-            self._audit(item, actor=actor, source=source, confirmed=True, status=item.status)
+            self._audit(
+                item,
+                actor=actor,
+                source=source,
+                confirmed=True,
+                status=item.status,
+                audit_context=audit_context,
+            )
         return plan
 
-    def execute_token_plan(self, plan: ActionPlan, *, actor: str = "", source: str = "") -> ActionPlan:
+    def execute_token_plan(
+        self,
+        plan: ActionPlan,
+        *,
+        actor: str = "",
+        source: str = "",
+        audit_context: Optional[Dict[str, Any]] = None,
+    ) -> ActionPlan:
         """执行一个**已确认**的预览计划（保留原 before/after，避免二次读取漂移）。"""
         for item in plan.items:
             if not item.valid:
                 item.status = "rejected"
                 item.receipt = item.error or item.description
-                self._audit(item, actor=actor, source=source, confirmed=True, status="rejected")
+                self._audit(
+                    item,
+                    actor=actor,
+                    source=source,
+                    confirmed=True,
+                    status="rejected",
+                    audit_context=audit_context,
+                )
                 continue
             try:
                 item.receipt = self._apply(item)
@@ -331,7 +364,14 @@ class ActionService:
                 logger.warning("写操作执行失败（op=%s）：%s", item.op, exc)
                 item.status = "failed"
                 item.receipt = str(exc)
-            self._audit(item, actor=actor, source=source, confirmed=True, status=item.status)
+            self._audit(
+                item,
+                actor=actor,
+                source=source,
+                confirmed=True,
+                status=item.status,
+                audit_context=audit_context,
+            )
         return plan
 
     def _apply(self, item: ActionItem) -> str:
@@ -349,6 +389,7 @@ class ActionService:
         source: str,
         confirmed: bool,
         status: str,
+        audit_context: Optional[Dict[str, Any]] = None,
     ) -> None:
         record = {
             "action": item.op,
@@ -361,6 +402,9 @@ class ActionService:
             "status": status,
             "description": item.description,
         }
+        if audit_context:
+            for key, value in audit_context.items():
+                record.setdefault(key, value)
         if self._audit_sink is not None:
             try:
                 self._audit_sink(record)

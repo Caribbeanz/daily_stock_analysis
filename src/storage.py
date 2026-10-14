@@ -803,6 +803,47 @@ class ChatMemoryCursor(Base):
     updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now, nullable=False)
 
 
+class ActionAudit(Base):
+    """高抛低吸助手 · 写操作审计（P2.4 / NFR-11）。
+
+    每次写操作（无论成功 / 拒绝 / 失败）都落一条审计，保证"做过什么"**可回放**：
+    ``before_json`` / ``after_json`` 记录变更前后值，``source`` 记录来自哪一端
+    （h5 / feishu），``confirmed`` 恒为 True（写操作必经二次确认）。
+
+    撤销（undo）关系：
+    - ``undo_of``    本条是某条审计的**撤销操作**时，指向被撤销的审计 id；
+    - ``undone_by``  本条的变更**已被**某条撤销记录覆盖时，指向撤销记录 id。
+
+    设计要点（复用 ``build_tool_audit`` 的脱敏思路）：
+    - 审计只记录结构化字段（op / 标的 / 前后值），预置敏感信息不外泄；
+    - 审计写入**不阻断**写操作（见 ``ActionService._audit`` 的异常兜底）。
+    """
+
+    __tablename__ = 'action_audits'
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    source = Column(String(16), nullable=False, default='', index=True)  # h5|feishu|api|system
+    actor = Column(String(64), nullable=False, default='', index=True)
+    action = Column(String(32), nullable=False, index=True)  # 白名单 op
+    target = Column(String(32), nullable=False, default='', index=True)  # symbol | factor
+    before_json = Column(Text, nullable=False, default='null')
+    after_json = Column(Text, nullable=False, default='null')
+    confirmed = Column(Boolean, nullable=False, default=False)
+    status = Column(String(16), nullable=False, default='', index=True)  # ok|rejected|failed
+    description = Column(Text)
+    session_id = Column(String(100), nullable=True, index=True)
+    undo_of = Column(Integer, nullable=True, index=True)
+    undone_by = Column(Integer, nullable=True)
+    created_at = Column(DateTime, default=datetime.now, index=True)
+
+    __table_args__ = (
+        Index('ix_action_audit_created_status', 'created_at', 'status'),
+    )
+
+    def __repr__(self) -> str:
+        return f"<ActionAudit {self.id} {self.action} {self.target} status={self.status}>"
+
+
 class WatchlistItem(Base):
     """高抛低吸助手 · 自选标的（个股 / 场内基金 ETF·LOF）。
 

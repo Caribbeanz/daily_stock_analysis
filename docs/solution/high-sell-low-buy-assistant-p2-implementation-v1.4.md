@@ -1,13 +1,13 @@
-# 高抛低吸助手 · P2 实施说明（v1.3：P2.0 移动底座 + P2.1 对话·读 + P2.2 对话·写 + P2.3 结构化记忆）
+# 高抛低吸助手 · P2 实施说明（v1.4：P2.0 移动底座 + P2.1 对话·读 + P2.2 对话·写 + P2.3 结构化记忆 + P2.4 审计与实时）
 
 | 项 | 内容 |
 | --- | --- |
-| 文档状态 | **P2.0 ✅ / P2.1 ✅ / P2.2 ✅ / P2.3 ✅ 已实施**；P2.4（审计与实时）待实施 |
-| 版本 | v1.3（v1.0 = 仅 P2.0；v1.1 并入 P2.1；v1.2 并入 P2.2；v1.3 并入 P2.3） |
+| 文档状态 | **P2.0 ✅ / P2.1 ✅ / P2.2 ✅ / P2.3 ✅ / P2.4 ✅ 已实施——P2 全部子期完成** |
+| 版本 | v1.4（v1.0 = 仅 P2.0；v1.1 并入 P2.1；v1.2 并入 P2.2；v1.3 并入 P2.3；v1.4 并入 P2.4） |
 | 更新日期 | 2026-10-14 |
-| 上游方案 | `docs/solution/high-sell-low-buy-assistant-p2-design-v1.1.md`（§3.1 / §3.2 / §3.3 / §3.6 / §3.7 / §4 / §6 决议） |
-| 上游需求 | `docs/requirements/high-sell-low-buy-assistant-requirements-v0.7.md`（FR-13.1 / FR-14.0.2~.4 / FR-14.2.1 / FR-14.2.4~.6 / FR-14.3.1~.9 / FR-15.1~.5 / FR-16.2 / FR-7 / FR-9 / NFR-6 / NFR-8 / NFR-9 / NFR-11） |
-| 前置 | P0 ✅ + P1 ✅（commit `0701bf75`）；P2.0 ✅（`1ac291ec`）；P2.1 ✅（`49f154be`）；P2.2 ✅（`d628c29a`） |
+| 上游方案 | `docs/solution/high-sell-low-buy-assistant-p2-design-v1.1.md`（§3.1~§3.7 / §4 / §6 决议） |
+| 上游需求 | `docs/requirements/high-sell-low-buy-assistant-requirements-v0.7.md`（FR-13.1 / FR-14.0.2~.5 / FR-14.2.1 / FR-14.2.4~.6 / FR-14.3.1~.9 / FR-15.1~.5 / FR-16.2 / FR-7 / FR-9 / NFR-6 / NFR-8 / NFR-9 / NFR-11） |
+| 前置 | P0 ✅ + P1 ✅（commit `0701bf75`）；P2.0 ✅（`1ac291ec`）；P2.1 ✅（`49f154be`）；P2.2 ✅（`d628c29a`）；P2.3 ✅（`e7e86081`） |
 | 本环境约束 | 前端 **esbuild** 派生的 `vite build` / `vitest` 被本机文件访问策略拦截（`winapi error #5`），构建与前端单测需在**你自己的终端**执行 |
 
 ---
@@ -20,7 +20,7 @@
 | 个股详情 | 新建 `/m/stocks/:code`：人话结论 + 四要素 + 迷你 K 线 + 多因子明细 + 事件与风险 + 降级说明 | 参数调节表单（**P2.2 已交付，见 §10**） |
 | 推送跳转 | 推送内附 H5 深链（`HSLB_H5_BASE_URL` 配置后生效） | — |
 | 高频操作 | 一键加/移自选（≤3 步：链接直达 → 一键切换） | **持仓编辑**：属写操作，按决议 **D3** 统一走 `action_service` + 二次确认 → **P2.2 已交付（§10）** |
-| 对话 / 记忆 / 审计 | — | P2.1 对话·读（v1.1）；**P2.2 对话·写（v1.2，见 §10）**；**P2.3 结构化记忆（v1.3，见 §11）**；P2.4 审计与实时 |
+| 对话 / 记忆 / 审计 / 实时 | — | P2.1 对话·读（v1.1）；**P2.2 对话·写（v1.2，见 §10）**；**P2.3 结构化记忆（v1.3，见 §11）**；**P2.4 审计与实时（v1.4，见 §12）** |
 
 > **为什么持仓编辑不放在 P2.0**：决议 D3 明确"**不给 Agent/对话加写通道，写操作统一收敛到 `intent + action_service` 单一写点**"。若 P2.0 单独开一个 HTTP 写口，会出现第二个写路径，与 D3 相悖；因此 P2.0 只做**读**与**既有写口复用**（自选股增删已有端点）。P2.2 才按 D2/D3 正式建立**唯一写点**。
 
@@ -216,7 +216,7 @@ python -m api.app            # 监听 0.0.0.0:8000
 | L2 | ~~参数 / 权重调节、`/actions/preview` 未做~~ → **已交付（P2.2）**：`/actions/preview` `/execute` `/cancel`（§10） | ✅ P2.2 |
 | L3 | ~~对话入口未接线~~ → **已交付（P2.1）**：H5「就地问」+ `POST /chat/ask` + 飞书只读入站 | ✅ P2.1 |
 | L4 | ~~结构化记忆（`ChatMemory`）、记忆管理页未做~~ → **已交付（P2.3）**：`ChatMemory` 表 + 压缩服务 + `/api/v1/memory` + H5「记忆」页（§11） | ✅ P2.3 |
-| L5 | `ActionAudit` **持久化**与 SSE 端间刷新未做（P2.2 已预留 `audit_sink` 钩子；P2.3 已将已确认操作记入 `confirmed_action` 记忆，但**审计表持久化**仍未做） | P2.4 |
+| L5 | ~~`ActionAudit` 持久化与 SSE 端间刷新未做~~ → **已交付（P2.4）**：`ActionAudit` 表 + `action_audit_service` + `GET /api/v1/actions/audit`（列表 / 详情 / 统计）+ 撤销（同样二次确认）+ `GET /api/v1/actions/stream`（SSE `invalidate` 端间刷新）+ H5「操作记录」页（§12） | ✅ P2.4 |
 | L6 | 行情源：本机仅腾讯源可用；实时行情失败时详情页显示"行情暂不可用"（已降级不报错） | 数据侧 |
 | L7 | 事件板块依赖情报源配置；未配置时显示"今日无重大事件提醒" | 配置侧 |
 | L8 | 前端构建 / 前端单测需在本机终端执行（本环境 esbuild 受限） | 环境侧 |
@@ -250,7 +250,7 @@ python -m api.app            # 监听 0.0.0.0:8000
 | NFR-6 配置化 | 阈值 / 权重 / 止损覆盖全部落在 `config/rules/*.yaml`，改配置不改代码 |
 | NFR-8 失败隔离 | `StockOverviewService` 各子块 try/except → `degraded`；`ActionService` 逐条独立、一条失败不影响其余 |
 | NFR-9 四端同源 | 结论与四要素取自 `decision_signals`；写操作统一落 `portfolio_*` / `config/rules`（单一写点） |
-| NFR-11 可追溯 | `ActionService(audit_sink=...)` 预留审计钩子（P2.4 接持久化与查询） |
+| NFR-11 可追溯 | `ActionAudit` 表全量留痕（before/after + source/actor/confirmed/status，可回放）；`GET /api/v1/actions/audit` 查询；**撤销**＝由 before/after 反向构造 `WriteOp`，同样经 `action_service` 二次确认并留痕（§12）；写操作成功另发 `invalidate` 域事件供端间刷新（`/actions/stream`） |
 | D2 写操作白名单不外扩 | `_WHITELIST_HINT` + `REJECTED_OPS`；全部写操作强制二次确认 |
 | D3 单一写点 | 所有写操作经 `ActionService`，无旁路 HTTP 写口 |
 | D4 飞书权限 | 本人 `open_id`（`FEISHU_OWNER_OPEN_ID`）可写；群内其他人写请求回复无权限 |
@@ -260,7 +260,7 @@ python -m api.app            # 监听 0.0.0.0:8000
 
 ---
 
-*（本文档为 P2 实施说明 v1.3：含 P2.0 移动底座 + P2.1 对话·读 + P2.2 对话·写 + P2.3 结构化记忆。P2.4 完成后将继续升版并在 §7 勾销对应待办。）*
+*（本文档为 P2 实施说明 v1.4：含 P2.0 移动底座 + P2.1 对话·读 + P2.2 对话·写 + P2.3 结构化记忆 + P2.4 审计与实时——**P2 全部子期已验证完成**。）*
 
 ---
 
@@ -480,3 +480,79 @@ python -m api.app            # 监听 0.0.0.0:8000
 - 后端全量回归 **357 passed / 0 skipped**（P2.2 时 329 项 + P2.3 新增 28 项；**无回归**）。
 - 前端 `tsc -b` **0 error**。
 - 新增配置已同步 `.env.example`；记忆 API 已在 `/api/v1` 注册（OpenAPI 可见 `/api/v1/memory*` 六条路径）。
+
+---
+
+## 12. P2.4 · 审计与实时 实施说明
+
+> 目标（方案 §3.4 / §3.5）：**做过什么可回放**（NFR-11）+ **任一端写操作后各端实时刷新**（FR-14.0.5）。P2.2 已预留 `audit_sink` 钩子、P2.3 已把"已确认操作"记入记忆；本期把**审计持久化**、**查询/撤销**与 **SSE 端间刷新**补齐。
+
+### 12.1 交付清单
+
+| 模块 | 路径 | 职责 |
+| --- | --- | --- |
+| 审计表 | `src/storage.py` → `ActionAudit` | 写操作留痕：`source/actor/action/target/before/after/confirmed/status/undo_of/undone_by/created_at`（`create_all` 自动建表） |
+| 审计仓储 | `src/repositories/action_audit_repo.py` | 写入 / 查询 / 计数 / 撤销关系回填（`mark_undone` / `latest_undo_of`） |
+| 审计服务 | `src/services/action_audit_service.py` | `record`（落库 + 回填撤销关系）/ 列表 / 详情 / 统计；**`build_undo_ops`**（纯函数，由 before/after 反向构造 `WriteOp`）；`publish_invalidate`（域事件广播） |
+| 域事件总线 | `src/services/domain_event_bus.py` | 线程安全 pub/sub（`call_soon_threadsafe` 跨线程投递）；无订阅者时仅入环形缓冲；不阻塞写链路 |
+| 写链路透传 | `action_service.py` / `confirmation_store.py` / `chat_write_service.py` | `audit_context`（携带 `undo_of` / `session_id`）经确认令牌 `meta` 一路透传，并入审计记录（核心字段用 `setdefault` 保护，不被覆盖） |
+| 审计 API | `api/v1/endpoints/actions.py` | `GET /actions/audit`、`/audit/stats`、`/audit/{id}`、`POST /audit/{id}/undo`（撤销预览，**同样二次确认**）、`GET /actions/stream`（SSE `invalidate`） |
+| 前端 API | `apps/dsa-web/src/api/actions.ts` | `auditApi.list/stats/detail/undo` + `getStreamUrl` |
+| 前端 hook | `apps/dsa-web/src/hooks/useActionStream.ts` | 订阅 `invalidate` → 回调 `onInvalidate(payload)`；自动重连；`EventSource` 不可用时静默降级 |
+| 前端页面 | `apps/dsa-web/src/pages/AuditPage.tsx` | H5「操作记录」：列表 / 来源与状态筛选 / 查看变更（before↔after）/ 撤销（确认后执行）/ 实时连接指示 |
+| 接线 | `App.tsx` / `SidebarNav.tsx` / `StockDetailPage.tsx` / `uiText.ts` | 路由 `/audit` + 侧边栏「操作记录」入口 + 详情页按 `invalidate` 自动重取 + 中英文案 |
+
+### 12.2 审计模型（NFR-11）
+
+| 字段 | 说明 |
+| --- | --- |
+| `source` | 写操作来源：`h5` / `feishu` / `api` / `system` |
+| `actor` | 操作者（H5 为 `h5`；飞书为本人 `open_id`） |
+| `action` / `target` | 白名单 op / 标的（`symbol`）或维度（`factor`） |
+| `before` / `after` | 变更前后的**结构化快照**（JSON），供回放与撤销 |
+| `confirmed` | 恒为 `true`（写操作必经二次确认） |
+| `status` | `ok` / `rejected` / `failed`（**无论成败都留痕**） |
+| `undo_of` / `undone_by` | 撤销关系双向回填：`undo_of` 指向被撤销记录，`undone_by` 指向撤销记录 |
+
+- **先记录后回放**：审计由 `action_service._audit()` 在每次执行（每条）后触发，`endpoints/actions.py::_on_audit()` 落库；审计失败**不阻断**写操作（异常兜底）。
+- **与记忆分层**：只有 `status=ok` 才另记 `confirmed_action` 记忆（P2.3，§11）；审计记录**全部**状态。
+
+### 12.3 撤销（NFR-11「可撤销」）
+
+撤销**不是**直接改库，而是**反向构造写指令**再走同一条写通道：
+
+1. `POST /actions/audit/{id}/undo` → `can_undo` 校验（须 `ok` 且未被撤销、且非撤销记录本身）→ `build_undo_ops` 反向构造 `WriteOp` → `ChatWriteService.preview(..., meta={"undo_of": id})` 返回**确认令牌**；
+2. 用户二次确认 → `POST /actions/execute` → `action_service.execute_token_plan` 执行并审计；审计落库时回填原记录 `undone_by`。
+
+`build_undo_ops` 的反向映射：`watchlist_add↔watchlist_remove`、`set_position↔（回原值 / remove_position）`、`remove_position→set_position(before)`、`set_stop_loss↔remove_stop_loss`、`set_weight→调回该维度原值`。
+
+> **诚实边界**：① 只有**已成功且未被撤销**的记录可撤销；② 「撤销的撤销」不支持；③ 「调权重」的撤销是把该维度调回原值（余量按比例重分配），结果为**等价**但不保证字节级一致；④ 撤销本身也是一次写操作，同样二次确认、同样留痕。
+
+### 12.4 端间实时刷新（FR-14.0.5）
+
+```
+任一端写操作成功
+   → action_service 审计 → _on_audit 落库
+   → publish_invalidate()  发布 invalidate 域事件（scopes: watchlist|portfolio|weights + audit）
+   → DomainEventBus（call_soon_threadsafe 跨线程投递）
+   → GET /api/v1/actions/stream（SSE）推给各端
+   → 前端 useActionStream 回调 → 按 scopes 增量刷新（无需重开页面）
+```
+
+- `scopes` 由 op 推导（`scope_for_action`）：自选股→`watchlist`、持仓/止损→`portfolio`、权重→`weights`，另恒含 `audit`；
+- 仅 `status=ok` 才广播（失败 / 拒绝不产生刷新）；
+- 无订阅者时不报错（事件仅入环形缓冲），发布失败只记日志——**绝不影响写链路**。
+
+### 12.5 测试与验收
+
+| 文件 | 类型 | 覆盖 |
+| --- | --- | --- |
+| `tests/test_p2_action_audit.py` | 新增 | 26 项：仓储 CRUD / 撤销关系 / `build_undo_ops`（各 op 正反两向）/ `can_undo` 四类拒绝规则 / 审计服务 record·stats / 域事件总线（含事件循环内投递）/ `audit_context` 透传 |
+| `tests/test_p2_actions_audit_api.py` | 新增 | 12 项：路由注册 / 列表筛选 / 详情与 404 / 统计 / 撤销预览与拒绝（已撤销 400、不存在 404）/ **撤销端到端回填 `undone_by`** / SSE 事件格式与 `connected` |
+| `src/pages/__tests__/AuditPage.test.tsx` | 新增 | 渲染记录 / 撤销需确认后执行 / 已撤销记录不提供撤销（前端） |
+
+**验收结果**
+
+- 后端全量回归 **395 passed / 0 skipped**（P2.3 时 357 项 + P2.4 新增 38 项；**无回归**）。
+- 前端 `tsc -b` **0 error**；新增路径已在 `/api/v1` 注册（OpenAPI 可见 `/api/v1/actions/audit*` 与 `/api/v1/actions/stream`）。
+- P2.4 **未新增任何配置项**（审计上限沿用数据库容量；无需改 `.env`）。

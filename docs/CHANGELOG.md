@@ -22,6 +22,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - [新功能] 新增记忆管理 API：`GET /api/v1/memory`（列表/筛选）、`GET /api/v1/memory/stats`、`GET /api/v1/memory/{id}`（含回链来源原文，FR-15.4）、`DELETE /api/v1/memory/{id}`（软删/硬删）、`POST /api/v1/memory/{id}/restore`、`POST /api/v1/memory/compress`、`POST /api/v1/memory/clear`（需 `confirm=true` 强确认）。
 - [新功能] 新增 H5「记忆」管理页（列表 / 类型筛选 / 查看来源 / 软删 / 恢复 / 一键清空），并在侧边栏与路由 `/memory` 接线。
 - [改进] `action_service` 审计钩子接入记忆服务：用户确认执行的写操作记为 `confirmed_action` 记忆（FR-15.3）；新增配置 `HSLB_MEMORY_ENABLED` / `HSLB_MEMORY_COMPRESSION_TOKENS` / `HSLB_MEMORY_WEEKLY_SECONDS`。
+- [新功能] 高抛低吸助手 P2.4「审计与实时」：新增 `ActionAudit` 表全量留痕（`before`/`after` + `source`/`actor`/`confirmed`/`status`，成功 / 拒绝 / 失败均记录，可回放，NFR-11），写操作经 `action_service` 审计钩子落库（审计失败不阻断写操作）。
+- [新功能] 新增操作记录 API：`GET /api/v1/actions/audit`（列表 / 来源·动作·状态筛选）、`GET /api/v1/actions/audit/stats`、`GET /api/v1/actions/audit/{id}`（含可撤销判定与撤销指令预览）。
+- [新功能] 支持操作**撤销**（NFR-11）：由 `before`/`after` 反向构造写指令（`build_undo_ops`），`POST /api/v1/actions/audit/{id}/undo` 生成撤销预览，**同样二次确认**后经单一写点执行并留痕（审计回填 `undo_of`/`undone_by` 双向关系）；「撤销的撤销」不支持。
+- [新功能] 端间实时刷新（FR-14.0.5）：新增线程安全域事件总线 `src/services/domain_event_bus.py`，写操作成功后广播 `invalidate`，经 `GET /api/v1/actions/stream`（SSE）推送；新增前端 `useActionStream` hook，各端据 `scopes`（watchlist/portfolio/weights/audit）增量刷新，无需重开页面。
+- [新功能] 新增 H5「操作记录」页（`/audit`）：列表 / 来源与状态筛选 / 查看变更（改前↔改后）/ 一键撤销（确认后执行）/ 实时连接指示；侧边栏与路由已接线。
 
 ## [3.32.0] - 2026-09-06
 

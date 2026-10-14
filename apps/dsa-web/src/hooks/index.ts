@@ -1,4 +1,6 @@
 export { useAuth } from './useAuth';
+export { useActionStream } from './useActionStream';
+export type { UseActionStreamOptions, UseActionStreamResult } from './useActionStream';
 export { useDesktopUpdate } from './useDesktopUpdate';
 export { useDashboardLifecycle } from './useDashboardLifecycle';
 export { useHomeDashboardState } from './useHomeDashboardState';
