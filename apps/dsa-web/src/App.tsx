@@ -26,6 +26,7 @@ const StockScreeningPage = lazy(() => import('./pages/StockScreeningPage'));
 const StockDetailPage = lazy(() => import('./pages/StockDetailPage'));
 const MemoryPage = lazy(() => import('./pages/MemoryPage'));
 const AuditPage = lazy(() => import('./pages/AuditPage'));
+const ReviewPage = lazy(() => import('./pages/ReviewPage'));
 
 const AppContent: React.FC = () => {
   const location = useLocation();
@@ -93,6 +94,7 @@ const AppContent: React.FC = () => {
         <Route path="/usage" element={<TokenUsagePage />} />
         <Route path="/memory" element={<MemoryPage />} />
         <Route path="/audit" element={<AuditPage />} />
+        <Route path="/review" element={<ReviewPage />} />
         <Route path="/settings" element={<SettingsPage />} />
         <Route path="*" element={<NotFoundPage />} />
       </Route>

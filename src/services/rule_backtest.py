@@ -62,6 +62,23 @@ DEFAULT_GATE: Dict[str, float] = {
 
 DEFAULT_HORIZON_DAYS = 15
 DEFAULT_WARMUP = 80
+# 场景分档标签（FR-12.3：按上涨 / 下跌 / 震荡分别统计）
+SCENARIO_LABELS: Dict[str, str] = {
+    "up": "上涨",
+    "down": "下跌",
+    "sideways": "震荡",
+    "breakout": "突破",
+    "volatile": "变盘/异动",
+    "unknown": "未分类",
+}
+# 回测局限性说明（FR-12.4；诚实口径，避免误读）
+LIMITATIONS: List[str] = [
+    "仅评估「建仓侧 + 出场风控」规则，不含持仓中的加仓 / 减仓时序；",
+    "单一持仓假设（同一时间只持一仓），未模拟组合层面的资金分配；",
+    "按「止损 / 目标价优先于到期离场」撮合，未计交易成本与滑点；",
+    "免费数据源单标的最多约 800 根 K 线，回测区间上限 ≈ 近 3 年；",
+    "历史表现不代表未来收益。",
+]
 # 免费数据源（腾讯源）单标的最多返回约 800 根 K 线（≈3.2 年），
 # 因此取数跨度取 600 天（≈793 根 ≈ 3 年），与需求"近 3 年"一致。
 DEFAULT_FETCH_DAYS = 600
@@ -99,6 +116,17 @@ def _finite(value: Any) -> Optional[float]:
     return number if math.isfinite(number) else None
 
 
+def _json_number(value: Any) -> Optional[float]:
+    """把 JSON 不安全的非有限值（±∞ / NaN）转为 ``None``，其余四舍五入到 3 位。"""
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return None
+    if not math.isfinite(number):
+        return None
+    return round(number, 3)
+
+
 # --------------------------------------------------------------------------- #
 # 数据结构
 # --------------------------------------------------------------------------- #
@@ -110,6 +138,7 @@ class Trade:
     entry_price: float
     stop_loss: Optional[float]
     target_price: Optional[float]
+    scenario: str = ""
     exit_index: int = 0
     exit_date: str = ""
     exit_price: float = 0.0
@@ -124,6 +153,7 @@ class Trade:
             "entry_price": round(self.entry_price, 4),
             "stop_loss": None if self.stop_loss is None else round(self.stop_loss, 4),
             "target_price": None if self.target_price is None else round(self.target_price, 4),
+            "scenario": self.scenario,
             "exit_date": self.exit_date,
             "exit_price": round(self.exit_price, 4),
             "exit_reason": self.exit_reason,
@@ -155,7 +185,8 @@ class SymbolBacktest:
             "win_rate": round(self.win_rate, 4),
             "avg_win": round(self.avg_win, 3),
             "avg_loss": round(self.avg_loss, 3),
-            "profit_factor": round(self.profit_factor, 3),
+            # 无亏损时盈亏比为 +∞ → JSON 不安全，序列化为 None（渲染层显示 "∞"）
+            "profit_factor": _json_number(self.profit_factor),
             "avg_return": round(self.avg_return, 3),
             "max_drawdown": round(self.max_drawdown, 4),
             "benchmark_return": round(self.benchmark_return, 3),
@@ -168,6 +199,7 @@ class SymbolBacktest:
 class BacktestReport:
     symbols: List[SymbolBacktest] = field(default_factory=list)
     overall: Optional[SymbolBacktest] = None
+    scenarios: Dict[str, Dict[str, Any]] = field(default_factory=dict)
     gate: Dict[str, float] = field(default_factory=lambda: dict(DEFAULT_GATE))
     passed: bool = False
     violated: List[str] = field(default_factory=list)
@@ -182,6 +214,7 @@ class BacktestReport:
             "symbols": [
                 {k: v for k, v in s.to_dict().items() if k != "trades"} for s in self.symbols
             ],
+            "scenarios": {k: dict(v) for k, v in self.scenarios.items()},
             "notes": list(self.notes),
         }
 
@@ -218,10 +251,34 @@ class BacktestReport:
         if float(gate.get("min_win_rate", 0.0) or 0.0) <= 0:
             threshold_line += "（胜率为参考项，不作拦截）"
         lines.append(threshold_line)
+
+        # 场景分档（FR-12.3）
+        if self.scenarios:
+            lines.append("")
+            lines.append("【按场景分档表现（FR-12.3）】")
+            lines.append("| 场景 | 样本 | 胜率 | 盈亏比 | 期望收益% | 最大回撤 |")
+            lines.append("| --- | --- | --- | --- | --- | --- |")
+            for key, stat in self.scenarios.items():
+                label = SCENARIO_LABELS.get(key, key or "未分类")
+                pf = stat.get("profit_factor")
+                pf_text = "∞" if pf is not None and math.isinf(pf) else (
+                    "—" if pf is None else f"{pf:.2f}"
+                )
+                lines.append(
+                    f"| {label} | {stat.get('samples', 0)} | "
+                    f"{(stat.get('win_rate') or 0) * 100:.1f}% | {pf_text} | "
+                    f"{stat.get('avg_return', 0.0):.2f} | "
+                    f"{(stat.get('max_drawdown') or 0) * 100:.1f}% |"
+                )
+
         for note in self.notes:
             lines.append(f"· {note}")
+
+        # 局限性与免责说明（FR-12.4）
         lines.append("")
-        lines.append("（历史表现不代表未来收益，仅供规则体检参考。）")
+        lines.append("【局限性与免责说明（FR-12.4）】")
+        for item in LIMITATIONS:
+            lines.append(f"· {item}")
         return "\n".join(lines)
 
 
@@ -360,6 +417,7 @@ class RuleBacktester:
             entry_price=entry_price,
             stop_loss=stop,
             target_price=target,
+            scenario=str(signal.get("scenario") or ""),
             exit_index=exit_index,
             exit_date=dates[exit_index],
             exit_price=exit_price,
@@ -403,6 +461,7 @@ class RuleBacktester:
         _aggregate(overall, all_trades)
         overall.benchmark_return = _average([s.benchmark_return for s in report.symbols])
         report.overall = overall
+        report.scenarios = _scenario_breakdown(all_trades)
 
         _apply_gate(report)
         report.notes.append(
@@ -473,6 +532,33 @@ def _aggregate(stat: SymbolBacktest, trades: List[Trade]) -> None:
     stat.max_drawdown = mdd
 
 
+def _scenario_breakdown(trades: List[Trade]) -> Dict[str, Dict[str, Any]]:
+    """按场景分组统计（FR-12.3）：上涨 / 下跌 / 震荡 …… 各档表现。
+
+    分组键取 ``Trade.scenario``（来自场景引擎），空值归入 ``unknown``。
+    返回 ``{scenario: {samples, win_rate, profit_factor, avg_return, max_drawdown}}``，
+    按 ``SCENARIO_LABELS`` 的优先顺序排列，便于报告稳定呈现。
+    """
+    groups: Dict[str, List[Trade]] = {}
+    for trade in trades:
+        key = str(trade.scenario or "").strip() or "unknown"
+        groups.setdefault(key, []).append(trade)
+
+    order = list(SCENARIO_LABELS.keys())
+    ordered = sorted(
+        groups.keys(),
+        key=lambda k: (order.index(k) if k in order else len(order), k),
+    )
+    out: Dict[str, Dict[str, Any]] = {}
+    for key in ordered:
+        stat = SymbolBacktest(symbol="")
+        _aggregate(stat, groups[key])
+        payload = stat.to_dict()
+        payload.pop("trades", None)
+        out[key] = payload
+    return out
+
+
 def _benchmark_return(df: Any, warmup: int) -> float:
     try:
         start = _finite(df["close"].iloc[min(warmup, len(df) - 1)])
@@ -519,17 +605,25 @@ def _apply_gate(report: BacktestReport) -> None:
 def _main(argv: Optional[List[str]] = None) -> int:  # pragma: no cover
     import argparse
     import json
+    from pathlib import Path
 
-    parser = argparse.ArgumentParser(description="P1 上线前 · 规则体检回测（walk-forward）")
+    parser = argparse.ArgumentParser(description="策略回测报告（walk-forward · FR-12）")
     parser.add_argument("--symbols", nargs="*", default=["601919", "601288"])
     parser.add_argument("--days", type=int, default=DEFAULT_FETCH_DAYS, help="取数交易日跨度（默认 600 ≈ 近 3 年）")
     parser.add_argument("--horizon", type=int, default=DEFAULT_HORIZON_DAYS, help="最长持有交易日")
+    parser.add_argument("--report-out", default=None, help="把 Markdown 报告写入指定文件（FR-12 完整报告）")
     parser.add_argument("--json", action="store_true", help="输出 JSON")
     args = parser.parse_args(argv)
 
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
     backtester = RuleBacktester(horizon_days=args.horizon)
     report = backtester.run(args.symbols, fetch_days=args.days)
+
+    if args.report_out:
+        out_path = Path(args.report_out)
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        out_path.write_text(report.to_markdown() + "\n", encoding="utf-8")
+        logger.info("回测报告已写入：%s", out_path)
 
     if args.json:
         print(json.dumps(report.to_dict(), ensure_ascii=False, indent=2))

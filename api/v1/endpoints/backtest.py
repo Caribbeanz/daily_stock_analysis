@@ -3,11 +3,13 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from datetime import date
-from typing import Literal, Optional
+from typing import Any, Literal, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import BaseModel, ConfigDict, Field
 
 from api.deps import get_database_manager
 from api.v1.schemas.backtest import (
@@ -239,3 +241,65 @@ def get_stock_performance(
             status_code=500,
             detail={"error": "internal_error", "message": f"查询单股表现失败: {str(exc)}"},
         )
+
+
+# --------------------------------------------------------------------------- #
+# 高抛低吸助手 · 规则回测报告（P3 / FR-12）
+# --------------------------------------------------------------------------- #
+class RuleBacktestRequest(BaseModel):
+    """规则回测参数（全部可配，FR-12.5 默认近 3 年 / 601919+601288）。"""
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    symbols: list[str] = Field(
+        default_factory=lambda: ["601919", "601288"],
+        description="回测标的；缺省为中远海控 + 农业银行",
+    )
+    fetch_days: int = Field(default=600, ge=120, le=800, description="取数交易日跨度（≈近 3 年）")
+    horizon_days: int = Field(default=15, ge=1, le=120, description="最长持有交易日")
+
+
+class RuleBacktestResponse(BaseModel):
+    """策略有效性报告（FR-12.2 胜率/盈亏比/最大回撤/样本数 + FR-12.3 场景分档 + FR-12.4 局限）。"""
+
+    passed: bool = False
+    violated: list[str] = Field(default_factory=list)
+    gate: dict[str, Any] = Field(default_factory=dict)
+    overall: Optional[dict[str, Any]] = None
+    symbols: list[dict[str, Any]] = Field(default_factory=list)
+    scenarios: dict[str, dict[str, Any]] = Field(default_factory=dict)
+    notes: list[str] = Field(default_factory=list)
+    limitations: list[str] = Field(default_factory=list)
+    markdown: str = ""
+
+
+@router.post(
+    "/rule-report",
+    response_model=RuleBacktestResponse,
+    summary="规则回测报告（高抛低吸助手 · FR-12）",
+    description=(
+        "对 P0 建仓规则 + 风控出场做 walk-forward 回测，输出胜率 / 盈亏比 / 最大回撤 / 样本数，"
+        "并按场景（上涨 / 下跌 / 震荡）分档统计；含局限性与免责说明。"
+    ),
+)
+async def rule_backtest_report(request: RuleBacktestRequest) -> RuleBacktestResponse:
+    from src.services.rule_backtest import LIMITATIONS, RuleBacktester
+
+    def _run() -> dict:
+        backtester = RuleBacktester(horizon_days=request.horizon_days)
+        report = backtester.run(request.symbols, fetch_days=request.fetch_days)
+        payload = report.to_dict()
+        payload["markdown"] = report.to_markdown()
+        payload["limitations"] = list(LIMITATIONS)
+        return payload
+
+    try:
+        loop = asyncio.get_running_loop()
+        payload = await loop.run_in_executor(None, _run)
+    except Exception as exc:
+        logger.error("规则回测报告生成失败: %s", exc, exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail={"error": "internal_error", "message": "规则回测报告暂不可用"},
+        )
+    return RuleBacktestResponse(**payload)

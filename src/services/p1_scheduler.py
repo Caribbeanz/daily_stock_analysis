@@ -42,19 +42,26 @@ import time
 from datetime import datetime
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
-from typing import List, Optional, Sequence, Tuple
+from typing import Any, List, Optional, Sequence, Tuple
 
 logger = logging.getLogger(__name__)
 
 __all__ = [
     "PROJECT_ROOT",
     "DEFAULT_PUSH_TIME",
+    "DEFAULT_WEEKLY_TIME",
+    "DEFAULT_WEEKLY_WEEKDAY",
     "DEFAULT_LOG_FILE",
     "DEFAULT_PID_FILE",
     "DEFAULT_STATE_FILE",
     "STOP_SENTINEL",
     "LEDGER_FILE",
+    "WEEKLY_LEDGER_FILE",
     "resolve_push_time",
+    "resolve_weekly_time",
+    "resolve_weekly_weekday",
+    "weekly_enabled",
+    "should_weekly_run",
     "pid_alive",
     "read_pid",
     "write_pid",
@@ -67,6 +74,7 @@ __all__ = [
     "should_catch_up",
     "mark_ran",
     "build_task",
+    "build_weekly_task",
     "run_service",
     "main",
 ]
@@ -75,14 +83,20 @@ __all__ = [
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
 DEFAULT_PUSH_TIME = "20:00"
+# P3 周度复盘（FR-11）：默认**周六 09:00**（需求"周末复盘固定周六"）
+DEFAULT_WEEKLY_TIME = "09:00"
+DEFAULT_WEEKLY_WEEKDAY = 5  # Python weekday()：周一=0 … 周六=5
+_WEEKDAY_NAMES = ("周一", "周二", "周三", "周四", "周五", "周六", "周日")
 _LOG_DIR = PROJECT_ROOT / "logs"
 DEFAULT_LOG_FILE = str(_LOG_DIR / "hslb_scheduler.log")
 DEFAULT_PID_FILE = str(_LOG_DIR / "hslb_scheduler.pid")
 DEFAULT_STATE_FILE = str(_LOG_DIR / "hslb_scheduler.state.json")
 STOP_SENTINEL = str(_LOG_DIR / "hslb_scheduler.stop")
 LEDGER_FILE = str(_LOG_DIR / "hslb_scheduler.last_run")
+WEEKLY_LEDGER_FILE = str(_LOG_DIR / "hslb_weekly.last_run")
 
 _STOP_WATCH_INTERVAL_SECONDS = 30  # Scheduler 循环轮询粒度为 30s
+_WEEKLY_WATCH_INTERVAL_SECONDS = 300  # 周任务窗口检查间隔（5 分钟，足够覆盖周六窗口）
 
 
 # --------------------------------------------------------------------------- #
@@ -99,6 +113,67 @@ def resolve_push_time(explicit: Optional[str] = None) -> str:
         if text:
             return text
     return DEFAULT_PUSH_TIME
+
+
+def resolve_weekly_time(explicit: Optional[str] = None) -> str:
+    """解析周度复盘时间：显式 > ``HSLB_WEEKLY_REVIEW_TIME`` > 周六 09:00。"""
+    for candidate in (explicit, os.getenv("HSLB_WEEKLY_REVIEW_TIME")):
+        text = str(candidate or "").strip()
+        if text:
+            return text
+    return DEFAULT_WEEKLY_TIME
+
+
+def resolve_weekly_weekday(explicit: Optional[Any] = None) -> int:
+    """解析周度复盘星期：显式 > ``HSLB_WEEKLY_REVIEW_WEEKDAY`` > 周六（5）。
+
+    接受 ``0~6``（周一=0）或英文/中文星期名（mon…sun / 周一…周日）。
+    """
+    raw = explicit if explicit not in (None, "") else os.getenv("HSLB_WEEKLY_REVIEW_WEEKDAY")
+    if raw is None or str(raw).strip() == "":
+        return DEFAULT_WEEKLY_WEEKDAY
+    text = str(raw).strip()
+    if text.isdigit():
+        value = int(text)
+        return value if 0 <= value <= 6 else DEFAULT_WEEKLY_WEEKDAY
+    lowered = text.lower()
+    aliases = {
+        "mon": 0, "tue": 1, "wed": 2, "thu": 3, "fri": 4, "sat": 5, "sun": 6,
+        "周一": 0, "周二": 1, "周三": 2, "周四": 3, "周五": 4, "周六": 5, "周日": 6,
+        "星期天": 6, "星期日": 6, "周天": 6,
+    }
+    return aliases.get(lowered, DEFAULT_WEEKLY_WEEKDAY)
+
+
+def weekly_enabled(explicit: Optional[bool] = None) -> bool:
+    """周度复盘开关：显式 > ``HSLB_WEEKLY_REVIEW_ENABLED``（默认开）。"""
+    if explicit is not None:
+        return bool(explicit)
+    raw = str(os.getenv("HSLB_WEEKLY_REVIEW_ENABLED", "") or "").strip().lower()
+    if not raw:
+        return True
+    return raw in {"1", "true", "yes", "on", "y"}
+
+
+def should_weekly_run(
+    review_time: str,
+    weekday: int,
+    *,
+    now: Optional[datetime] = None,
+    ledger: str = WEEKLY_LEDGER_FILE,
+) -> bool:
+    """是否该跑周度复盘：今天是目标星期、已过计划时刻、且当天尚未跑过。"""
+    current = now or datetime.now()
+    if current.weekday() != int(weekday):
+        return False
+    parsed = parse_hhmm(review_time)
+    if parsed is None:
+        return False
+    hour, minute = parsed
+    target = current.replace(hour=hour, minute=minute, second=0, microsecond=0)
+    if current < target:
+        return False
+    return _read_ledger(ledger) != current.strftime("%Y-%m-%d")
 
 
 def parse_hhmm(text: str) -> Optional[Tuple[int, int]]:
@@ -334,6 +409,36 @@ def build_task(
     return _task
 
 
+def build_weekly_task(
+    *,
+    dry_run: bool = False,
+    symbols: Optional[Sequence[str]] = None,
+    refresh_outcomes: bool = True,
+    ledger: str = WEEKLY_LEDGER_FILE,
+):
+    """构造周度复盘任务（P3 / FR-11；每次执行都新建服务，读取最新配置）。"""
+
+    def _task() -> None:
+        from src.services.weekly_review_service import WeeklyReviewService
+
+        service = WeeklyReviewService(refresh_outcomes=refresh_outcomes)
+        result = service.run(symbols=symbols, dry_run=dry_run)
+        mark_ran(ledger)
+        review = result.review
+        logger.info(
+            "周度复盘完成：周期=%s 信号=%s 持仓=%s 文本=%s 跳过=%s",
+            review.week_key if review else "-",
+            review.signal_summary.total if review else "-",
+            len(review.positions) if review else "-",
+            result.sent_text,
+            result.skipped_reason or "-",
+        )
+        if result.errors:
+            logger.warning("周度复盘有 %d 条错误：%s", len(result.errors), "；".join(result.errors))
+
+    return _task
+
+
 # --------------------------------------------------------------------------- #
 # 服务主循环
 # --------------------------------------------------------------------------- #
@@ -353,13 +458,21 @@ def run_service(
     ledger: str = LEDGER_FILE,
     catch_up: bool = True,
     console: bool = True,
+    weekly: bool = True,
+    weekly_time: Optional[str] = None,
+    weekly_weekday: Optional[Any] = None,
+    weekly_ledger: str = WEEKLY_LEDGER_FILE,
 ) -> int:
-    """以常驻进程方式运行每日推送服务，返回退出码（0 正常，3 已有实例）。"""
+    """以常驻进程方式运行每日推送 + 周度复盘服务，返回退出码（0 正常，3 已有实例）。"""
     resolved_time = resolve_push_time(push_time)
     if parse_hhmm(resolved_time) is None:
         logging.basicConfig(level=logging.INFO)
         logger.error("推送时间格式非法：%r（应为 HH:MM）", resolved_time)
         return 2
+
+    resolved_weekly_time = resolve_weekly_time(weekly_time)
+    resolved_weekly_weekday = resolve_weekly_weekday(weekly_weekday)
+    weekly_on = bool(weekly) and weekly_enabled() and parse_hhmm(resolved_weekly_time) is not None
 
     setup_logging(log_file=log_file, console=console)
 
@@ -387,6 +500,9 @@ def run_service(
                 "started_at": datetime.now().isoformat(timespec="seconds"),
                 "pid_file": pid_file,
                 "log_file": log_file,
+                "weekly_enabled": weekly_on,
+                "weekly_time": resolved_weekly_time if weekly_on else None,
+                "weekly_weekday": resolved_weekly_weekday if weekly_on else None,
             },
         )
     # 启动前清理历史停止哨兵，避免"上次 stop 残留导致立即退出"
@@ -404,6 +520,15 @@ def run_service(
     logger.info("高抛低吸助手 · P1 定时推送服务启动")
     logger.info("PID=%s | 每日执行时间=%s | 质量门=%s | dry_run=%s",
                 os.getpid(), resolved_time, "开启" if require_gate else "关闭", dry_run)
+    if weekly_on:
+        logger.info(
+            "周度复盘=%s（FR-11）| 每%s %s",
+            "开启",
+            _WEEKDAY_NAMES[resolved_weekly_weekday],
+            resolved_weekly_time,
+        )
+    else:
+        logger.info("周度复盘=关闭")
     logger.info("日志文件=%s", log_file or "-")
     logger.info("PID 文件=%s", pid_file or "-（未启用）")
     logger.info("停止方式：python -m src.services.p1_service stop（或创建哨兵文件 %s）", sentinel)
@@ -430,6 +555,37 @@ def run_service(
         run_immediately=False,
         name="hslb-stop-watch",
     )
+
+    # ---- 周度复盘（FR-11）：非侵入式周任务，5 分钟粒度窗口检查 ----
+    weekly_task = build_weekly_task(
+        dry_run=dry_run,
+        symbols=symbols,
+        ledger=weekly_ledger,
+    )
+
+    def _weekly_watch() -> None:
+        if not weekly_on:
+            return
+        try:
+            if should_weekly_run(
+                resolved_weekly_time, resolved_weekly_weekday, ledger=weekly_ledger
+            ):
+                logger.info(
+                    "到达周度复盘窗口（每%s %s），开始生成周报（FR-11）",
+                    _WEEKDAY_NAMES[resolved_weekly_weekday],
+                    resolved_weekly_time,
+                )
+                weekly_task()
+        except Exception as exc:  # 周任务失败不得影响每日推送
+            logger.exception("周度复盘执行异常：%s", exc)
+
+    if weekly_on:
+        scheduler.add_background_task(
+            task=_weekly_watch,
+            interval_seconds=_WEEKLY_WATCH_INTERVAL_SECONDS,
+            run_immediately=False,
+            name="hslb-weekly-review",
+        )
 
     # Windows 控制台 Ctrl+Break 亦触发优雅退出
     if hasattr(signal, "SIGBREAK"):  # pragma: no cover - 平台分支
@@ -497,6 +653,13 @@ def main(argv: Optional[List[str]] = None) -> int:
                         help="关闭漏跑补偿")
     parser.add_argument("--no-console", dest="console", action="store_false", default=True,
                         help="不输出到控制台（适合后台常驻）")
+    parser.add_argument("--weekly", dest="weekly", action="store_true", default=True,
+                        help="开启周度复盘（FR-11，默认开启）")
+    parser.add_argument("--no-weekly", dest="weekly", action="store_false",
+                        help="关闭周度复盘")
+    parser.add_argument("--weekly-time", default=None, help="周度复盘时间 HH:MM（默认 周六 09:00）")
+    parser.add_argument("--weekly-weekday", default=None,
+                        help="周度复盘星期（0~6 或 sat/周六；默认 周六）")
     args = parser.parse_args(argv)
 
     return run_service(
@@ -512,6 +675,9 @@ def main(argv: Optional[List[str]] = None) -> int:
         state_file=args.state_file,
         catch_up=args.catch_up,
         console=args.console,
+        weekly=args.weekly,
+        weekly_time=args.weekly_time,
+        weekly_weekday=args.weekly_weekday,
     )
 
 

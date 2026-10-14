@@ -83,6 +83,9 @@ def build_start_command(
     log_file: Optional[str] = DEFAULT_LOG_FILE,
     pid_file: Optional[str] = DEFAULT_PID_FILE,
     no_catch_up: bool = False,
+    no_weekly: bool = False,
+    weekly_time: Optional[str] = None,
+    weekly_weekday: Optional[str] = None,
 ) -> List[str]:
     """构造派生后台服务所用的命令行（纯函数）。"""
     cmd: List[str] = [python_exe or sys.executable, "-m", SERVICE_MODULE]
@@ -107,6 +110,12 @@ def build_start_command(
         cmd.append("--no-pidfile")
     if no_catch_up:
         cmd.append("--no-catch-up")
+    if no_weekly:
+        cmd.append("--no-weekly")
+    if weekly_time:
+        cmd += ["--weekly-time", str(weekly_time)]
+    if weekly_weekday not in (None, ""):
+        cmd += ["--weekly-weekday", str(weekly_weekday)]
     cmd.append("--no-console")
     return cmd
 
@@ -178,6 +187,9 @@ def start_service(
     pid_file: Optional[str] = DEFAULT_PID_FILE,
     log_file: Optional[str] = DEFAULT_LOG_FILE,
     wait_seconds: float = 20.0,
+    no_weekly: bool = False,
+    weekly_time: Optional[str] = None,
+    weekly_weekday: Optional[str] = None,
 ) -> Dict[str, object]:
     """派生后台常驻服务；已在运行则直接返回（幂等）。"""
     existing = read_pid(pid_file) if pid_file else None
@@ -199,6 +211,9 @@ def start_service(
         symbols=symbols,
         log_file=log_file,
         pid_file=pid_file,
+        no_weekly=no_weekly,
+        weekly_time=weekly_time,
+        weekly_weekday=weekly_weekday,
     )
 
     env = os.environ.copy()
@@ -361,6 +376,9 @@ def main(argv: Optional[List[str]] = None) -> int:
     p_start.add_argument("--dry-run", action="store_true", help="只生成不发送")
     p_start.add_argument("--no-gate", action="store_true", help="跳过质量门（仅调试）")
     p_start.add_argument("--symbols", nargs="*", default=None)
+    p_start.add_argument("--no-weekly", action="store_true", help="关闭周度复盘（FR-11，默认开启）")
+    p_start.add_argument("--weekly-time", default=None, help="周度复盘时间 HH:MM（默认 周六 09:00）")
+    p_start.add_argument("--weekly-weekday", default=None, help="周度复盘星期（0~6 或 sat/周六）")
     p_start.add_argument("--wait", type=float, default=20.0, help="等待服务就绪秒数")
     p_start.add_argument("--json", action="store_true")
     _add_common(p_start)
@@ -392,6 +410,8 @@ def main(argv: Optional[List[str]] = None) -> int:
             time_str=args.time, run_now=args.run_now, dry_run=args.dry_run,
             no_gate=args.no_gate, symbols=args.symbols,
             pid_file=args.pid_file, log_file=args.log_file, wait_seconds=args.wait,
+            no_weekly=args.no_weekly, weekly_time=args.weekly_time,
+            weekly_weekday=args.weekly_weekday,
         )
         if args.json:
             print(json.dumps(result, ensure_ascii=False, indent=2))

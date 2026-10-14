@@ -2,9 +2,9 @@
 
 | 项目   | 说明                                                              |
 | ---- | --------------------------------------------------------------- |
-| 文档状态 | **已实施中**（方案通过评审；P0/P1 已落地，质量门已通过，飞书通道已打通，事件源已接线，持仓可录入；**P2.0~P2.4 移动端、对话读·写、结构化记忆、审计与实时均已实施——P2 全部子期完成**）                          |
+| 文档状态 | **已实施中**（方案通过评审；P0/P1 已落地，质量门已通过，飞书通道已打通，事件源已接线，持仓可录入；P2.0~P2.4 移动端、对话读·写、结构化记忆、审计与实时均已实施——P2 全部子期完成；**P3 周度复盘 + 完整回测报告已实施——P3 完成**）                          |
 | 版本   | v1.3（v1.2 → v1.3：补 P1 两处缺口——事件与风险板块接真实事件源、持仓录入解锁风控真实计算）                                   |
-| 更新日期 | 2026-10-13                                                      |
+| 更新日期 | 2026-10-14                                                      |
 | 需求依据 | `docs/requirements/high-sell-low-buy-assistant-requirements-v0.7.md`（需求基线 v0.7，已收口） |
 | 方案范围 | 本文件描述**怎么做**（架构 / 模块 / 数据 / 分期 / 接口），**不含具体代码实现**，不构成上线承诺        |
 | 目标读者 | 需求提出者本人、后续实现者 / 维护者                                             |
@@ -181,7 +181,7 @@
 | **P0 指标与风控内核** | 数据(含 ETF 跟踪指数取数) + 指标 + 场景引擎 + **风控引擎** + 建仓/加仓信号（用首批 8 只标的） | 可对首批标的输出"四要素建议+纪律卡" | 规则可回溯（FR-18）；参数可配 |
 | **P1 每日推送闭环** | 20:00 调度 + 概览/紧急分级 + 飞书推送 + K线图 + 事件与风险 | 每天 20:00 收到可执行的飞书推送 | 时效、降噪、免责声明（NFR-2/3/5） |
 | **P2 H5 + AI 对话** | dsa-web 改造 + Agent 写操作/复合指令/回执 + 记忆压缩 | 手机可看详情/改持仓；对话可问可改 | 四端同源（NFR-9）；操作可追溯（NFR-11） |
-| **P3 复盘 + 回测** | 周六复盘 + 回测（近3年，601919/601288） | 复盘报告 + 策略有效性报告 | 胜率/盈亏比/最大回撤（FR-12.2） |
+| **P3 复盘 + 回测** ✅ | 周六复盘 + 回测（近3年，601919/601288） | 复盘报告 + 策略有效性报告 | 胜率/盈亏比/最大回撤（FR-12.2） |
 | **P4 大屏（二期）** | 大屏适配 | 大屏展示页 | 远距离可读、免登录常驻 |
 
 > **回测排期（R3，已决）**：采用 **"P1 上线前的规则体检关卡（gate）"**——P0 内核建成后，先用近 3 年数据回测 601919 / 601288，确认 P0 规则有效（胜率 / 盈亏比 / 最大回撤达标）**才开每日推送**；**P3 仍产出完整回测报告**。即：回测不单独占一期，而是作为 **P0 → P1 之间的质量门**。
@@ -193,6 +193,7 @@
 > **P2.2 AI 对话（写）✅ 已实施（2026-10-13）**：见同文档 **§10**——**单一写点** `src/services/action_service.py`（`plan` 预览 → `execute(confirmed=True)` 执行 → 逐条回执；白名单 `watchlist_add/remove`、`set/remove_position`、`set/remove_stop_loss`、`set_weight`；`clear_all` / 仓位比例 / 下单类**明确拒绝**，决议 D2）+ 二次确认令牌 `src/services/confirmation_store.py`（TTL 300s、一次性消费，FR-14.2.6）+ 规则覆盖层 `src/services/rule_override_service.py`（`config/rules/factor_weights.yaml` 45/25/15/15、`config/rules/stop_loss_overrides.yaml`，FR-7/FR-9/NFR-6）+ 写 API `POST /api/v1/actions/preview|execute|cancel` + 飞书本人回复「确认/取消」（决议 D4）+ H5 详情页「调整」面板与 `ActionConfirmCard`。**未给 Agent 增写工具、无旁路写口**（决议 D3）。**后端回归 329 passed / 0 skipped；前端 `tsc -b` 0 error**。
 > **P2.3 结构化记忆 ✅ 已实施（2026-10-14）**：见同文档 **§11**——`ChatMemory` 表（`memory_type ∈ {position_change, preference, confirmed_action, analysis_conclusion}`）+ `ChatMemoryCursor` 压缩游标（FR-15.3）+ 规则优先/LLM 兜底抽取（`src/services/chat_memory_service.py`）+ 压缩节奏（token 阈值 12000 + 每周兜底 + 会话结束增量，决议 D5）+ 记忆管理 API `GET/DELETE /api/v1/memory`、`POST /api/v1/memory/clear`（强确认）+ H5「记忆」页（列表 / 来源回链 / 软删 / 硬删 / 恢复 / 一键清空）。已确认写操作经 `action_service` 审计钩子落 `confirmed_action` 记忆。**后端回归 357 passed / 0 skipped；前端 `tsc -b` 0 error**。
 > **P2.4 审计与实时 ✅ 已实施（2026-10-14）**：见同文档 **§12**——`ActionAudit` 表全量留痕（`before`/`after` + `source`/`actor`/`confirmed`/`status`，可回放）+ 审计仓储/服务（`src/repositories/action_audit_repo.py` / `src/services/action_audit_service.py`）+ **撤销**（由 before/after 反向构造 `WriteOp`，同样经 `action_service` 二次确认并留痕，NFR-11）+ 审计 API `GET /api/v1/actions/audit`（列表 / 详情 / 统计）、`POST /api/v1/actions/audit/{id}/undo`（撤销预览）+ 域事件总线 `src/services/domain_event_bus.py` + SSE `GET /api/v1/actions/stream`（`invalidate` 端间刷新，FR-14.0.5）+ H5「操作记录」页（`/audit`，列表 / 筛选 / 查看变更 / 撤销 / 实时连接指示）。**后端回归 395 passed / 0 skipped；前端 `tsc -b` 0 error**。
+> **P3 周度复盘 + 完整回测报告 ✅ 已实施（2026-10-14）**：见 `docs/solution/high-sell-low-buy-assistant-p3-implementation-v1.0.md`——**周六复盘**（`src/services/weekly_review_service.py`，FR-11.1~11.4：①本周信号回顾与胜率 ②持仓盈亏与执行回填 ③大盘/板块周度总结 ④下周关注与关键价位）+ 执行回填（`ExecutionFeedback` 表 + `src/repositories/execution_feedback_repo.py`，数据管理、**不经 `action_service`**，决议 D3）+ 复盘 API `GET /api/v1/review/weekly`、`GET/POST /api/v1/review/execution` + 纯代码周六调度（`src/services/p1_scheduler.py` 非侵入轮询 + 独立 ledger，`--weekly/--weekly-time/--weekly-weekday`）+ **完整回测报告**（`RuleBacktester` 扩展：场景分档 FR-12.3、局限性与免责说明 FR-12.4、`profit_factor=∞` JSON 安全化）+ 回测 API `POST /api/v1/backtest/rule-report` + H5「复盘」页（`/review`，周度复盘 / 策略回测 双 Tab）。**后端回归 438 passed / 0 skipped；前端 `tsc -b` 0 error**。
 
 > **质量门结果（2026-10-13 已决）**：按"**调规则参数 + 调整门口径**"双轨处理（方案 C）——
 > ① 参数侧：止损加缓冲 + ATR 自适应放宽、建仓加"趋势强度 + MACD 动能"过滤门槛；

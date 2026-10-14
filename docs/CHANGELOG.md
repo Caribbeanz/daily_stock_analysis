@@ -27,6 +27,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - [新功能] 支持操作**撤销**（NFR-11）：由 `before`/`after` 反向构造写指令（`build_undo_ops`），`POST /api/v1/actions/audit/{id}/undo` 生成撤销预览，**同样二次确认**后经单一写点执行并留痕（审计回填 `undo_of`/`undone_by` 双向关系）；「撤销的撤销」不支持。
 - [新功能] 端间实时刷新（FR-14.0.5）：新增线程安全域事件总线 `src/services/domain_event_bus.py`，写操作成功后广播 `invalidate`，经 `GET /api/v1/actions/stream`（SSE）推送；新增前端 `useActionStream` hook，各端据 `scopes`（watchlist/portfolio/weights/audit）增量刷新，无需重开页面。
 - [新功能] 新增 H5「操作记录」页（`/audit`）：列表 / 来源与状态筛选 / 查看变更（改前↔改后）/ 一键撤销（确认后执行）/ 实时连接指示；侧边栏与路由已接线。
+- [新功能] 高抛低吸助手 P3「周度复盘」：新增 `src/services/weekly_review_service.py`，产出四段式周六复盘（①本周信号回顾与胜率 ②持仓盈亏与执行情况 ③大盘/板块周度总结 ④下周关注与关键价位 + 免责声明），信号取自 `decision_signals`（四端同源，NFR-9），分板块/大盘异常隔离、失败如实降级（NFR-8）。
+- [新功能] 新增「执行回填」能力：`ExecutionFeedback` 表 + `src/repositories/execution_feedback_repo.py`，记录"是否按建议执行"（executed / ignored / later，符号 × 周 唯一，覆盖语义，FR-11.2）。属**数据管理**，不经 `action_service`（决议 D3）。
+- [新功能] 新增复盘 API：`GET /api/v1/review/weekly`（周度复盘，`refresh_outcomes` 可触发胜率回填）、`GET /api/v1/review/execution`（执行回填列表）、`POST /api/v1/review/execution`（写回执）。
+- [新功能] 周六复盘调度（纯代码，不依赖操作系统计划）：`p1_scheduler` 新增周任务窗口轮询（默认周六 09:00，独立 ledger 与漏跑补偿），启动参数 `--weekly / --no-weekly / --weekly-time / --weekly-weekday`；`p1_service` 控制面同步透传。
+- [新功能] P3「完整回测报告」（FR-12.2/12.3/12.4）：`RuleBacktester` 输出胜率 / 盈亏比 / 最大回撤 / 样本数，新增**场景分档**（按上涨 / 下跌 / 震荡等归类，FR-12.3）与**局限性与免责说明**（FR-12.4）；`profit_factor=∞` 序列化为 `null` 保证 JSON 安全；新增 CLI `--report-out`。
+- [新功能] 新增回测报告 API：`POST /api/v1/backtest/rule-report`（近 3 年、可指定标的/取数天数/持有期），返回完整报告与局限性说明。
+- [新功能] 新增 H5「复盘」页（`/review`）：「周度复盘 / 策略回测」双 Tab——复盘页渲染四段结论、持仓盈亏、执行状态标记（已执行 / 未执行 / 稍后）；回测页展示结论徽标、场景分档表与局限性说明；侧边栏与路由已接线。
+- [改进] P3 相关配置项写入 `.env.example`（`HSLB_WEEKLY_REVIEW_*`）；场景标签与局限性说明在服务层集中定义，供 API / CLI / H5 三端复用。
 
 ## [3.32.0] - 2026-09-06
 

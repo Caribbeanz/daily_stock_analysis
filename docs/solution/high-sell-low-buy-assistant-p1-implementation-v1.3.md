@@ -370,10 +370,10 @@ FEISHU_CHAT_ID=ou_e949ea38b809a3fc890576ad2dcc4f68
 1. **优雅停止时延**：调度循环固定 30s 轮询，`p1_service stop` 实测约 57s 退出。属设计取舍（不侵入共享的 `src/scheduler.py`）；如需秒级退出需改造共享调度底座。
 2. **依赖完整性**：本机未安装 `akshare` / `efinance` / `pytdx` / `baostock` / `yfinance`，当前实际仅腾讯源供数（其余源自动降级跳过）。生产务必 `pip install -r requirements.txt`。
 3. **事件源强依赖情报源配置**：`event_source` 已接线，但**命中数量取决于情报源（`IntelligenceService`）是否已配置并抓取**；未配置时静默为空（推送显示"今日无重大事件提醒"）。预警源（`AlertService`）另需可选依赖（`newspaper` 等）。
-4. **持仓需人工录入真实数据**：`position_service` 机制已就绪并冒烟通过，但**尚未录入需求方真实持仓**（成本价 / 数量）——需需求方提供后执行 `--set` 方可让风控算准。
-5. **周六复盘**（需求 FR-11）尚未实现，当前仅每日概览。
+4. **持仓需人工录入真实数据**：`position_service` 机制已就绪，**需求方真实持仓（8 只，成本价 / 数量）已于 2026-10-13 录入**（`--set SYMBOL:COST:QTY`，覆盖语义），风控已进入持仓优先分支（`risk.action()`）。
+5. **周六复盘**（需求 FR-11）**已实现**，见 `docs/solution/high-sell-low-buy-assistant-p3-implementation-v1.0.md` 与本文 §6（`p1_scheduler` 新增周六窗口）。
 6. **回测口径**：只评估"建仓侧 + 出场风控"，不含持仓中加仓/减仓时序；单笔期望 vs 买入持有不可直接比较。
-7. **未做**：P2 H5 + AI 对话、（P3）周六复盘与完整回测报告、P4 大屏。
+7. **未做**：**P2 H5 + AI 对话 ✅ 已完成**；**（P3）周六复盘与完整回测报告 ✅ 已完成**；P4 大屏待做。
 
 ---
 

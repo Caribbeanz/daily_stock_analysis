@@ -844,6 +844,43 @@ class ActionAudit(Base):
         return f"<ActionAudit {self.id} {self.action} {self.target} status={self.status}>"
 
 
+class ExecutionFeedback(Base):
+    """高抛低吸助手 · 「是否按建议执行」人工回填（P3 / FR-11.2 / FR-14.3.5）。
+
+    周度复盘需要回答"本周发出的建议，我到底执行了没有"。既有
+    ``decision_signal_feedback`` 记录的是**信号是否有用**（useful / not_useful），
+    语义不同，故单列一张表，避免混淆两类反馈。
+
+    - ``symbol`` + ``week_key``（该周周一日期）唯一：同一标的同一周只保留一条回填；
+    - ``execution_status`` ∈ {executed, ignored, later}，对应 FR-14.3.5 的回执口径；
+    - ``signal_id`` 可空：既能挂在具体信号上（对话回执），也能按标的整周回填；
+    - ``source`` ∈ {web, feishu}，注明回填来自哪一端。
+    """
+
+    __tablename__ = 'execution_feedback'
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    symbol = Column(String(16), nullable=False, index=True)
+    week_key = Column(String(16), nullable=False, index=True)  # 所属周（周一 YYYY-MM-DD）
+    signal_id = Column(Integer, nullable=True, index=True)
+    execution_status = Column(String(16), nullable=False, index=True)  # executed|ignored|later
+    note = Column(Text)
+    source = Column(String(16), nullable=False, default='web', index=True)
+    created_at = Column(DateTime, default=datetime.now, index=True)
+    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now, index=True)
+
+    __table_args__ = (
+        UniqueConstraint('symbol', 'week_key', name='uix_execution_feedback_symbol_week'),
+        Index('ix_execution_feedback_week_status', 'week_key', 'execution_status'),
+    )
+
+    def __repr__(self) -> str:
+        return (
+            f"<ExecutionFeedback {self.id} {self.symbol} {self.week_key} "
+            f"status={self.execution_status}>"
+        )
+
+
 class WatchlistItem(Base):
     """高抛低吸助手 · 自选标的（个股 / 场内基金 ETF·LOF）。
 

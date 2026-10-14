@@ -27,6 +27,7 @@ from api.v1.endpoints import (
     intelligence,
     memory,
     portfolio,
+    review,
     stocks,
     system_config,
     usage,
@@ -64,6 +65,12 @@ router.include_router(
     memory.router,
     prefix="/memory",
     tags=["Memory"]
+)
+
+router.include_router(
+    review.router,
+    prefix="/review",
+    tags=["Review"]
 )
 
 router.include_router(
