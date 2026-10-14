@@ -19,6 +19,7 @@ from typing import Any, Dict, List, Optional
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, ConfigDict, Field
 
+from src.services.action_service import ActionService
 from src.services.chat_write_service import ChatWriteService
 from src.services.confirmation_store import ConfirmationStore
 
@@ -30,8 +31,24 @@ router = APIRouter()
 _STORE = ConfirmationStore()
 
 
+def _record_memory(record: Dict[str, Any]) -> None:
+    """把已确认执行的写操作记入结构化记忆（P2.3 / FR-15.3「用户确认执行的操作」）。
+
+    记忆写入属**数据管理**、非组合写通道，故不经 ``action_service``（决议 D3 边界）。
+    """
+    try:
+        from src.services.chat_memory_service import ChatMemoryService
+
+        ChatMemoryService().record_action(record)
+    except Exception as exc:  # 记忆写入失败不影响已完成的写操作
+        logger.warning("写操作记忆记录失败: %s", exc)
+
+
 def _service() -> ChatWriteService:
-    return ChatWriteService(store=_STORE)
+    return ChatWriteService(
+        action_service=ActionService(audit_sink=_record_memory),
+        store=_STORE,
+    )
 
 
 # --------------------------------------------------------------------------- #

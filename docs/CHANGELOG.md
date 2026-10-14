@@ -18,6 +18,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - [改进] 意图解析支持复合指令逐条拆分与参数抽取（标的 / 权重维度 / 止损价 / 成本与数量），并在写指令执行前回显"将要做什么"。
 - [新功能] 四因子权重（FR-7）落地为可配置文件 `config/rules/factor_weights.yaml`，单标的止损覆盖落地为 `config/rules/stop_loss_overrides.yaml`；风控引擎在命中覆盖时优先采用用户设定止损。
 - [改进] 个股详情页新增「调整持仓 / 止损」入口（表单 → 预览 → 二次确认 → 回执），并新增四因子加权合成展示（无数据维度显式标注、不计权）。
+- [新功能] 高抛低吸助手 P2.3「结构化记忆」：新增 `ChatMemory` 表与压缩游标（FR-15），把对话压缩为结构化长期记忆（持仓变更 / 偏好约束 / 已执行操作 / 分析结论），规则优先 + LLM 兜底可注入；压缩不覆盖原文（决议 D5）。
+- [新功能] 新增记忆管理 API：`GET /api/v1/memory`（列表/筛选）、`GET /api/v1/memory/stats`、`GET /api/v1/memory/{id}`（含回链来源原文，FR-15.4）、`DELETE /api/v1/memory/{id}`（软删/硬删）、`POST /api/v1/memory/{id}/restore`、`POST /api/v1/memory/compress`、`POST /api/v1/memory/clear`（需 `confirm=true` 强确认）。
+- [新功能] 新增 H5「记忆」管理页（列表 / 类型筛选 / 查看来源 / 软删 / 恢复 / 一键清空），并在侧边栏与路由 `/memory` 接线。
+- [改进] `action_service` 审计钩子接入记忆服务：用户确认执行的写操作记为 `confirmed_action` 记忆（FR-15.3）；新增配置 `HSLB_MEMORY_ENABLED` / `HSLB_MEMORY_COMPRESSION_TOKENS` / `HSLB_MEMORY_WEEKLY_SECONDS`。
 
 ## [3.32.0] - 2026-09-06
 

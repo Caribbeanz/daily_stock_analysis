@@ -760,6 +760,49 @@ class ConversationSummary(Base):
     updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now, index=True)
 
 
+class ChatMemory(Base):
+    """高抛低吸助手 · 结构化对话记忆（P2.3 / FR-15）。
+
+    在 ``conversation_summaries``（非结构化滚动摘要）之上叠加**结构化长期记忆**：
+    每条记忆持 ``source_message_ids_json`` 回链原始对话，压缩**只增不删**，
+    原文长期保留（决议 D5）。与 ``memory.py`` 的"分析结论记忆"明确区分。
+
+    ``memory_type`` ∈ {position_change, preference, confirmed_action, analysis_conclusion}
+    ``status``      ∈ {active, deleted}（软删，保留可审计）
+    """
+
+    __tablename__ = 'chat_memories'
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    memory_type = Column(String(32), nullable=False, index=True)
+    content = Column(Text, nullable=False)
+    source_message_ids_json = Column(Text, nullable=False, default='[]')
+    session_id = Column(String(100), nullable=True, index=True)
+    status = Column(String(16), nullable=False, default='active', index=True)
+    created_at = Column(DateTime, default=datetime.now, index=True)
+    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now, index=True)
+
+    __table_args__ = (
+        Index('ix_chat_memory_type_status', 'memory_type', 'status'),
+    )
+
+    def __repr__(self) -> str:
+        return f"<ChatMemory {self.id} {self.memory_type} status={self.status}>"
+
+
+class ChatMemoryCursor(Base):
+    """每会话的记忆压缩游标：记录已纳入结构化记忆的最大消息 id。
+
+    避免重复压缩同一条对话（决议 D5：压缩只增不删）。
+    """
+
+    __tablename__ = 'chat_memory_cursors'
+
+    session_id = Column(String(100), primary_key=True)
+    last_message_id = Column(Integer, nullable=False, default=0)
+    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now, nullable=False)
+
+
 class WatchlistItem(Base):
     """高抛低吸助手 · 自选标的（个股 / 场内基金 ETF·LOF）。
 
@@ -4072,6 +4115,54 @@ class DatabaseManager(metaclass=_DatabaseManagerMeta):
                     "created_at": msg.created_at.isoformat() if msg.created_at else None,
                 }
                 for msg in messages
+            ]
+
+    def get_conversation_messages_by_ids(self, message_ids: List[int]) -> List[Dict[str, Any]]:
+        """按 id 批量取原始对话消息（供记忆回链来源 / FR-15.4 可追溯）。"""
+        ids = [int(i) for i in (message_ids or []) if str(i).strip()]
+        if not ids:
+            return []
+        with self.session_scope() as session:
+            stmt = (
+                select(ConversationMessage)
+                .where(ConversationMessage.id.in_(ids))
+                .order_by(ConversationMessage.created_at, ConversationMessage.id)
+            )
+            messages = session.execute(stmt).scalars().all()
+            return [
+                {
+                    "id": int(msg.id),
+                    "role": msg.role,
+                    "content": msg.content,
+                    "created_at": msg.created_at.isoformat() if msg.created_at else None,
+                }
+                for msg in messages
+            ]
+
+    def get_conversation_messages_after(self, session_id: str, after_id: int) -> List[Dict[str, Any]]:
+        """取某会话中 id 大于 ``after_id`` 的可见消息（供记忆增量压缩）。"""
+        with self.session_scope() as session:
+            stmt = (
+                select(ConversationMessage)
+                .where(
+                    and_(
+                        ConversationMessage.session_id == session_id,
+                        ConversationMessage.id > int(after_id or 0),
+                        ConversationMessage.role.in_(["user", "assistant"]),
+                    )
+                )
+                .order_by(ConversationMessage.id)
+            )
+            messages = session.execute(stmt).scalars().all()
+            return [
+                {
+                    "id": int(msg.id),
+                    "role": msg.role,
+                    "content": msg.content,
+                    "created_at": msg.created_at,
+                }
+                for msg in messages
+                if msg.content
             ]
 
     def delete_conversation_session(self, session_id: str) -> int:

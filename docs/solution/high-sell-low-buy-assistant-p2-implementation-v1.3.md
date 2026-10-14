@@ -1,13 +1,13 @@
-# 高抛低吸助手 · P2 实施说明（v1.2：P2.0 移动底座 + P2.1 对话·读 + P2.2 对话·写）
+# 高抛低吸助手 · P2 实施说明（v1.3：P2.0 移动底座 + P2.1 对话·读 + P2.2 对话·写 + P2.3 结构化记忆）
 
 | 项 | 内容 |
 | --- | --- |
-| 文档状态 | **P2.0 ✅ / P2.1 ✅ / P2.2 ✅ 已实施**；P2.3（结构化记忆）/ P2.4（审计与实时）待实施 |
-| 版本 | v1.2（v1.0 = 仅 P2.0；v1.1 并入 P2.1；v1.2 并入 P2.2） |
-| 更新日期 | 2026-10-13 |
-| 上游方案 | `docs/solution/high-sell-low-buy-assistant-p2-design-v1.1.md`（§3.1 / §3.2 / §3.6 / §3.7 / §4 / §6 决议） |
-| 上游需求 | `docs/requirements/high-sell-low-buy-assistant-requirements-v0.7.md`（FR-13.1 / FR-14.0.2~.4 / FR-14.2.1 / FR-14.2.4~.6 / FR-14.3.1~.9 / FR-16.2 / FR-7 / FR-9 / NFR-6 / NFR-8 / NFR-9 / NFR-11） |
-| 前置 | P0 ✅ + P1 ✅（commit `0701bf75`）；P2.0 ✅（commit `1ac291ec`）；P2.1 ✅（commit `49f154be`） |
+| 文档状态 | **P2.0 ✅ / P2.1 ✅ / P2.2 ✅ / P2.3 ✅ 已实施**；P2.4（审计与实时）待实施 |
+| 版本 | v1.3（v1.0 = 仅 P2.0；v1.1 并入 P2.1；v1.2 并入 P2.2；v1.3 并入 P2.3） |
+| 更新日期 | 2026-10-14 |
+| 上游方案 | `docs/solution/high-sell-low-buy-assistant-p2-design-v1.1.md`（§3.1 / §3.2 / §3.3 / §3.6 / §3.7 / §4 / §6 决议） |
+| 上游需求 | `docs/requirements/high-sell-low-buy-assistant-requirements-v0.7.md`（FR-13.1 / FR-14.0.2~.4 / FR-14.2.1 / FR-14.2.4~.6 / FR-14.3.1~.9 / FR-15.1~.5 / FR-16.2 / FR-7 / FR-9 / NFR-6 / NFR-8 / NFR-9 / NFR-11） |
+| 前置 | P0 ✅ + P1 ✅（commit `0701bf75`）；P2.0 ✅（`1ac291ec`）；P2.1 ✅（`49f154be`）；P2.2 ✅（`d628c29a`） |
 | 本环境约束 | 前端 **esbuild** 派生的 `vite build` / `vitest` 被本机文件访问策略拦截（`winapi error #5`），构建与前端单测需在**你自己的终端**执行 |
 
 ---
@@ -20,7 +20,7 @@
 | 个股详情 | 新建 `/m/stocks/:code`：人话结论 + 四要素 + 迷你 K 线 + 多因子明细 + 事件与风险 + 降级说明 | 参数调节表单（**P2.2 已交付，见 §10**） |
 | 推送跳转 | 推送内附 H5 深链（`HSLB_H5_BASE_URL` 配置后生效） | — |
 | 高频操作 | 一键加/移自选（≤3 步：链接直达 → 一键切换） | **持仓编辑**：属写操作，按决议 **D3** 统一走 `action_service` + 二次确认 → **P2.2 已交付（§10）** |
-| 对话 / 记忆 / 审计 | — | P2.1 对话·读（v1.1 交付，见 §9）；**P2.2 对话·写（v1.2 交付，见 §10）**；P2.3 记忆；P2.4 审计与实时 |
+| 对话 / 记忆 / 审计 | — | P2.1 对话·读（v1.1）；**P2.2 对话·写（v1.2，见 §10）**；**P2.3 结构化记忆（v1.3，见 §11）**；P2.4 审计与实时 |
 
 > **为什么持仓编辑不放在 P2.0**：决议 D3 明确"**不给 Agent/对话加写通道，写操作统一收敛到 `intent + action_service` 单一写点**"。若 P2.0 单独开一个 HTTP 写口，会出现第二个写路径，与 D3 相悖；因此 P2.0 只做**读**与**既有写口复用**（自选股增删已有端点）。P2.2 才按 D2/D3 正式建立**唯一写点**。
 
@@ -215,8 +215,8 @@ python -m api.app            # 监听 0.0.0.0:8000
 | L1 | ~~**持仓编辑**未做~~ → **已交付（P2.2）**：写操作统一走 `action_service` + 二次确认（§10） | ✅ P2.2 |
 | L2 | ~~参数 / 权重调节、`/actions/preview` 未做~~ → **已交付（P2.2）**：`/actions/preview` `/execute` `/cancel`（§10） | ✅ P2.2 |
 | L3 | ~~对话入口未接线~~ → **已交付（P2.1）**：H5「就地问」+ `POST /chat/ask` + 飞书只读入站 | ✅ P2.1 |
-| L4 | 结构化记忆（`ChatMemory`）、记忆管理页未做 | P2.3 |
-| L5 | `ActionAudit` **持久化**与 SSE 端间刷新未做（P2.2 已预留 `audit_sink` 钩子，未落库） | P2.4 |
+| L4 | ~~结构化记忆（`ChatMemory`）、记忆管理页未做~~ → **已交付（P2.3）**：`ChatMemory` 表 + 压缩服务 + `/api/v1/memory` + H5「记忆」页（§11） | ✅ P2.3 |
+| L5 | `ActionAudit` **持久化**与 SSE 端间刷新未做（P2.2 已预留 `audit_sink` 钩子；P2.3 已将已确认操作记入 `confirmed_action` 记忆，但**审计表持久化**仍未做） | P2.4 |
 | L6 | 行情源：本机仅腾讯源可用；实时行情失败时详情页显示"行情暂不可用"（已降级不报错） | 数据侧 |
 | L7 | 事件板块依赖情报源配置；未配置时显示"今日无重大事件提醒" | 配置侧 |
 | L8 | 前端构建 / 前端单测需在本机终端执行（本环境 esbuild 受限） | 环境侧 |
@@ -241,6 +241,11 @@ python -m api.app            # 监听 0.0.0.0:8000
 | FR-14.3.4 触发分析（只读） | 白名单外，不属写操作 |
 | FR-14.3.7 复合指令 | `resolver.parse_write_ops()` 逐条拆分 + 共享 `context` 顺序累积（§10.1） |
 | FR-14.3.9 越界拒绝 | `REJECTED_OPS`（清空全部 / 仓位比例 / 下单类）明确拒绝并给替代路径 |
+| FR-15.1 留档 | 既有 `conversation_manager` + `ConversationMessage` 表（P0/P1 已具备） |
+| FR-15.2 压缩 | `ChatMemoryService.compress_session()`：token 阈值（12000）+ 每周兜底 + 会话结束增量（`force`） |
+| FR-15.3 记忆内容 | `ChatMemory` 表：`memory_type ∈ {position_change, preference, confirmed_action, analysis_conclusion}`；`confirmed_action` 由 `action_service` 审计钩子写入（§11.3） |
+| FR-15.4 可追溯 | 每条记忆持 `source_message_ids` 回链原始消息；`GET /api/v1/memory/{id}` 返回来源（压缩不覆盖原文） |
+| FR-15.5 可管理 | H5「记忆」页 + `GET/DELETE /api/v1/memory`、`POST /api/v1/memory/clear`（软删 / 硬删 / 恢复 / 一键清空强确认） |
 | FR-20 事件与风险 | `EventSource.collect([symbol])` → `overview.events` |
 | NFR-6 配置化 | 阈值 / 权重 / 止损覆盖全部落在 `config/rules/*.yaml`，改配置不改代码 |
 | NFR-8 失败隔离 | `StockOverviewService` 各子块 try/except → `degraded`；`ActionService` 逐条独立、一条失败不影响其余 |
@@ -249,12 +254,13 @@ python -m api.app            # 监听 0.0.0.0:8000
 | D2 写操作白名单不外扩 | `_WHITELIST_HINT` + `REJECTED_OPS`；全部写操作强制二次确认 |
 | D3 单一写点 | 所有写操作经 `ActionService`，无旁路 HTTP 写口 |
 | D4 飞书权限 | 本人 `open_id`（`FEISHU_OWNER_OPEN_ID`）可写；群内其他人写请求回复无权限 |
+| D5 记忆保留策略 | 阈值 12000 + 每周一次；**原文与记忆不自动删**；支持查看 / 软删 / 硬删 / 一键清空（强确认）（§11） |
 | D6（仅内网） | 无外网映射 / 无 HTTPS / 无 CI；`degraded` 与推送文案自包含兜底 |
 | D7（不引入 CI） | 前端沿用本地 `npm build` → `static/` |
 
 ---
 
-*（本文档为 P2 实施说明 v1.2：含 P2.0 移动底座 + P2.1 对话·读 + P2.2 对话·写。P2.3 / P2.4 完成后将继续升版并在 §7 勾销对应待办。）*
+*（本文档为 P2 实施说明 v1.3：含 P2.0 移动底座 + P2.1 对话·读 + P2.2 对话·写 + P2.3 结构化记忆。P2.4 完成后将继续升版并在 §7 勾销对应待办。）*
 
 ---
 
@@ -408,3 +414,69 @@ python -m api.app            # 监听 0.0.0.0:8000
 - 后端全量回归 **329 passed / 0 skipped**（P2.1 时 265 项 + P2.2 新增 64 项；**无回归**）。
 - 前端 `tsc -b` **0 error**。
 - **D3 校验**：未新增任何旁路写口——所有写操作（H5 / 飞书 / 对话）均经 `ActionService`。
+
+---
+
+## 11. P2.3 · 结构化记忆 实施说明
+
+> 目标（方案 §4）：**记得住**。在既有 `conversation_summaries` 滚动摘要之上，叠加**结构化长期记忆**（FR-15），与 `memory.py` 的"分析结论记忆"明确分层。
+
+### 11.1 交付清单
+
+| 模块 | 路径 | 职责 |
+| --- | --- | --- |
+| 记忆表 | `src/storage.py` → `ChatMemory` / `ChatMemoryCursor` | 结构化记忆条目 + 每会话压缩游标（`Base.metadata.create_all` 自动建表） |
+| 记忆仓储 | `src/repositories/chat_memory_repo.py` | CRUD：新增 / 列表 / 计数 / 软删 / 恢复 / 硬删 / 一键清空 / 游标读写 |
+| 记忆服务 | `src/services/chat_memory_service.py` | 规则抽取（纯函数）+ 压缩（阈值 / 每周 / 增量）+ 管理 + `record_action` |
+| 记忆 API | `api/v1/endpoints/memory.py` | `GET /memory`、`GET /memory/stats`、`GET /memory/{id}`、`DELETE /memory/{id}`、`POST /memory/{id}/restore`、`POST /memory/compress`、`POST /memory/clear` |
+| 审计接线 | `api/v1/endpoints/actions.py` | `action_service` 的 `audit_sink` → `ChatMemoryService.record_action`（已确认操作落 `confirmed_action` 记忆） |
+| 前端 API | `apps/dsa-web/src/api/memory.ts` | `memoryApi.list/stats/detail/remove/restore/clear/compress` |
+| 前端页面 | `apps/dsa-web/src/pages/MemoryPage.tsx` | H5「记忆」页：列表 / 类型筛选 / 查看来源 / 软删 / 恢复 / 一键清空（强确认） |
+| 接线 | `App.tsx` / `SidebarNav.tsx` / `uiText.ts` | 路由 `/memory` + 侧边栏「记忆」入口 + 中英文案 |
+
+### 11.2 记忆类型与抽取（FR-15.3）
+
+| memory_type | 含义 | 抽取来源 |
+| --- | --- | --- |
+| `position_change` | 持仓 / 成本变更 | 用户消息规则（"持仓设为…"/"已清仓"/"我的成本…"） |
+| `preference` | 用户偏好与约束 | 用户消息规则（"我偏好…"/"记住…"/"以后不要提醒…"） |
+| `confirmed_action` | 用户确认执行的操作 | `action_service` 审计事件（**仅 status=ok**） |
+| `analysis_conclusion` | 重要分析结论与决策 | 助手消息命中结论标记（结论：/综上/目标价/止损位/操作建议） |
+
+- **规则优先**（纯函数 `classify_message` / `extract_candidates`，零成本、可单测）；LLM 兜底**可注入**（默认不启用）；
+- 单条内容上限 400 字，避免把整段长文塞进记忆。
+
+### 11.3 压缩节奏与保留策略（决议 D5）
+
+| 项 | 实现 |
+| --- | --- |
+| token 阈值触发 | 未压缩消息估算 token ≥ `HSLB_MEMORY_COMPRESSION_TOKENS`（默认 12000） |
+| 每周兜底 | 游标 `updated_at` 距今 ≥ `HSLB_MEMORY_WEEKLY_SECONDS`（默认 7 天） |
+| 会话结束增量 | 调用方传 `force=True` |
+| 只增不删 | 压缩**不删除原文**；游标推进后不重复扫描 |
+| 删除 | 软删（`status=deleted`，保留可审计）/ 硬删 / 一键清空（`POST /memory/clear` 需 `confirm=true`） |
+| 回链 | 每条记忆持久化 `source_message_ids`，`GET /memory/{id}` 返回来源原文（FR-15.4） |
+
+> **D3 边界**：记忆写入属**数据管理**，不是组合写通道，故不经 `action_service`；而"已确认操作"这一记忆**派生自** `action_service` 审计钩子，未新增任何写入口。
+
+### 11.4 新增配置
+
+| 变量 | 默认 | 说明 |
+| --- | --- | --- |
+| `HSLB_MEMORY_ENABLED` | `true` | 记忆压缩开关 |
+| `HSLB_MEMORY_COMPRESSION_TOKENS` | `12000` | token 阈值触发压缩 |
+| `HSLB_MEMORY_WEEKLY_SECONDS` | `604800` | 每周兜底压缩周期（秒） |
+
+### 11.5 测试与验收
+
+| 文件 | 类型 | 覆盖 |
+| --- | --- | --- |
+| `tests/test_p2_chat_memory.py` | 新增 | 17 项：规则抽取 / 类型校验 / 仓储 CRUD / 软删恢复硬删清空 / 游标 / 压缩（force / 阈值 / 每周）/ `record_action` |
+| `tests/test_p2_memory_api.py` | 新增 | 11 项：路由注册 / 列表 / 统计 / 详情与 404 / 软删恢复 / 清空强确认 / 压缩 |
+| `src/pages/__tests__/MemoryPage.test.tsx` | 新增 | 渲染列表 / 软删需确认 / 一键清空需强确认（前端） |
+
+**验收结果**
+
+- 后端全量回归 **357 passed / 0 skipped**（P2.2 时 329 项 + P2.3 新增 28 项；**无回归**）。
+- 前端 `tsc -b` **0 error**。
+- 新增配置已同步 `.env.example`；记忆 API 已在 `/api/v1` 注册（OpenAPI 可见 `/api/v1/memory*` 六条路径）。

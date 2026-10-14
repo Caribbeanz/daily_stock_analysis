@@ -1064,6 +1064,12 @@ class Config:
     # 内网直连地址，如 http://192.168.1.10:8000；留空则推送不附个股详情链接
     # （D6 决议：仅内网访问，不做外网映射；推送文案自带完整摘要，链接只是增强）。
     hslb_h5_base_url: Optional[str] = None
+
+    # 高抛低吸助手 · 结构化对话记忆（P2.3 · FR-15 / 决议 D5）
+    # 开关记忆压缩；token 阈值触发 + 每周兜底；原文长期保留、压缩只增不删。
+    hslb_memory_enabled: bool = True
+    hslb_memory_compression_tokens: int = 12000
+    hslb_memory_weekly_seconds: int = 7 * 24 * 3600
     
     # Telegram 配置（需要同时配置 Bot Token 和 Chat ID）
     telegram_bot_token: Optional[str] = None  # Bot Token（@BotFather 获取）
@@ -2044,6 +2050,19 @@ class Config:
             feishu_domain=os.getenv('FEISHU_DOMAIN', 'feishu'),
             feishu_owner_open_id=os.getenv('FEISHU_OWNER_OPEN_ID'),
             hslb_h5_base_url=os.getenv('HSLB_H5_BASE_URL'),
+            hslb_memory_enabled=parse_env_bool(os.getenv('HSLB_MEMORY_ENABLED'), default=True),
+            hslb_memory_compression_tokens=parse_env_int(
+                os.getenv('HSLB_MEMORY_COMPRESSION_TOKENS'),
+                12000,
+                field_name='HSLB_MEMORY_COMPRESSION_TOKENS',
+                minimum=1,
+            ),
+            hslb_memory_weekly_seconds=parse_env_int(
+                os.getenv('HSLB_MEMORY_WEEKLY_SECONDS'),
+                7 * 24 * 3600,
+                field_name='HSLB_MEMORY_WEEKLY_SECONDS',
+                minimum=60,
+            ),
             telegram_bot_token=os.getenv('TELEGRAM_BOT_TOKEN'),
             telegram_chat_id=os.getenv('TELEGRAM_CHAT_ID'),
             telegram_message_thread_id=os.getenv('TELEGRAM_MESSAGE_THREAD_ID'),

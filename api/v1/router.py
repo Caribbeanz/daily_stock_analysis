@@ -25,6 +25,7 @@ from api.v1.endpoints import (
     health,
     history,
     intelligence,
+    memory,
     portfolio,
     stocks,
     system_config,
@@ -57,6 +58,12 @@ router.include_router(
     actions.router,
     prefix="/actions",
     tags=["Actions"]
+)
+
+router.include_router(
+    memory.router,
+    prefix="/memory",
+    tags=["Memory"]
 )
 
 router.include_router(

@@ -2,7 +2,7 @@
 
 | 项目   | 说明                                                              |
 | ---- | --------------------------------------------------------------- |
-| 文档状态 | **已实施中**（方案通过评审；P0/P1 已落地，质量门已通过，飞书通道已打通，事件源已接线，持仓可录入；P2.0/P2.1/P2.2 移动端与对话读·写已实施）                          |
+| 文档状态 | **已实施中**（方案通过评审；P0/P1 已落地，质量门已通过，飞书通道已打通，事件源已接线，持仓可录入；P2.0/P2.1/P2.2/P2.3 移动端、对话读·写与结构化记忆已实施）                          |
 | 版本   | v1.3（v1.2 → v1.3：补 P1 两处缺口——事件与风险板块接真实事件源、持仓录入解锁风控真实计算）                                   |
 | 更新日期 | 2026-10-13                                                      |
 | 需求依据 | `docs/requirements/high-sell-low-buy-assistant-requirements-v0.7.md`（需求基线 v0.7，已收口） |
@@ -188,9 +188,10 @@
 
 > **实施进度（2026-10-13）**：P0 ✅ 已实施；**P1 ✅ 已实施**（**164 项测试通过**，见 `docs/solution/high-sell-low-buy-assistant-p1-implementation-v1.3.md`）；飞书通道 ✅ 已打通并实测发送成功；**事件源 ✅ 已接线**（FR-20，情报源 + 预警源）；**持仓录入 ✅ 已就绪**（覆盖语义 CLI，风控真实计算已解锁）。
 > **P2 方案已定稿（2026-10-13）**：见 `docs/solution/high-sell-low-buy-assistant-p2-design-v1.1.md`（H5 + AI 对话 + 结构化记忆）。§6 待决 D1~D7 **已全部决议锁定**（D1 复用 dsa-web 加移动布局层；D2 写操作全确认、白名单不外扩；D3 独立 intent + action_service 层；D4 飞书写操作仅 `open_id` 白名单；D5 阈值 12000 + 每周一次压缩、原文不自动删；**D6 不做外网访问、仅内网直连**；D7 不引入 CI 打包）。实施按 P2.0 → P2.1 → P2.2 →（P2.3 ∥ P2.4）。
-> **P2.0 移动底座 ✅ 已实施（2026-10-13）**：见 `docs/solution/high-sell-low-buy-assistant-p2-implementation-v1.2.md` §0~§8——移动布局层（`MobileShell` 底部四 Tab）+ 个股详情页（`/m/stocks/:code`，人话结论 + 四要素 + 迷你 K 线 + 多因子明细 + 事件与风险）+ 推送深链（`HSLB_H5_BASE_URL`）；后端新增 `GET /api/v1/stocks/{code}/overview`。持仓编辑按 D3 归入 P2.2。
+> **P2.0 移动底座 ✅ 已实施（2026-10-13）**：见 `docs/solution/high-sell-low-buy-assistant-p2-implementation-v1.3.md` §0~§8——移动布局层（`MobileShell` 底部四 Tab）+ 个股详情页（`/m/stocks/:code`，人话结论 + 四要素 + 迷你 K 线 + 多因子明细 + 事件与风险）+ 推送深链（`HSLB_H5_BASE_URL`）；后端新增 `GET /api/v1/stocks/{code}/overview`。持仓编辑按 D3 归入 P2.2。
 > **P2.1 AI 对话（读）✅ 已实施（2026-10-13）**：见同文档 §9——名词表（21 条，FR-14.3.2）+ 意图解析（规则优先/LLM 兜底，`src/agent/intent/resolver.py`）+ 读对话编排（`src/services/chat_read_service.py`，强制附风险提示 FR-14.3.8）+ 统一读入口 `POST /api/v1/chat/ask`、`GET /api/v1/chat/glossary` + 飞书只读入站 `POST /api/v1/chat/feishu/events`（open_id 白名单，决议 D4）+ H5 详情页「就地问」。
 > **P2.2 AI 对话（写）✅ 已实施（2026-10-13）**：见同文档 **§10**——**单一写点** `src/services/action_service.py`（`plan` 预览 → `execute(confirmed=True)` 执行 → 逐条回执；白名单 `watchlist_add/remove`、`set/remove_position`、`set/remove_stop_loss`、`set_weight`；`clear_all` / 仓位比例 / 下单类**明确拒绝**，决议 D2）+ 二次确认令牌 `src/services/confirmation_store.py`（TTL 300s、一次性消费，FR-14.2.6）+ 规则覆盖层 `src/services/rule_override_service.py`（`config/rules/factor_weights.yaml` 45/25/15/15、`config/rules/stop_loss_overrides.yaml`，FR-7/FR-9/NFR-6）+ 写 API `POST /api/v1/actions/preview|execute|cancel` + 飞书本人回复「确认/取消」（决议 D4）+ H5 详情页「调整」面板与 `ActionConfirmCard`。**未给 Agent 增写工具、无旁路写口**（决议 D3）。**后端回归 329 passed / 0 skipped；前端 `tsc -b` 0 error**。
+> **P2.3 结构化记忆 ✅ 已实施（2026-10-14）**：见同文档 **§11**——`ChatMemory` 表（`memory_type ∈ {position_change, preference, confirmed_action, analysis_conclusion}`）+ `ChatMemoryCursor` 压缩游标（FR-15.3）+ 规则优先/LLM 兜底抽取（`src/services/chat_memory_service.py`）+ 压缩节奏（token 阈值 12000 + 每周兜底 + 会话结束增量，决议 D5）+ 记忆管理 API `GET/DELETE /api/v1/memory`、`POST /api/v1/memory/clear`（强确认）+ H5「记忆」页（列表 / 来源回链 / 软删 / 硬删 / 恢复 / 一键清空）。已确认写操作经 `action_service` 审计钩子落 `confirmed_action` 记忆。**后端回归 357 passed / 0 skipped；前端 `tsc -b` 0 error**。
 
 > **质量门结果（2026-10-13 已决）**：按"**调规则参数 + 调整门口径**"双轨处理（方案 C）——
 > ① 参数侧：止损加缓冲 + ATR 自适应放宽、建仓加"趋势强度 + MACD 动能"过滤门槛；
