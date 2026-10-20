@@ -62,6 +62,11 @@ const HslbStockDetailPage: React.FC = () => {
   const quote = detail?.quote ?? null;
   const sections = detail?.analysis ?? [];
 
+  // 后端 conclusion 已形如「减仓（上涨趋势）：<reason>」，reason 再渲染一次会重复，
+  // 这里做一次包含判断（后端口径不变，旧页面照旧使用完整 conclusion）。
+  const reasonText = (detail?.reason ?? '').trim();
+  const showReason = reasonText !== '' && !(detail?.conclusion ?? '').includes(reasonText);
+
   return (
     <div className="min-h-screen bg-background pb-10 text-foreground">
       <header className="sticky top-0 z-20 flex items-center gap-2 border-b border-border bg-background/95 px-3 py-2 backdrop-blur">
@@ -158,8 +163,8 @@ const HslbStockDetailPage: React.FC = () => {
               <div className="min-w-0">
                 <p className="text-[11px] text-muted-text">操作建议</p>
                 <p className="mt-1 text-[15px] font-medium leading-6">{detail.conclusion || '暂无决策信号'}</p>
-                {detail.reason ? (
-                  <p className="mt-1 text-[12px] leading-5 text-secondary-text">{detail.reason}</p>
+                {showReason ? (
+                  <p className="mt-1 text-[12px] leading-5 text-secondary-text">{reasonText}</p>
                 ) : null}
               </div>
               <button
