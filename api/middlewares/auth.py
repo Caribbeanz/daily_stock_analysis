@@ -30,11 +30,19 @@ EXEMPT_PATHS = frozenset({
     "/api/v1/screen/snapshot",
 })
 
+# 前缀放行：移动 H5（M1）为**内网免登录只读页**，详情路径带股票代码，无法穷举。
+# ``/api/v1/h5`` 下只注册了两个只读 GET 接口，无任何写能力，故按前缀放行是安全的。
+EXEMPT_PREFIXES = (
+    "/api/v1/h5/",
+)
+
 
 def _path_exempt(path: str) -> bool:
     """Check if path is exempt from auth."""
     normalized = path.rstrip("/") or "/"
-    return normalized in EXEMPT_PATHS
+    if normalized in EXEMPT_PATHS:
+        return True
+    return any(normalized.startswith(prefix) for prefix in EXEMPT_PREFIXES)
 
 
 class AuthMiddleware(BaseHTTPMiddleware):

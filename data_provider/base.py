@@ -417,6 +417,17 @@ class BaseFetcher(ABC):
         """
         return None
 
+    def get_sector_quotes(self) -> Optional[List[Dict[str, Any]]]:
+        """获取行业板块**全量**快照（含涨跌幅与涨跌家数）。
+
+        与 :meth:`get_sector_rankings` 的区别：后者只返回前/后 n 名，
+        无法回答"某板块排第几"；本方法保留全量，供排名与板块内宽度使用。
+
+        Returns:
+            ``[{name, change_pct, advancers, decliners, leader}, ...]``；失败返回 ``None``。
+        """
+        return None
+
     def get_concept_rankings(self, n: int = 5) -> Optional[Tuple[List[Dict], List[Dict]]]:
         """
         获取概念/题材涨跌榜。
@@ -4730,6 +4741,24 @@ class DataFetcherManager:
             return top, bottom
         logger.warning(f"[板块排行] 所有数据源均失败，最终错误: {last_error}")
         return [], []
+
+    def get_sector_quotes(self) -> List[Dict[str, Any]]:
+        """获取行业板块全量快照（自动切换数据源）。
+
+        仅支持提供全量列表的数据源（当前为 AkShare 东财口径）；
+        全部失败时返回空列表，由调用方决定如何降级。
+        """
+        for fetcher in self._get_fetchers_snapshot():
+            try:
+                data = fetcher.get_sector_quotes()
+            except Exception as e:
+                error_type, error_reason = summarize_exception(e)
+                logger.warning(f"[{fetcher.name}] 获取行业板块全量快照失败: {error_type} {error_reason}")
+                continue
+            if data:
+                logger.info(f"[{fetcher.name}] 获取行业板块全量快照成功（{len(data)} 个）")
+                return [dict(row) for row in data if isinstance(row, dict)]
+        return []
 
     @staticmethod
     def _copy_ranking_rows(rows: List[Dict]) -> List[Dict]:

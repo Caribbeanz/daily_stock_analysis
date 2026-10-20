@@ -549,20 +549,36 @@ class StockOverviewService:
             return {}
 
     # ---------------- 公共入口 ---------------- #
-    def load(self, symbol: str, *, with_quote: bool = True) -> Dict[str, Any]:
-        """聚合个股详情；任何子块失败都降级而非抛错（NFR-8）。"""
+    def load(
+        self,
+        symbol: str,
+        *,
+        with_quote: bool = True,
+        with_events: bool = True,
+        quote: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        """聚合个股详情；任何子块失败都降级而非抛错（NFR-8）。
+
+        Args:
+            with_quote: 是否自行拉取行情；传入 ``quote`` 时以入参为准（避免重复取数）。
+            with_events: 是否聚合事件源。移动端列表只需要结论与价格，
+                关闭后少一次外部调用（M1 列表接口）。
+            quote: 外部已取到的行情快照，传入则跳过内部取数。
+        """
 
         normalized = str(symbol or "").strip().upper()
         degraded: List[str] = []
         signal = self._load_signal(normalized, degraded)
-        events = self._load_events(normalized, degraded)
-        quote = self._load_quote(normalized, degraded) if with_quote else None
+        events = self._load_events(normalized, degraded) if with_events else []
+        resolved_quote = quote if quote is not None else (
+            self._load_quote(normalized, degraded) if with_quote else None
+        )
 
         overview = build_overview(
             symbol=normalized,
             signal=signal,
             events=events,
-            quote=quote,
+            quote=resolved_quote,
             factor_weights=self._load_factor_weights(),
         )
         # 合并子块降级说明（build_overview 自身也会写入降级项）

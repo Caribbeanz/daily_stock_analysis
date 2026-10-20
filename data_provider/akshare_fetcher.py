@@ -2214,6 +2214,45 @@ class AkshareFetcher(BaseFetcher):
             logger.error(f"[Akshare] 新浪接口获取板块排行也失败: {e}")
             return None
 
+    def get_sector_quotes(self) -> Optional[List[Dict]]:
+        """获取行业板块**全量**快照（东财口径），供"板块排名 / 涨跌家数"使用。"""
+        import akshare as ak
+
+        try:
+            self._set_random_user_agent()
+            self._enforce_rate_limit()
+
+            logger.info("[API调用] ak.stock_board_industry_name_em() 获取行业板块全量快照...")
+            df = ak.stock_board_industry_name_em()
+            if df is None or df.empty:
+                return None
+
+            name_col = '板块名称'
+            change_col = '涨跌幅'
+            if name_col not in df.columns or change_col not in df.columns:
+                return None
+
+            df = df.copy()
+            df[change_col] = pd.to_numeric(df[change_col], errors='coerce')
+            df = df.dropna(subset=[change_col])
+
+            rows: List[Dict] = []
+            for _, row in df.iterrows():
+                name = str(row.get(name_col) or '').strip()
+                if not name:
+                    continue
+                rows.append({
+                    'name': name,
+                    'change_pct': float(row[change_col]),
+                    'advancers': self._safe_int(row.get('上涨家数')),
+                    'decliners': self._safe_int(row.get('下跌家数')),
+                    'leader': str(row.get('领涨股票') or '').strip(),
+                })
+            return rows or None
+        except Exception as e:
+            logger.warning(f"[Akshare] 获取行业板块全量快照失败: {e}")
+            return None
+
     def get_concept_rankings(self, n: int = 5) -> Optional[Tuple[List[Dict], List[Dict]]]:
         """获取概念/题材涨跌榜。"""
         import akshare as ak

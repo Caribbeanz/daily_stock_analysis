@@ -24,6 +24,7 @@ from api.v1.endpoints import (
     decision_signals,
     health,
     history,
+    h5,
     intelligence,
     memory,
     portfolio,
@@ -78,6 +79,12 @@ router.include_router(
     screen.router,
     prefix="/screen",
     tags=["Screen"]
+)
+
+router.include_router(
+    h5.router,
+    prefix="/h5",
+    tags=["H5"]
 )
 
 router.include_router(

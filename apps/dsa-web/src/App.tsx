@@ -28,6 +28,8 @@ const MemoryPage = lazy(() => import('./pages/MemoryPage'));
 const AuditPage = lazy(() => import('./pages/AuditPage'));
 const ReviewPage = lazy(() => import('./pages/ReviewPage'));
 const ScreenPage = lazy(() => import('./pages/ScreenPage'));
+const HslbWatchlistPage = lazy(() => import('./pages/h5/HslbWatchlistPage'));
+const HslbStockDetailPage = lazy(() => import('./pages/h5/HslbStockDetailPage'));
 
 const AppContent: React.FC = () => {
   const location = useLocation();
@@ -44,6 +46,20 @@ const AppContent: React.FC = () => {
     return (
       <StandaloneRouteBoundary>
         <ScreenPage />
+      </StandaloneRouteBoundary>
+    );
+  }
+
+  // 移动 H5（M1）：独立入口、独立渲染，不套站点 Shell，且在鉴权判断之前返回。
+  // 与 `/m/*`（旧移动详情，套 Shell）并行存在，互不影响。
+  if (location.pathname === '/h5' || location.pathname.startsWith('/h5/')) {
+    return (
+      <StandaloneRouteBoundary>
+        <Routes>
+          <Route path="/h5" element={<HslbWatchlistPage />} />
+          <Route path="/h5/stocks/:code" element={<HslbStockDetailPage />} />
+          <Route path="*" element={<Navigate to="/h5" replace />} />
+        </Routes>
       </StandaloneRouteBoundary>
     );
   }

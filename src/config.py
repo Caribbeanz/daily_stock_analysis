@@ -1076,7 +1076,17 @@ class Config:
     # 不做盘中监控）；cache_seconds 为相同入参快照的短暂缓存，防止手动刷新打爆数据源。
     hslb_screen_refresh_seconds: int = 300
     hslb_screen_cache_seconds: int = 15
-    
+
+    # 高抛低吸助手 · 移动 H5（M1/M2）
+    # 列表 / 大盘快照的短缓存（秒，0 = 关闭）：移动端频繁下拉刷新时避免打爆数据源。
+    hslb_h5_cache_seconds: int = 15
+    # 首页大盘指标与评级缓存（默认 15 分钟，与列表缓存解耦）
+    hslb_h5_market_cache_seconds: int = 900
+    # 行业板块全量快照缓存（默认 15 分钟；缓存 key 含交易日，跨日自动失效）
+    hslb_h5_sector_cache_seconds: int = 900
+    # 个股所属行业缓存（默认 7 天）
+    hslb_h5_industry_cache_seconds: int = 604800
+
     # Telegram 配置（需要同时配置 Bot Token 和 Chat ID）
     telegram_bot_token: Optional[str] = None  # Bot Token（@BotFather 获取）
     telegram_chat_id: Optional[str] = None  # Chat ID
@@ -2079,6 +2089,30 @@ class Config:
                 os.getenv('HSLB_SCREEN_CACHE_SECONDS'),
                 15,
                 field_name='HSLB_SCREEN_CACHE_SECONDS',
+                minimum=0,
+            ),
+            hslb_h5_cache_seconds=parse_env_int(
+                os.getenv('HSLB_H5_CACHE_SECONDS'),
+                15,
+                field_name='HSLB_H5_CACHE_SECONDS',
+                minimum=0,
+            ),
+            hslb_h5_market_cache_seconds=parse_env_int(
+                os.getenv('HSLB_H5_MARKET_CACHE_SECONDS'),
+                900,
+                field_name='HSLB_H5_MARKET_CACHE_SECONDS',
+                minimum=0,
+            ),
+            hslb_h5_sector_cache_seconds=parse_env_int(
+                os.getenv('HSLB_H5_SECTOR_CACHE_SECONDS'),
+                900,
+                field_name='HSLB_H5_SECTOR_CACHE_SECONDS',
+                minimum=0,
+            ),
+            hslb_h5_industry_cache_seconds=parse_env_int(
+                os.getenv('HSLB_H5_INDUSTRY_CACHE_SECONDS'),
+                604800,
+                field_name='HSLB_H5_INDUSTRY_CACHE_SECONDS',
                 minimum=0,
             ),
             telegram_bot_token=os.getenv('TELEGRAM_BOT_TOKEN'),
