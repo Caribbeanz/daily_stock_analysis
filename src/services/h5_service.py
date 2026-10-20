@@ -102,12 +102,6 @@ def format_price(value: Any) -> str:
     return f"{number:.2f}" if abs(number) >= 1 else f"{number:.3f}"
 
 
-def _pct_text(value: Optional[float]) -> str:
-    if value is None:
-        return "-"
-    return f"{value:+.2f}%"
-
-
 def display_action(action: str, has_signal: bool) -> str:
     """把后端 8 态动作收敛成页面 6 类；无信号时返回「暂无信号」。"""
 
@@ -378,13 +372,13 @@ def build_market_block(core: Mapping[str, Any], display_actions: Sequence[str]) 
 # --------------------------------------------------------------------------- #
 def build_analysis(
     overview: Mapping[str, Any],
-    market: Optional[Mapping[str, Any]],
     sector: Optional[Mapping[str, Any]] = None,
 ) -> List[Dict[str, Any]]:
-    """把 overview + 大盘快照 + 板块数据组装成五块分析。
+    """把 overview + 板块数据组装成四块分析。
 
-    顺序（M2-B 调整）：技术面 → 板块 → 风险 → 大盘 → 消息面。
+    顺序（M2-B 调整）：技术面 → 板块 → 风险 → 消息面。
     板块回答"是个股问题还是行业问题"，属归因信息，故排在消息面之前。
+    大盘不在此重复展示：首页大盘卡片已是同一份数据，详情页再列一次属于冗余。
     """
 
     factors = overview.get("factors") or []
@@ -453,32 +447,6 @@ def build_analysis(
         risk_verdict = "暂未触发风控条件（暂无止损/仓位建议）"
     risk_tone = "warning" if (risk_summary or risk_reasons) else "neutral"
 
-    # ---------------- 大盘 ---------------- #
-    indices = list((market or {}).get("indices") or [])
-    priced = [item for item in indices if item.get("change_pct") is not None]
-    market_details = [
-        {
-            "label": str(item.get("name") or item.get("code") or "指数"),
-            "value": (
-                f"{format_price(item.get('value'))}（{_pct_text(_finite(item.get('change_pct')))}）"
-                if item.get("value") is not None
-                else "-"
-            ),
-        }
-        for item in indices
-    ]
-    if priced:
-        market_verdict = "｜".join(
-            f"{item.get('name')} {_pct_text(_finite(item.get('change_pct')))}" for item in priced
-        )
-        total_change = sum(_finite(item.get("change_pct")) or 0 for item in priced)
-        market_tone = "up" if total_change > 0 else ("down" if total_change < 0 else "neutral")
-        market_available = True
-    else:
-        market_verdict = "指数行情暂不可用（数据源未就绪或非交易时段无数据）"
-        market_tone = "neutral"
-        market_available = False
-
     # ---------------- 板块（M2-B 真实数据，取不到则如实降级） ---------------- #
     sector_result = sector if isinstance(sector, Mapping) else {}
     sector_detail = sector_result.get("detail") if isinstance(sector_result.get("detail"), Mapping) else {}
@@ -535,7 +503,6 @@ def build_analysis(
         ),
         sector_section,
         _section("risk", "风险", risk_verdict, details=risk_details, tone=risk_tone, available=bool(risk_details)),
-        _section("market", "大盘", market_verdict, details=market_details, tone=market_tone, available=market_available),
         _section("news", "消息面", news_verdict, details=[{"label": "事件", "value": item} for item in events[:6]], tone=news_tone),
     ]
 
@@ -1000,10 +967,10 @@ class H5Service:
         quote = self._load_quote(normalized)
         stock_change = _finite((quote or {}).get("change_percent"))
 
-        # 板块与指数相互独立：并发取数，避免串行把详情拖到 3~5 秒。
-        with ThreadPoolExecutor(max_workers=2) as pool:
+        # 板块取数与个股聚合相互独立：并发，避免串行把详情拖慢。
+        # 大盘不再在详情页取数（首页大盘卡片已覆盖），少 3 次指数请求。
+        with ThreadPoolExecutor(max_workers=1) as pool:
             sector_future = pool.submit(self._sector_analyze, normalized, stock_change)
-            market_future = pool.submit(self._market_snapshot, degraded)
             try:
                 # 已取过行情：成功则注入避免重复取数；失败则关闭内部取数，
                 # 由 overview 统一写入「行情暂不可用」的降级说明。
@@ -1017,9 +984,8 @@ class H5Service:
                 raise
 
             sector = sector_future.result()
-            market = market_future.result()
 
-        sections = build_analysis(overview, market, sector)
+        sections = build_analysis(overview, sector)
 
         has_signal = overview.get("signal_id") is not None
         action = str(overview.get("action") or "watch")
@@ -1084,7 +1050,6 @@ class H5Service:
             "risk_summary": str(overview.get("risk_summary") or ""),
             "distance_to_stop_pct": distance_to_stop,
             "distance_to_target_pct": distance_to_target,
-            "market": market,
             "analysis": sections,
             "signal_id": overview.get("signal_id"),
             "signal_created_at": overview.get("signal_created_at"),

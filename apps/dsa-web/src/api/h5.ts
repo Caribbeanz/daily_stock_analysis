@@ -157,7 +157,8 @@ export type H5Detail = {
   riskSummary: string;
   distanceToStopPct: number | null;
   distanceToTargetPct: number | null;
-  market: H5Market;
+  /** 详情页不再返回大盘快照（大盘在首页卡片统一展示），保留字段仅为兼容旧响应。 */
+  market?: H5Market;
   analysis: H5AnalysisSection[];
   signalId: number | null;
   signalCreatedAt: string | null;

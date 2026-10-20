@@ -204,33 +204,29 @@ def test_list_uses_short_cache():
 # --------------------------------------------------------------------------- #
 # 详情与分析
 # --------------------------------------------------------------------------- #
-def test_build_analysis_covers_five_dimensions():
-    sections = build_analysis(
-        _overview("601919", action="reduce"),
-        {"indices": [{"code": "sh000001", "name": "上证指数", "value": 3200.0, "change_pct": 0.42}]},
-    )
+def test_build_analysis_covers_four_dimensions():
+    sections = build_analysis(_overview("601919", action="reduce"))
     by_key = {section["key"]: section for section in sections}
 
-    assert [section["key"] for section in sections] == ["technical", "sector", "risk", "market", "news"]
+    # 大盘已移出详情页（与首页大盘卡片重复），只保留四个维度
+    assert [section["key"] for section in sections] == ["technical", "sector", "risk", "news"]
+    assert "market" not in by_key
     assert by_key["technical"]["available"] is True
     assert by_key["technical"]["tone"] == "up"
     assert "日线向上" in by_key["technical"]["verdict"]
     assert by_key["news"]["available"] is True
     assert by_key["news"]["tone"] == "warning"
     assert by_key["risk"]["available"] is True
-    assert by_key["market"]["available"] is True
-    assert by_key["market"]["tone"] == "up"
     # 板块本期未接入：必须显式标记，不得伪造结论
     # 未注入板块数据时如实降级（不伪装成"未接入"或"正常"）
     assert by_key["sector"]["available"] is False
     assert "板块数据暂不可用" in by_key["sector"]["verdict"]
 
 
-def test_build_analysis_marks_missing_market():
-    sections = build_analysis(_overview("601919"), {"indices": []})
-    market = next(section for section in sections if section["key"] == "market")
-    assert market["available"] is False
-    assert "暂不可用" in market["verdict"]
+def test_build_analysis_has_no_market_section():
+    sections = build_analysis(_overview("601919"))
+    assert all(section["key"] != "market" for section in sections)
+    assert [section["label"] for section in sections] == ["技术面", "板块", "风险", "消息面"]
 
 
 class _FakeSeries:
@@ -301,13 +297,12 @@ def test_detail_passes_through_ohlc_and_computes_distance():
     # 10.8 相对止损 9.5 → +13.68%；相对目标 12 → -10%
     assert payload["distance_to_stop_pct"] == 13.68
     assert payload["distance_to_target_pct"] == -10.0
-    assert payload["market"]["as_of"] == "2026-10-20"
-    assert payload["market"]["indices"][0]["change_pct"] == pytest.approx(0.629)
+    # 详情不再返回大盘快照（首页大盘卡片已覆盖，避免重复）
+    assert "market" not in payload
     assert [section["key"] for section in payload["analysis"]] == [
         "technical",
         "sector",
         "risk",
-        "market",
         "news",
     ]
 
