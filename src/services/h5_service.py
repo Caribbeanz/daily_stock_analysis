@@ -20,6 +20,7 @@
 
 from __future__ import annotations
 
+import json
 import logging
 import math
 import time
@@ -138,6 +139,29 @@ def _factor_value(factors: Sequence[Mapping[str, Any]], key: str) -> str:
         if str(row.get("key") or "") == key:
             return str(row.get("value") or "").strip()
     return ""
+
+
+def _display_text(value: Any) -> str:
+    """把可能为列表或 JSON 数组字符串的字段统一成可读文本。
+
+    ``decision_signals.risk_summary`` 等字段由提取器写入，历史数据可能是
+    列表序列化后的 JSON 字符串（如 ``["A", "B"]``）。直接展示会暴露原始
+    结构，这里统一拼成中文分号分隔的句子；无法解析时原样返回。
+    """
+
+    if value is None:
+        return ""
+    if isinstance(value, (list, tuple)):
+        return "；".join(str(item).strip() for item in value if str(item or "").strip())
+    text = str(value).strip()
+    if len(text) >= 2 and text.startswith("[") and text.endswith("]"):
+        try:
+            parsed = json.loads(text)
+        except (TypeError, ValueError):
+            return text
+        if isinstance(parsed, list):
+            return "；".join(str(item).strip() for item in parsed if str(item or "").strip())
+    return text
 
 
 # --------------------------------------------------------------------------- #
@@ -421,8 +445,8 @@ def build_analysis(
         news_tone = "neutral"
 
     # ---------------- 风险 ---------------- #
-    risk_reasons = _factor_value(factors, "risk_reasons")
-    risk_summary = str(overview.get("risk_summary") or "").strip()
+    risk_reasons = _display_text(_factor_value(factors, "risk_reasons"))
+    risk_summary = _display_text(overview.get("risk_summary"))
     risk_details: List[Dict[str, str]] = []
     if risk_summary:
         risk_details.append({"label": "风控摘要", "value": risk_summary})
@@ -435,7 +459,7 @@ def build_analysis(
     if overview.get("position_ratio_label") not in (None, "", "-"):
         risk_details.append({"label": "仓位建议", "value": str(overview.get("position_ratio_label"))})
     if overview.get("watch_conditions"):
-        risk_details.append({"label": "观察条件", "value": str(overview.get("watch_conditions"))})
+        risk_details.append({"label": "观察条件", "value": _display_text(overview.get("watch_conditions"))})
 
     if risk_summary:
         risk_verdict = risk_summary
@@ -1046,8 +1070,8 @@ class H5Service:
             "position_ratio_label": str(overview.get("position_ratio_label") or "-"),
             "position_reason": str(overview.get("position_reason") or ""),
             "discipline": str(overview.get("discipline") or ""),
-            "watch_conditions": str(overview.get("watch_conditions") or ""),
-            "risk_summary": str(overview.get("risk_summary") or ""),
+            "watch_conditions": _display_text(overview.get("watch_conditions")),
+            "risk_summary": _display_text(overview.get("risk_summary")),
             "distance_to_stop_pct": distance_to_stop,
             "distance_to_target_pct": distance_to_target,
             "analysis": sections,

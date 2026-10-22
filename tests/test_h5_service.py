@@ -223,6 +223,26 @@ def test_build_analysis_covers_four_dimensions():
     assert "板块数据暂不可用" in by_key["sector"]["verdict"]
 
 
+def test_build_analysis_unwraps_json_list_risk_text():
+    """历史信号的 risk_summary / 风控依据 可能是 JSON 数组字符串，需还原为可读文本。"""
+
+    overview = _overview(
+        "601919",
+        risk_summary='["跌破 MA20 需减仓", "放量下跌偏派发特征"]',
+        factors=[
+            {"key": "risk_reasons", "label": "风控依据", "value": '["技术面弱势空头", "MACD 柱状线转负"]'},
+        ],
+    )
+    sections = {section["key"]: section for section in build_analysis(overview)}
+
+    verdict = sections["risk"]["verdict"]
+    assert verdict == "跌破 MA20 需减仓；放量下跌偏派发特征"
+    assert "[" not in verdict and '"' not in verdict
+
+    details = {row["label"]: row["value"] for row in sections["risk"]["details"]}
+    assert details["风控依据"] == "技术面弱势空头；MACD 柱状线转负"
+
+
 def test_build_analysis_has_no_market_section():
     sections = build_analysis(_overview("601919"))
     assert all(section["key"] != "market" for section in sections)

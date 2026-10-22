@@ -52,6 +52,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - [改进] 板块块在详情页由第 5 位提到第 3 位（技术面 → 板块 → 风险 → 消息面）；详情页**移除「大盘」块**，避免与首页大盘卡片重复，详情接口不再返回 `market` 字段、少 3 次指数请求。
 - [改进] 大盘指标与评级缓存 15 分钟、行业快照缓存 key 含交易日（跨日自动失效）、个股行业缓存 7 天；大盘与列表缓存解耦，新增 `?with_market=false` 轻量轮询参数与 `HSLB_H5_MARKET_CACHE_SECONDS` / `HSLB_H5_SECTOR_CACHE_SECONDS` / `HSLB_H5_INDUSTRY_CACHE_SECONDS`，`.env.example` 已同步。
 - [测试] 新增 `tests/test_h5_market.py`（评级矩阵 4 象限、边界、指标格式、总结自洽、120 根日线黄金样本）与 `tests/test_h5_sector.py`（名称归一化、结论模板、排名与相对强弱、跨交易日缓存失效、降级）。
+- [修复] H5 详情「风险」行不再直接暴露 JSON 数组：`risk_summary` 以列表或 JSON 字符串落库时统一还原为「；」分隔文本（`_display_text`），`/api/v1/h5/watchlist` 与 `/api/v1/h5/stocks/{symbol}` 共用，Web 端无需再做兼容解析；新增回归测试覆盖列表、JSON 字符串与普通文本三种入参。
 
 ## [3.32.0] - 2026-09-06
 
