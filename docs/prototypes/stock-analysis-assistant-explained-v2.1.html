@@ -1,0 +1,720 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>股票分析助手 · 需求白话解读 v2.1</title>
+<style>
+:root{
+  --bg:#f6f7f9; --card:#ffffff; --ink:#20252f; --ink2:#556070; --ink3:#8791a0;
+  --line:#e5e9ef; --blue:#3b5bdb; --blue-bg:#eef2ff; --purple:#7048e8; --purple-bg:#f3efff;
+  --up:#e03131; --up-bg:#fff0f0; --down:#2f9e44; --down-bg:#edfbf0;
+  --warn:#e8820c; --warn-bg:#fff6e8; --gray-bg:#f1f3f6;
+  --shadow:0 1px 3px rgba(20,30,60,.06),0 8px 24px rgba(20,30,60,.04);
+  --radius:14px;
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{margin:0;background:var(--bg);color:var(--ink);
+  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;
+  font-size:15px;line-height:1.75;-webkit-font-smoothing:antialiased}
+a{color:var(--blue);text-decoration:none}
+
+/* ---------- 顶部 ---------- */
+.topbar{position:sticky;top:0;z-index:50;background:rgba(255,255,255,.94);
+  backdrop-filter:blur(12px);border-bottom:1px solid var(--line);padding:13px 26px;
+  display:flex;align-items:center;gap:16px;flex-wrap:wrap}
+.topbar .logo{font-weight:800;font-size:17px;letter-spacing:-.3px}
+.topbar .logo b{color:var(--blue)}
+.badge{display:inline-flex;align-items:center;gap:5px;font-size:11.5px;font-weight:700;
+  padding:3px 10px;border-radius:99px;border:1px solid var(--line);background:var(--gray-bg);color:var(--ink2)}
+.badge.v{background:var(--blue-bg);border-color:#d9e2ff;color:var(--blue)}
+.badge.d{background:var(--warn-bg);border-color:#ffe1b8;color:var(--warn)}
+.topbar .spacer{flex:1}
+.topbar .tip{font-size:12.5px;color:var(--ink2)}
+
+/* ---------- 布局 ---------- */
+.wrap{max-width:1360px;margin:0 auto;padding:30px 26px 80px;display:grid;
+  grid-template-columns:236px minmax(0,1fr);gap:34px;align-items:start}
+nav.side{position:sticky;top:74px;background:var(--card);border:1px solid var(--line);
+  border-radius:var(--radius);padding:16px 12px;box-shadow:var(--shadow)}
+nav.side .navtitle{font-size:11px;font-weight:800;color:var(--ink3);letter-spacing:1.2px;
+  padding:2px 10px 10px;text-transform:uppercase}
+nav.side a{display:block;padding:8px 10px;border-radius:9px;font-size:13px;color:var(--ink2);
+  margin-bottom:2px;transition:.15s;border-left:3px solid transparent}
+nav.side a:hover{background:var(--blue-bg);color:var(--blue)}
+nav.side a.on{background:var(--blue-bg);color:var(--blue);font-weight:700;border-left-color:var(--blue)}
+nav.side .sub{padding-left:22px;font-size:12px;color:var(--ink3)}
+main{min-width:0}
+
+/* ---------- 通用块 ---------- */
+section{scroll-margin-top:80px;margin-bottom:40px}
+h2{font-size:23px;letter-spacing:-.4px;margin:0 0 6px;display:flex;align-items:center;gap:10px}
+h2 .num{display:inline-flex;width:29px;height:29px;border-radius:9px;background:var(--blue);
+  color:#fff;font-size:14px;align-items:center;justify-content:center;font-weight:800}
+h3{font-size:17px;margin:26px 0 10px;letter-spacing:-.2px}
+.lead{color:var(--ink2);margin:0 0 20px;font-size:14px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);
+  padding:22px;box-shadow:var(--shadow);margin-bottom:16px}
+.plain{background:var(--blue-bg);border:1px solid #dbe4ff;border-left:4px solid var(--blue);
+  border-radius:10px;padding:12px 16px;font-size:13.5px;color:#2b3c7a;margin:14px 0}
+.plain b{color:var(--blue)}
+.note{background:var(--warn-bg);border:1px solid #ffe2bb;border-left:4px solid var(--warn);
+  border-radius:10px;padding:12px 16px;font-size:13px;color:#8a5300;margin:14px 0}
+.small{font-size:12px;color:var(--ink3)}
+.tag{display:inline-block;font-size:10.5px;font-weight:800;padding:2px 8px;border-radius:6px;
+  background:var(--gray-bg);color:var(--ink2);margin-left:6px;vertical-align:middle}
+.tag.b{background:var(--blue-bg);color:var(--blue)}
+.tag.g{background:var(--down-bg);color:var(--down)}
+.tag.r{background:var(--up-bg);color:var(--up)}
+.tag.y{background:var(--warn-bg);color:var(--warn)}
+.tag.p{background:var(--purple-bg);color:var(--purple)}
+
+/* ---------- 封面 ---------- */
+.hero{background:linear-gradient(135deg,#f0f4ff 0%,#faf8ff 55%,#fff 100%);
+  border:1px solid #e2e8ff;border-radius:18px;padding:30px 32px;margin-bottom:28px}
+.hero h1{font-size:30px;margin:0 0 8px;letter-spacing:-.8px}
+.hero p{font-size:14.5px;color:var(--ink2);margin:0 0 18px;max-width:820px}
+.hero .row{display:flex;gap:10px;flex-wrap:wrap}
+.hero .stat{background:#fff;border:1px solid var(--line);border-radius:11px;padding:10px 16px;min-width:120px}
+.hero .stat .n{font-size:21px;font-weight:800;color:var(--blue);line-height:1.2}
+.hero .stat .l{font-size:11.5px;color:var(--ink3)}
+
+/* ---------- 速览 ---------- */
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
+.mini{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px}
+.mini .ic{width:32px;height:32px;border-radius:9px;display:flex;align-items:center;justify-content:center;
+  font-size:16px;font-weight:800;margin-bottom:9px}
+.mini h4{margin:0 0 5px;font-size:14px}
+.mini p{margin:0;font-size:12.5px;color:var(--ink2);line-height:1.65}
+
+/* ---------- 表格 ---------- */
+table{width:100%;border-collapse:collapse;font-size:12.8px}
+th{text-align:left;background:var(--gray-bg);color:var(--ink2);font-weight:700;
+  padding:9px 11px;border-bottom:1px solid var(--line);white-space:nowrap}
+td{padding:9px 11px;border-bottom:1px solid #eef1f5;vertical-align:top}
+tr:last-child td{border-bottom:none}
+td.q{color:var(--ink2);font-style:italic}
+td.ok{color:var(--down);font-weight:700;white-space:nowrap}
+td.wait{color:var(--warn);font-weight:700;white-space:nowrap}
+code{font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:11.5px;
+  background:var(--gray-bg);padding:1px 5px;border-radius:4px;color:#334}
+
+/* ---------- SVG 图 ---------- */
+.figure{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);
+  padding:18px;box-shadow:var(--shadow);margin:14px 0}
+.figure .cap{font-size:12px;color:var(--ink3);text-align:center;margin-top:8px}
+svg{display:block;width:100%;height:auto;max-width:100%}
+
+/* ---------- 决策步骤 ---------- */
+.steps{display:flex;flex-direction:column;gap:10px}
+.step{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:15px 17px;
+  display:grid;grid-template-columns:44px 1fr;gap:14px;position:relative}
+.step .n{width:38px;height:38px;border-radius:11px;background:var(--blue-bg);color:var(--blue);
+  display:flex;align-items:center;justify-content:center;font-weight:800;font-size:14px}
+.step.hot{border-color:#ffd9b0;background:linear-gradient(90deg,#fffaf3,#fff 60%)}
+.step.hot .n{background:var(--warn-bg);color:var(--warn)}
+.step.red{border-color:#ffd0d0;background:linear-gradient(90deg,#fff6f6,#fff 60%)}
+.step.red .n{background:var(--up-bg);color:var(--up)}
+.step h4{margin:0 0 4px;font-size:14.5px}
+.step p{margin:0;font-size:12.8px;color:var(--ink2)}
+.step .why{font-size:12px;color:var(--ink3);margin-top:6px;padding-top:6px;border-top:1px dashed var(--line)}
+
+/* ---------- 阶段卡 ---------- */
+.stagegrid{display:grid;grid-template-columns:repeat(5,1fr);gap:10px}
+.stage{border:1px solid var(--line);border-radius:12px;padding:13px;background:#fff}
+.stage .sid{font-size:11px;font-weight:800;color:#fff;padding:2px 8px;border-radius:6px;display:inline-block}
+.stage h4{margin:8px 0 6px;font-size:13.5px}
+.stage .p{font-size:11.8px;color:var(--ink2);line-height:1.6}
+.stage .ban{font-size:11px;color:var(--up);margin-top:7px;padding-top:6px;border-top:1px dashed var(--line)}
+
+/* ---------- 条件单示例 ---------- */
+.order{border:1px solid var(--line);border-radius:12px;overflow:hidden;background:#fff}
+.order .oh{background:var(--gray-bg);padding:9px 14px;font-size:12px;font-weight:700;color:var(--ink2);
+  display:flex;justify-content:space-between}
+.order .ob{padding:13px 15px;font-size:12.5px}
+.order .line{display:flex;gap:10px;padding:5px 0;border-bottom:1px dashed #eef1f5}
+.order .line:last-child{border:none}
+.order .line .k{width:82px;color:var(--ink3);flex:none}
+.order .line .v{color:var(--ink)}
+.sell{color:var(--down)!important;font-weight:700}
+.buy{color:var(--up)!important;font-weight:700}
+
+/* ---------- 线框 ---------- */
+.wire{border:1px solid #dfe5ee;border-radius:12px;background:#fff;overflow:hidden}
+.wire .wh{background:var(--gray-bg);padding:8px 12px;font-size:11.5px;color:var(--ink2);font-weight:700}
+.wire .wb{padding:11px}
+.wrow{border:1px solid var(--line);border-radius:8px;padding:9px 11px;margin-bottom:7px;font-size:11.8px}
+.wrow:last-child{margin-bottom:0}
+.wrow b{font-size:12.5px}
+.wchips{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px}
+.wchip{background:var(--blue-bg);color:var(--blue);border-radius:5px;padding:2px 7px;font-size:10.5px}
+.wchip.y{background:var(--warn-bg);color:var(--warn)}
+.wchip.g{background:var(--down-bg);color:var(--down)}
+.wchip.r{background:var(--up-bg);color:var(--up)}
+
+/* ---------- 页脚 ---------- */
+.foot{border-top:1px solid var(--line);margin-top:40px;padding-top:18px;font-size:11.5px;
+  color:var(--ink3);line-height:1.9}
+
+@media(max-width:1100px){
+  .stagegrid{grid-template-columns:repeat(2,1fr)}
+  .grid3{grid-template-columns:1fr 1fr}
+}
+@media(max-width:900px){
+  .wrap{grid-template-columns:1fr;padding:18px 14px 60px}
+  nav.side{position:static;display:flex;overflow-x:auto;gap:4px;padding:8px}
+  nav.side .navtitle{display:none}
+  nav.side a{white-space:nowrap;margin:0;border-left:none;border-bottom:2px solid transparent}
+  nav.side a.on{border-left:none;border-bottom-color:var(--blue)}
+  nav.side .sub{display:none}
+  .grid2,.grid3{grid-template-columns:1fr}
+  .hero h1{font-size:24px}
+}
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="logo">股票分析助手 · <b>需求白话解读</b></div>
+  <span class="badge v">v2.1</span>
+  <span class="badge d">草案 / 待批准</span>
+  <div class="spacer"></div>
+  <div class="tip">这份文档的作用是：帮你确认「需求写得对不对、是不是我想要的」</div>
+</div>
+
+<div class="wrap">
+<nav class="side" id="nav">
+  <div class="navtitle">目录</div>
+  <a href="#s0" class="on">0 · 30 秒速览</a>
+  <a href="#s1">1 · 你的原话 → 需求</a>
+  <a href="#s2">2 · 系统全景图</a>
+  <a href="#s3">3 · 决策引擎（重点）</a>
+  <a href="#s3a" class="sub">3.1 整体流程图</a>
+  <a href="#s3b" class="sub">3.2 八步工作流</a>
+  <a href="#s3c" class="sub">3.3 阶段定位</a>
+  <a href="#s3d" class="sub">3.4 风险体系</a>
+  <a href="#s3e" class="sub">3.5 条件计划</a>
+  <a href="#s4">4 · 页面长什么样</a>
+  <a href="#s5">5 · 策略与页面对照</a>
+  <a href="#s6">6 · 待你确认</a>
+</nav>
+
+<main>
+
+<!-- ============ 0 速览 ============ -->
+<section id="s0">
+  <div class="hero">
+    <h1>一句话：每天早上帮你把「今天要不要动、动多少」想好</h1>
+    <p>你是投资小白 + 上班族，没时间盯盘。这个助手在每个交易日早上 7:30 自动跑一次，把约 10 只自选股和 ETF 算成结论卡片，直接告诉你今天该加、该减、还是不动；如果是「该动」，还会给出可以照抄到券商 App 的条件单——你上班前设好，盘中不用看。</p>
+    <div class="row">
+      <div class="stat"><div class="n">7:30</div><div class="l">每天自动出结论</div></div>
+      <div class="stat"><div class="n">约 10 只</div><div class="l">自选标的卡片</div></div>
+      <div class="stat"><div class="n">盘中 0 次</div><div class="l">不看盘、不盯盘</div></div>
+      <div class="stat"><div class="n">2 个入口</div><div class="l">网页 + 飞书</div></div>
+    </div>
+  </div>
+
+  <h2><span class="num">0</span>先记住三件事</h2>
+  <p class="lead">如果只看一屏，看这里。其余内容都是对这三件事的展开。</p>
+  <div class="grid3">
+    <div class="mini"><div class="ic" style="background:var(--blue-bg);color:var(--blue)">①</div>
+      <h4>结论由代码算，不由大模型猜</h4>
+      <p>大模型只负责把算好的结果写成一段人话。它不改数字、不给新建议、不参与打分。这样结果每天可复现、可回测。</p></div>
+    <div class="mini"><div class="ic" style="background:var(--warn-bg);color:var(--warn)">②</div>
+      <h4>先定阶段，再谈打法</h4>
+      <p>先判断这只票处在上升 / 震荡 / 下跌 / 筑底哪个阶段，再决定这个阶段允许做什么。下跌阶段任何买入都会被拦下——这是本轮你新增的核心要求。</p></div>
+    <div class="mini"><div class="ic" style="background:var(--down-bg);color:var(--down)">③</div>
+      <h4>只给条件单，不替你下单</h4>
+      <p>输出的是「如果涨到 X 就买 N 股」的静态清单，有效期只有当天。工具不接券商、不监控盘中、不自动成交，也不承诺收益。</p></div>
+  </div>
+
+  <div class="note"><b>明确不做的事</b>（来自你的原话第 12 条）：不做盘中实时分析、不自动交易、不融资杠杆、不做消息面情绪判断、不承诺收益、不换股推荐。这些在需求里被写成 10 条「护栏」（NG-1～NG-10），任何后续改动都不能突破。</div>
+</section>
+
+<!-- ============ 1 原话对照 ============ -->
+<section id="s1">
+  <h2><span class="num">1</span>你的原话 → 需求怎么落地</h2>
+  <p class="lead">这一节是给你「核对初衷」用的。左列是你说的原话要点（白话摘要），中列是需求文档怎么理解并落地，右列是可以去查的章节。逐条看一遍，就知道需求有没有跑偏。</p>
+
+  <div class="card" style="padding:0;overflow:hidden">
+  <table>
+    <thead><tr><th style="width:19%">你说的（原话要点）</th><th style="width:60%">需求怎么落地</th><th style="width:13%">对应章节</th><th style="width:8%">状态</th></tr></thead>
+    <tbody>
+      <tr><td class="q">个人用、投资小白、上班族、盘前看一次、不做短线轮动、优质分红股、年化 10–20%、技术面为主</td>
+        <td>写成 §1 用户画像，作为全篇口径锚。技术面被定为<b>主导</b>（决定建议主档位），基本面 / 估值 / 分红 / 消息 / 板块 / 大盘都是<b>低权重</b>：可加减分、可触发风险，但不能单独把结论翻过来。年化 10–20% 只作为你自述的目标，<b>不进评分、不生成收益预测、不写进任何操作建议</b>。</td>
+        <td><code>§1</code> <code>§5.1</code></td><td class="ok">✓ 已覆盖</td></tr>
+
+      <tr><td class="q">趋势三档；高位/低位至少 2 类指标同向；指标冲突降为中性/不明；布林带只作辅助；位置不单独触发买卖</td>
+        <td>趋势固定「偏强 / 中性 / 偏弱」三档，采用你选的 B 方案（周线为主 + 日线辅助 + 月线背景）。位置用 4 类主指标，≥2 类同向才下标签，布林带明确排除在计数之外。位置只影响加减分与风险提示，不单独产生买卖。</td>
+        <td><code>§5.2</code> <code>§6.4·6a</code></td><td class="ok">✓ 已覆盖</td></tr>
+
+      <tr><td class="q">操作意见：持仓 4 档、未持仓 3 档；先意见后理由；关键价位分「必须有/建议有/可选」三级</td>
+        <td>意见扩为 11 档展示（7 档有效意见 + 4 档状态位）。「观望」是有效意见，「待同步 / 无数据 / 不可操作 / 不生成」是状态位——灰色显示，绝不混成「观望」。卡片顺序固定：先人话结论和操作意见，再理由。价位按三级管理，取不到就写「未计算」，不许编。</td>
+        <td><code>§5.3</code> <code>§5.4</code> <code>§6.4</code></td><td class="ok">✓ 已覆盖</td></tr>
+
+      <tr><td class="q">统一硬上限；行业集中度只提示不硬限；仓位显示百分比 + 轻/中/重；做 T 用 T 仓、底仓不动、T 仓 ≤10%、单次 T 亏损 ≤0.75%</td>
+        <td>硬上限锁死：单只 ≤20%、总仓 ≤80%、现金 ≥20%、T 仓 ≤10%。集中度 ≥25% <b>只提示不强制</b>。做 T 计划已并入同一张条件计划表，不再单独成块。亏损 0.75% 上限作为纪律校验项。</td>
+        <td><code>§5.6</code> <code>§5.7</code> <code>§5.11</code></td><td class="ok">✓ 已覆盖</td></tr>
+
+      <tr><td class="q">免费源、akshare 主 → 公开接口备 → 本地缓存兜；连续 3 日失败降级；盘前只用昨收 + 已披露财报；非交易日不生成</td>
+        <td>数据源分 D1/D2/D3 三层，质量校验失败自动降级并标注真实来源。盘前口径写死：只用前一交易日收盘 + 已披露事实，<b>不纳入集合竞价、隔夜消息、盘前涨跌、当天新闻</b>，开盘后不更新。非交易日完全不触发（不产卡片、不发飞书）。</td>
+        <td><code>§7</code> <code>§8.2</code></td><td class="ok">✓ 已覆盖</td></tr>
+
+      <tr><td class="q">大盘 + 板块的新页面；大盘在上板块在下；只分析涉及的板块、底部写「相关标的有 xxx」；切 Tab 到个股列表；点进详情页</td>
+        <td>做成「同页双 Tab + 独立详情路由」：Tab A 上半大盘、下半板块（仅自选涉及的板块，卡片底部相关标的导航），Tab B 个股列表（名称/编码/价格/涨跌幅/建议），点行进详情。板块锚点支持详情页跳回。</td>
+        <td><code>§3</code> <code>§6.1–6.4</code></td><td class="ok">✓ 已覆盖</td></tr>
+
+      <tr><td class="q">风险提醒：大盘、行业低估受挫、个股基本面变坏、技术面变差等，要形成提醒，甚至参与决策</td>
+        <td>这条被做成了完整体系：<b>7 类风险信号</b>（含你说的四类）、<b>3 级严重度</b>（观察/警示/严重）。警示级禁止买入类动作，严重级强制建议降级或触发止损。特别做了「价值陷阱」信号：估值低 ≠ 安全，低估 + 持续下跌会触发严重级——正是你说的「行业低估受挫」。</td>
+        <td><code>§5.10</code></td><td class="ok">✓ 已覆盖</td></tr>
+
+      <tr><td class="q">MA20、箱体、分位、T 仓、失效位要有技术解释，不能只给结论</td>
+        <td>新增「技术解释层」：每个具体数值都带 8 个字段（数值、输入、公式、阈值、命中详情、来源、数据日期、降级原因）。展示分三层——人话常驻、技术解释默认折叠、明细可展开。要求"能反算出这个数怎么来的"。</td>
+        <td><code>§6.6</code></td><td class="ok">✓ 已覆盖</td></tr>
+
+      <tr><td class="q">盘前要有预见性：今天若发生某种情况就怎么做，涨到某个点买多少股，便于提前设条件单</td>
+        <td>做成「盘前条件计划」：基于昨收列出 5 类互斥情景（上行突破 / 回踩不破 / 区间震荡 / 跌破支撑 / 破位加速），每条给出可挂单的价格触发、动作、<b>取整到 100 股</b>的股数、金额、占比、有效期和仓位校验。不给概率、不说哪种更可能。</td>
+        <td><code>§5.11</code> <code>§6.7</code></td><td class="ok">✓ 已覆盖</td></tr>
+
+      <tr><td class="q">充分利用项目自带策略；不满足可引入新策略；选股 Tab 放下一阶段；方案定了跑回测验胜率</td>
+        <td>自带战法经核查是「自然语言 LLM Skill」，与「确定性可回测」冲突，所以定为<b>借用策略思想、转写成确定性规则</b>，不直接接入模型观点。选股 Tab 标为下一阶段不做。回测安排在方案定稿后，且强制分阶段统计胜率（防止上涨阶段掩盖震荡期亏损）。</td>
+        <td><code>§5.12</code> <code>§3.4</code> <code>§9.4</code></td><td class="ok">✓ 已覆盖</td></tr>
+
+      <tr><td class="q">两个入口：WebUI 支持 PC 和 H5、独立页面、能跳现有页面；飞书复用现有通知功能</td>
+        <td>WebUI 用<b>一套响应式页面</b>同时覆盖 PC 和手机，独立路由不套现有页面框架，跟随现有登录；<b>只能新页面跳现有页面</b>，不改现有工程任何页面。飞书复用现有通知能力，不新建平行发送器。</td>
+        <td><code>§3.5</code></td><td class="ok">✓ 已覆盖</td></tr>
+
+      <tr><td class="q">决策由代码出，总结能否用大模型？飞书能否收消息、记录心得、加关注？</td>
+        <td>大模型只用在 3 处文案：个股人话结论、飞书摘要、大盘板块总结；有数值一致性校验，失败降级为规则模板。飞书入站做 4 件事：加/移除关注、记录心得、查询当日结论、盘后问答；写操作需<b>二次确认 + 次日盘前生效</b>，当日结论绝不改动。</td>
+        <td><code>§5.13</code> <code>§3.6</code></td><td class="ok">✓ 已覆盖</td></tr>
+
+      <tr><td class="q">策略分析要先给股票当前阶段定位；上涨阶段和震荡阶段打法不同；或参考缠论</td>
+        <td>新增第 5 节重点内容：<b>5 个阶段</b>（上升 / 高位震荡 / 下跌 / 低位筑底 / 无法判定），先定阶段再定动作集合。缠论只落地「中枢≈箱体、走势类型≈趋势/盘整」两层，笔 / 线段 / 级别递归本期不做（无法稳定复现，会让回测失真）。</td>
+        <td><code>§5.14</code></td><td class="ok">✓ 已覆盖</td></tr>
+    </tbody>
+  </table>
+  </div>
+
+  <div class="plain"><b>核对结论</b>：你说的 21 条原始诉求，已全部落到需求条款中，没有发现遗漏或被悄悄改掉的核心意图。有 <b>2 类内容需要你继续把关</b>：① 具体阈值（箱体宽度 12%、触碰 2 次等）只是初值，要靠纸面回看和回测再定；② 飞书凭据、LLM 渠道等属于配置材料，不是需求口径。详见第 6 节。</div>
+</section>
+
+<!-- ============ 2 全景 ============ -->
+<section id="s2">
+  <h2><span class="num">2</span>系统全景：数据怎么变成你早上看到的那张卡</h2>
+  <p class="lead">从最底层的数据，到你手机里的一条飞书消息，一共 5 层。关键设计是：<b>中间只算一次</b>，后面所有页面和推送都只读同一份结果，避免三处算出三个不同结论。</p>
+
+  <div class="figure">
+  <svg viewBox="0 0 1060 400" xmlns="http://www.w3.org/2000/svg" font-family="-apple-system,PingFang SC,Microsoft YaHei,sans-serif">
+    <defs>
+      <marker id="ar" markerWidth="9" markerHeight="9" refX="8" refY="3" orient="auto"><path d="M0,0 L0,6 L8,3 z" fill="#98a2b3"/></marker>
+      <linearGradient id="g1" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#eef2ff"/><stop offset="1" stop-color="#f8f9ff"/></linearGradient>
+    </defs>
+    <!-- 层标签 -->
+    <text x="14" y="34" font-size="11" fill="#8791a0" font-weight="700">第 1 层 · 取数</text>
+    <text x="14" y="121" font-size="11" fill="#8791a0" font-weight="700">第 2 层 · 数据底座</text>
+    <text x="14" y="212" font-size="11" fill="#8791a0" font-weight="700">第 3 层 · 决策引擎</text>
+    <text x="14" y="315" font-size="11" fill="#8791a0" font-weight="700">第 4 层 · 展示</text>
+    <text x="14" y="380" font-size="11" fill="#8791a0" font-weight="700">第 5 层 · 入口</text>
+
+    <!-- 箭头 -->
+    <path d="M530 62 L530 86" stroke="#98a2b3" stroke-width="1.6" marker-end="url(#ar)" fill="none"/>
+    <path d="M530 148 L530 176" stroke="#98a2b3" stroke-width="1.6" marker-end="url(#ar)" fill="none"/>
+    <path d="M530 262 L530 288" stroke="#98a2b3" stroke-width="1.6" marker-end="url(#ar)" fill="none"/>
+    <path d="M530 350 L530 366" stroke="#98a2b3" stroke-width="1.6" marker-end="url(#ar)" fill="none"/>
+
+    <!-- 第1层 -->
+    <g>
+      <rect x="120" y="24" width="170" height="52" rx="10" fill="#fff" stroke="#e5e9ef"/>
+      <text x="205" y="45" text-anchor="middle" font-size="12.5" font-weight="700" fill="#20252f">D1 · akshare 主源</text>
+      <text x="205" y="62" text-anchor="middle" font-size="10.5" fill="#8791a0">免费 / 无需 token</text>
+      <rect x="300" y="24" width="170" height="52" rx="10" fill="#fff" stroke="#e5e9ef"/>
+      <text x="385" y="45" text-anchor="middle" font-size="12.5" font-weight="700" fill="#20252f">D2 · 公开接口备用</text>
+      <text x="385" y="62" text-anchor="middle" font-size="10.5" fill="#8791a0">主源失败自动切换</text>
+      <rect x="480" y="24" width="170" height="52" rx="10" fill="#fff" stroke="#e5e9ef"/>
+      <text x="565" y="45" text-anchor="middle" font-size="12.5" font-weight="700" fill="#20252f">D3 · 本地缓存兜底</text>
+      <text x="565" y="62" text-anchor="middle" font-size="10.5" fill="#8791a0">明确标注「缓存」</text>
+      <rect x="660" y="24" width="250" height="52" rx="10" fill="#fff" stroke="#e5e9ef"/>
+      <text x="785" y="45" text-anchor="middle" font-size="12.5" font-weight="700" fill="#20252f">手工维护：持仓成本 / 股数 / 自选</text>
+      <text x="785" y="62" text-anchor="middle" font-size="10.5" fill="#8791a0">缺失就写「未录入」，不倒推</text>
+    </g>
+
+    <!-- 第2层 -->
+    <rect x="120" y="90" width="790" height="54" rx="11" fill="url(#g1)" stroke="#d9e2ff"/>
+    <text x="515" y="113" text-anchor="middle" font-size="13" font-weight="800" fill="#3b5bdb">共享数据底座 · 一次生成，全局只读</text>
+    <text x="515" y="132" text-anchor="middle" font-size="11" fill="#556070">一致性三元组：数据日期 + 快照编号 + 计算版本对不上 → 显示「待同步」，绝不用旧值冒充今天</text>
+
+    <!-- 第3层 -->
+    <rect x="120" y="180" width="790" height="78" rx="11" fill="#fff" stroke="#ffd9b0" stroke-width="1.5"/>
+    <text x="515" y="202" text-anchor="middle" font-size="13" font-weight="800" fill="#e8820c">决策引擎 · 你最关心的部分（第 3 节详细拆开）</text>
+    <g font-size="11" fill="#fff" font-weight="700" text-anchor="middle">
+      <rect x="142" y="214" width="118" height="30" rx="8" fill="#7048e8"/><text x="201" y="234">阶段定位</text>
+      <rect x="270" y="214" width="118" height="30" rx="8" fill="#3b5bdb"/><text x="329" y="234">评分 + 决策表</text>
+      <rect x="398" y="214" width="118" height="30" rx="8" fill="#e8820c"/><text x="457" y="234">风险守卫</text>
+      <rect x="526" y="214" width="118" height="30" rx="8" fill="#e8820c"/><text x="585" y="234">阶段门</text>
+      <rect x="654" y="214" width="118" height="30" rx="8" fill="#2f9e44"/><text x="713" y="234">条件计划</text>
+      <rect x="782" y="214" width="108" height="30" rx="8" fill="#556070"/><text x="836" y="234">仓位校验</text>
+    </g>
+
+    <!-- 第4层 -->
+    <rect x="120" y="292" width="242" height="50" rx="10" fill="#fff" stroke="#e5e9ef"/>
+    <text x="241" y="313" text-anchor="middle" font-size="12" font-weight="700">Tab A · 大盘 / 板块</text>
+    <text x="241" y="330" text-anchor="middle" font-size="10.5" fill="#8791a0">只讲环境，不给买卖动作</text>
+    <rect x="374" y="292" width="242" height="50" rx="10" fill="#fff" stroke="#e5e9ef"/>
+    <text x="495" y="313" text-anchor="middle" font-size="12" font-weight="700">Tab B · 个股列表</text>
+    <text x="495" y="330" text-anchor="middle" font-size="10.5" fill="#8791a0">11 档意见 + 阶段小标签</text>
+    <rect x="628" y="292" width="282" height="50" rx="10" fill="#fff" stroke="#e5e9ef"/>
+    <text x="769" y="313" text-anchor="middle" font-size="12" font-weight="700">详情页 · 10 个区块</text>
+    <text x="769" y="330" text-anchor="middle" font-size="10.5" fill="#8791a0">先阶段 → 再意见 → 后理由</text>
+
+    <!-- 第5层 -->
+    <rect x="255" y="365" width="240" height="30" rx="8" fill="#eef2ff" stroke="#d9e2ff"/>
+    <text x="375" y="385" text-anchor="middle" font-size="11.5" font-weight="700" fill="#3b5bdb">入口一 · 网页（PC + 手机同一套）</text>
+    <rect x="515" y="365" width="270" height="30" rx="8" fill="#f3efff" stroke="#e5d9ff"/>
+    <text x="650" y="385" text-anchor="middle" font-size="11.5" font-weight="700" fill="#7048e8">入口二 · 飞书推送（只读同源结果）</text>
+  </svg>
+  <div class="cap">图 1：系统五层架构。橙色两个环节（风险守卫、阶段门）只做「收紧」，不做「放宽」。</div>
+  </div>
+
+  <div class="plain"><b>为什么要「只算一次」</b>：如果列表页算一遍、详情页算一遍、飞书再算一遍，只要取数时间差几秒，三个地方的数字就可能不一致——你会不知道该信哪个。所以需求规定：盘前生成一份带三元组的快照，所有出口只读它。</div>
+</section>
+
+<!-- ============ 3 决策引擎 ============ -->
+<section id="s3">
+  <h2><span class="num">3</span>决策引擎：一只票的建议是怎么算出来的</h2>
+  <p class="lead">这是整份需求最核心、也最专业的部分。下面用「流程图 → 八步拆解 → 阶段 → 风险 → 条件单」五个角度，把它讲成白话。</p>
+
+  <div class="plain"><b>一句话原理</b>：先按技术面为主的权重算出「候选动作」，再依次经过风险守卫和阶段门两道关卡把不允许的动作砍掉，剩下合规的动作就是今天的建议；最后按建议方向生成可以照抄的条件单。</div>
+
+  <!-- 3.1 流程图 -->
+  <h3 id="s3a">3.1 完整流程图</h3>
+  <div class="figure">
+  <svg viewBox="0 0 1000 700" xmlns="http://www.w3.org/2000/svg" font-family="-apple-system,PingFang SC,Microsoft YaHei,sans-serif">
+    <defs><marker id="ar2" markerWidth="9" markerHeight="9" refX="8" refY="3" orient="auto"><path d="M0,0 L0,6 L8,3 z" fill="#98a2b3"/></marker></defs>
+    <!-- 左列：输入 -->
+    <rect x="30" y="24" width="180" height="56" rx="10" fill="#f1f3f6" stroke="#e5e9ef"/>
+    <text x="120" y="46" text-anchor="middle" font-size="12.5" font-weight="700">昨收数据 + 已披露事实</text>
+    <text x="120" y="64" text-anchor="middle" font-size="10.5" fill="#8791a0">不看集合竞价 / 当天新闻</text>
+    <path d="M210 52 L268 52" stroke="#98a2b3" stroke-width="1.6" marker-end="url(#ar2)" fill="none"/>
+
+    <!-- 主线盒子 -->
+    <g>
+      <!-- S0 -->
+      <rect x="272" y="24" width="330" height="56" rx="10" fill="#fff" stroke="#e5e9ef"/>
+      <rect x="272" y="24" width="6" height="56" rx="3" fill="#8791a0"/>
+      <text x="292" y="45" font-size="12.5" font-weight="800" fill="#20252f">S0　三元组校验</text>
+      <text x="292" y="64" font-size="10.8" fill="#556070">日期 / 快照 / 版本对不上 → 待同步，停止输出</text>
+      <path d="M437 80 L437 98" stroke="#98a2b3" stroke-width="1.6" marker-end="url(#ar2)" fill="none"/>
+
+      <!-- S1/S2 -->
+      <rect x="272" y="102" width="330" height="56" rx="10" fill="#fff" stroke="#e5e9ef"/>
+      <rect x="272" y="102" width="6" height="56" rx="3" fill="#8791a0"/>
+      <text x="292" y="123" font-size="12.5" font-weight="800">S1/S2　状态位判定</text>
+      <text x="292" y="142" font-size="10.8" fill="#556070">停牌 → 不可操作；数据不足 → 不出意见（灰色标注）</text>
+      <path d="M437 158 L437 176" stroke="#98a2b3" stroke-width="1.6" marker-end="url(#ar2)" fill="none"/>
+
+      <!-- S3 -->
+      <rect x="272" y="180" width="330" height="52" rx="10" fill="#fff" stroke="#e5e9ef"/>
+      <rect x="272" y="180" width="6" height="52" rx="3" fill="#7048e8"/>
+      <text x="292" y="200" font-size="12.5" font-weight="800">S3　数据降级注记</text>
+      <text x="292" y="218" font-size="10.8" fill="#556070">只下调置信度，不改建议档位</text>
+      <path d="M437 232 L437 250" stroke="#98a2b3" stroke-width="1.6" marker-end="url(#ar2)" fill="none"/>
+
+      <!-- S4 风险 -->
+      <rect x="272" y="254" width="330" height="62" rx="10" fill="#fff8ee" stroke="#ffd9b0" stroke-width="1.6"/>
+      <rect x="272" y="254" width="6" height="62" rx="3" fill="#e8820c"/>
+      <text x="292" y="275" font-size="12.5" font-weight="800" fill="#b56500">S4　风险等级守卫　<tspan font-size="10" font-weight="700">关卡 ①</tspan></text>
+      <text x="292" y="293" font-size="10.8" fill="#8a5300">严重 → 强制降级 / 止损；警示 → 禁买入；观察 → 仅注记</text>
+      <text x="292" y="308" font-size="10" fill="#b56500">7 类信号取最高级，3 条警示 ≠ 1 条严重（不滚雪球）</text>
+      <path d="M437 316 L437 334" stroke="#98a2b3" stroke-width="1.6" marker-end="url(#ar2)" fill="none"/>
+
+      <!-- S5 评分 -->
+      <rect x="272" y="338" width="330" height="62" rx="10" fill="#fff" stroke="#d9e2ff" stroke-width="1.6"/>
+      <rect x="272" y="338" width="6" height="62" rx="3" fill="#3b5bdb"/>
+      <text x="292" y="359" font-size="12.5" font-weight="800" fill="#3b5bdb">S5　评分 + 决策表</text>
+      <text x="292" y="377" font-size="10.8" fill="#556070">技术面主导，其他低权重加减分</text>
+      <text x="292" y="392" font-size="10" fill="#8791a0">产出「候选动作」：加仓 / 持有 / 减仓 / 等待买点…</text>
+      <path d="M437 400 L437 418" stroke="#98a2b3" stroke-width="1.6" marker-end="url(#ar2)" fill="none"/>
+
+      <!-- S5.5 阶段门 -->
+      <rect x="272" y="422" width="330" height="66" rx="10" fill="#fff8ee" stroke="#ffd9b0" stroke-width="1.6"/>
+      <rect x="272" y="422" width="6" height="66" rx="3" fill="#e8820c"/>
+      <text x="292" y="443" font-size="12.5" font-weight="800" fill="#b56500">S5.5　阶段门　<tspan font-size="10" font-weight="700">关卡 ②</tspan></text>
+      <text x="292" y="461" font-size="10.8" fill="#8a5300">候选动作是否在「本阶段允许集合」内？不在就改写</text>
+      <text x="292" y="477" font-size="10" fill="#b56500">只收紧不放宽；留痕 stage_gate_hit 供回测归因</text>
+      <path d="M437 488 L437 506" stroke="#98a2b3" stroke-width="1.6" marker-end="url(#ar2)" fill="none"/>
+
+      <!-- S6 -->
+      <rect x="272" y="510" width="330" height="52" rx="10" fill="#fff" stroke="#e5e9ef"/>
+      <rect x="272" y="510" width="6" height="52" rx="3" fill="#556070"/>
+      <text x="292" y="530" font-size="12.5" font-weight="800">S6　仓位 / 集中度约束</text>
+      <text x="292" y="548" font-size="10.8" fill="#556070">只裁剪仓位建议，不改建议档位</text>
+      <path d="M437 562 L437 580" stroke="#98a2b3" stroke-width="1.6" marker-end="url(#ar2)" fill="none"/>
+
+      <!-- 输出 -->
+      <rect x="272" y="584" width="330" height="54" rx="10" fill="#edfbf0" stroke="#b7e4c2" stroke-width="1.6"/>
+      <text x="437" y="606" text-anchor="middle" font-size="13.5" font-weight="800" fill="#237a3a">最终 advice · 今天要不要动</text>
+      <text x="437" y="624" text-anchor="middle" font-size="10.5" fill="#3f8a55">7 档有效意见 + 4 档状态位 = 11 档展示</text>
+    </g>
+
+    <!-- 右侧：阶段输入 -->
+    <path d="M620 455 L664 455" stroke="#e8820c" stroke-width="1.6" stroke-dasharray="4 3" marker-end="url(#ar2)" fill="none"/>
+    <rect x="668" y="410" width="290" height="92" rx="10" fill="#fffaf3" stroke="#ffd9b0"/>
+    <text x="686" y="431" font-size="11.5" font-weight="800" fill="#b56500">先判阶段（§5.14）</text>
+    <text x="686" y="450" font-size="10.8" fill="#8a5300">价 vs MA20 + 斜率 + 箱体 + 位置分位</text>
+    <text x="686" y="467" font-size="10.8" fill="#8a5300">连续 2 日满足才切换（防抖）</text>
+    <text x="686" y="485" font-size="10.5" fill="#b56500">阶段决定「允许哪些动作」，不加减分</text>
+
+    <!-- 右侧：条件计划 -->
+    <path d="M602 611 L664 611" stroke="#2f9e44" stroke-width="1.6" stroke-dasharray="4 3" marker-end="url(#ar2)" fill="none"/>
+    <rect x="668" y="570" width="290" height="86" rx="10" fill="#f6fcf8" stroke="#b7e4c2"/>
+    <text x="686" y="591" font-size="11.5" font-weight="800" fill="#237a3a">再生成条件计划（§5.11）</text>
+    <text x="686" y="610" font-size="10.8" fill="#3f8a55">5 类情景 + 阶段专属模板</text>
+    <text x="686" y="627" font-size="10.8" fill="#3f8a55">同向过滤：动作必须与 advice 一致</text>
+    <text x="686" y="644" font-size="10.5" fill="#237a3a">股数取整 100 股 / 有效期仅当天</text>
+
+    <!-- 右侧：输出去向 -->
+    <rect x="668" y="150" width="290" height="160" rx="10" fill="#f8f9ff" stroke="#e2e8ff"/>
+    <text x="686" y="172" font-size="11.5" font-weight="800" fill="#3b5bdb">四处只读同一份结论</text>
+    <g font-size="10.8" fill="#556070">
+      <text x="686" y="195">① 页级风险条（Tab A 顶部）</text>
+      <text x="686" y="218">② 个股列表角标与排序</text>
+      <text x="686" y="241">③ 详情页（阶段 / 意见 / 计划 / 风险）</text>
+      <text x="686" y="264">④ 单张卡片 + 飞书推送</text>
+    </g>
+    <text x="686" y="292" font-size="10.5" fill="#3b5bdb">同一标的方向必须完全一致（单一真值）</text>
+    <path d="M602 90 L664 180" stroke="#98a2b3" stroke-width="1.4" stroke-dasharray="4 3" fill="none"/>
+  </svg>
+  <div class="cap">图 2：决策引擎工作流。注意两个橙色关卡（S4 风险守卫、S5.5 阶段门）都只能把动作「砍掉」，不能把小动作「放大」成买入。</div>
+  </div>
+
+  <!-- 3.2 八步 -->
+  <h3 id="s3b">3.2 八步工作流：每一步在干什么、为什么要这么设计</h3>
+  <div class="steps">
+    <div class="step"><div class="n">0</div><div>
+      <h4>先判阶段：这只票现在处于什么状态 <span class="tag p">你本轮新增</span></h4>
+      <p>用价格和 MA20 的关系、MA20 斜率、均线排列、60 日箱体、位置分位，算出 5 档之一：上升 / 高位震荡 / 下跌 / 低位筑底 / 无法判定。需连续 2 天满足才切换，防止一天波动就换打法。</p>
+      <div class="why">为什么：你说的「先给阶段定位，再做分析」。如果不先定阶段，评分会把「下跌中继」误当成「震荡低吸」，在下跌途中一直加仓。</div>
+    </div></div>
+
+    <div class="step"><div class="n">1</div><div>
+      <h4>三元组校验：这份数据是不是「今天的」</h4>
+      <p>数据日期、快照编号、计算版本三者必须一致。对不上就显示「待同步」，<b>不显示旧值</b>。</p>
+      <div class="why">为什么：避免你早上看到的是昨天的缓存，却以为是今天的建议。</div>
+    </div></div>
+
+    <div class="step"><div class="n">2</div><div>
+      <h4>状态位判定：停牌、数据不足直接标灰</h4>
+      <p>停牌标「不可操作」，数据不足标「无数据 / 不生成意见」。<b>「观望」是有效结论，不是没数据</b>——两者严格区分。</p>
+      <div class="why">为什么：你原话要求「数据不足标数据不足，不生成操作意见」。把没数据画成观望，会让你误以为系统分析过。</div>
+    </div></div>
+
+    <div class="step"><div class="n">3</div><div>
+      <h4>评分：技术面主导，其他低权重加减分</h4>
+      <p>趋势档（偏强/中性/偏弱）+ 位置标签 + 关键价位 + 量能决定主档位；大盘、板块、财报、分红、消息只做加减分与置信度调整。</p>
+      <div class="why">为什么：你明确说「技术面为主，其他作为一定权重参考」。低权重不是「不参与」，而是不能单独把建议从持有翻成加仓。</div>
+    </div></div>
+
+    <div class="step hot"><div class="n">4</div><div>
+      <h4>关卡① 风险守卫：先看有没有红灯 <span class="tag y">只收紧</span></h4>
+      <p>7 类风险信号取最高等级：观察（灰）只降置信度；警示（黄）主档不变但禁止买入；严重（红）强制建议降级或触发先减后清。多条信号<b>不叠加升级</b>。</p>
+      <div class="why">为什么：你说的「风险提醒甚至参与决策」。做成硬性关卡，是为了让风险真的能拦住买入，而不是只在卡片角落写一句提示。</div>
+    </div></div>
+
+    <div class="step hot"><div class="n">5</div><div>
+      <h4>关卡② 阶段门：这个动作在当前阶段允许吗 <span class="tag y">只收紧</span></h4>
+      <p>评分给出一个候选动作后，检查它是否在阶段允许集合里。比如 S3 下跌阶段只允许减仓 / 清仓 / 观望，如果评分给出「加仓」，就改写成「等待买点」或「减仓」，并留痕 <code>stage_gate_hit</code>。</p>
+      <div class="why">为什么放在评分之后：要先有候选动作才能判断要不要改；而且这样回测时能看到「如果没有阶段门，这天本来会建议加仓」，能量化这道关卡到底拦住了多少次错误买入。</div>
+    </div></div>
+
+    <div class="step"><div class="n">6</div><div>
+      <h4>仓位校验：单只 20% / 总仓 80% / 现金 20% / T 仓 10%</h4>
+      <p>硬上限优先级最高，越界就把仓位建议裁剪到 0，但<b>不改建议档位</b>。行业集中度 ≥25% 只提示、不强制。</p>
+      <div class="why">为什么：你的原话要求「统一硬上限 + 行业集中度只提示」。档位和仓位分开，是为了让「方向」和「能买多少」互不干扰。</div>
+    </div></div>
+
+    <div class="step red"><div class="n">7</div><div>
+      <h4>生成条件计划：把建议翻译成可以照抄设单的清单</h4>
+      <p>按阶段选模板，列出 5 类互斥情景。每条给：触发价格 → 动作与股数（取整到 100 股）→ 金额占比 → 有效期（仅当天）→ 仓位校验 → 能否直接设单。动作必须与 advice 同向，反向的一律输出「不操作 + 原因」。</p>
+      <div class="why">为什么：你的原话「便于提前设置条件单，以免因为上班错过盘中行情」。不给概率、不排序，是因为这是条件预案，不是预测。</div>
+    </div></div>
+  </div>
+
+  <!-- 3.3 阶段 -->
+  <h3 id="s3c">3.3 五阶段与各自的打法</h3>
+  <p class="lead">这是你本轮最关心的新增：不同阶段，交易思路完全不同。下面这张图就是系统的「阶段→打法」对照表。</p>
+  <div class="stagegrid">
+    <div class="stage"><span class="sid" style="background:#2f9e44">S1</span><h4>上升趋势</h4>
+      <div class="p"><b>主打法</b>：回踩买 + 突破买，不追高。触发价来自 MA20 附近或前期高点。</div>
+      <div class="ban">禁止：用箱体上沿逆势高抛、越涨越买</div></div>
+    <div class="stage"><span class="sid" style="background:#e8820c">S2</span><h4>高位震荡</h4>
+      <div class="p"><b>主打法</b>：箱体高抛低吸做 T，底仓不动。上沿减、下沿买。</div>
+      <div class="ban">禁止：追突破重仓、在箱体中部开仓</div></div>
+    <div class="stage"><span class="sid" style="background:#e03131">S3</span><h4>下跌趋势</h4>
+      <div class="p"><b>主打法</b>：反弹减 + 破位清，不抄底。卖点主要挂在反弹压力位，而非只挂破位。</div>
+      <div class="ban">禁止：任何买入（含 T 低吸、补仓摊薄、"估值低所以买"）</div></div>
+    <div class="stage"><span class="sid" style="background:#7048e8">S4</span><h4>低位筑底</h4>
+      <div class="p"><b>主打法</b>：观察为主，右侧确认才买（站上 MA20 + 放量 + 突破箱体上沿）。</div>
+      <div class="ban">禁止：左侧越跌越买、把「便宜」当买点</div></div>
+    <div class="stage"><span class="sid" style="background:#8791a0">S0</span><h4>无法判定</h4>
+      <div class="p"><b>主打法</b>：不出策略、不出计划，只显示状态位和原因。</div>
+      <div class="ban">禁止：用旧结论顶替</div></div>
+  </div>
+
+  <div class="plain"><b>阶段门的实际效果（举例）</b>：同一只票处在 S3 下跌阶段，评分算出「加仓」→ 阶段门发现「加仓」不在 S3 允许集合内 → 改写成「减仓」，并记下"原本想加仓、被阶段门拦下"。回测时就能统计这道关卡一共拦住了多少次在下跌途中的买入。</div>
+
+  <div class="note"><b>关于缠论</b>：你提到「或类似缠论等理论支撑」。需求只落地了两层容易稳定计算的概念——「中枢≈箱体」「走势类型≈趋势/盘整」；背驰只作观察注记；笔、线段、级别递归本期不做，因为不同实现会给出不同结论，会让回测失去可复现性。项目自带的缠论文件是自然语言策略，按规则不直接接入决策。</div>
+
+  <!-- 3.4 风险 -->
+  <h3 id="s3d">3.4 风险体系：从"提示一下"升级为"能拦住买入"</h3>
+  <p class="lead">你原话第 15 条要求风险「甚至参与决策」。需求把风险做成了 7 类信号 + 3 级动作，下面是它们各自能做什么。</p>
+  <div class="grid3">
+    <div class="mini" style="border-color:#e9edf2"><div class="ic" style="background:var(--gray-bg);color:#8791a0">观</div>
+      <h4>观察级 <span class="tag">灰</span></h4>
+      <p>只下调置信度，<b>建议档位不变</b>。默认折叠，给一句人话。例如：大盘数据降级、 dividend 除权日临近。</p></div>
+    <div class="mini" style="border-color:#ffe1b8"><div class="ic" style="background:var(--warn-bg);color:var(--warn)">警</div>
+      <h4>警示级 <span class="tag y">黄</span></h4>
+      <p>主档不变，但<b>禁止加仓 / 建仓 / 买入类意见</b>，不下发新的做 T 计划。例如：大盘连续偏弱、板块持续弱于大盘、财报渐进恶化。</p></div>
+    <div class="mini" style="border-color:#ffd0d0"><div class="ic" style="background:var(--up-bg);color:var(--up)">严</div>
+      <h4>严重级 <span class="tag r">红</span></h4>
+      <p><b>强制建议降级</b>或触发先减后清，禁止任何买入，仓位只减不增。例如：财报爆雷、跌破趋势失效位、分红中断、价值陷阱。</p></div>
+  </div>
+  <div class="card" style="margin-top:14px">
+    <b style="font-size:13.5px">7 类风险信号包括</b>
+    <div style="font-size:12.8px;color:var(--ink2);margin-top:8px;line-height:2">
+      ① 大盘环境（转弱 / 失守 / 数据降级）—— <b>最高只到警示级，不单独清仓</b><br>
+      ② 板块与低估陷阱 —— 其中 <b>SEC-2 价值陷阱</b>对应你说的「行业低估受挫」：估值低但还在跌，触发严重级<br>
+      ③ 个股基本面变坏 —— 财报爆雷（严重）/ 渐进恶化（警示）/ 取数失败（观察，不算基本面变坏）<br>
+      ④ 技术面变差 —— 跌破失效位触发先减（L1），继续跌才清（L2）<br>
+      ⑤ 分红与估值 —— 分红中断（严重，因为你的分红兜底逻辑被破坏）、估值与价格双高（警示）<br>
+      ⑥ 组合与仓位 —— 逼近硬上限、集中度过高、成本倒挂 + 高仓位<br>
+      ⑦ 数据质量 —— 连续 3 日取数失败、用缓存；<b>不许伪装成基本面或技术面风险</b>
+    </div>
+  </div>
+  <div class="plain"><b>防滚雪球规则</b>：同一标的有多条信号时取最高等级；<b>3 条警示 ≠ 1 条严重</b>；禁止类动作取并集，但「建议降级」只执行一次。这条很重要——否则风险多了会一路把建议砍到清仓，反而不合理。</div>
+
+  <!-- 3.5 条件计划 -->
+  <h3 id="s3e">3.5 条件计划：你早上照着设单的那张清单</h3>
+  <p class="lead">下面是一条真实格式的示例（模拟数据）。这就是你要的「预见到今天各种情况，提前设条件单」的落地形态。</p>
+  <div class="order">
+    <div class="oh"><span>[卖出分支 D]　反弹不过压力位</span><span>基准：昨收 · 不复权</span></div>
+    <div class="ob">
+      <div class="line"><div class="k">触发条件</div><div class="v">价格 ≥ <b>39.20 元</b>（来自前期高点 39.18 元 + 容差）</div></div>
+      <div class="line"><div class="k">执行动作</div><div class="v sell">减仓 500 股</div></div>
+      <div class="line"><div class="k">金额占比</div><div class="v">约 19,600 元，占总资金 3.9%</div></div>
+      <div class="line"><div class="k">有效期</div><div class="v">今天开盘至收盘，收盘未触发自动作废</div></div>
+      <div class="line"><div class="k">仓位校验</div><div class="v">单只 12% ≤20% ✓　总仓 58% ≤80% ✓　现金 26% ≥20% ✓</div></div>
+      <div class="line"><div class="k">能否设单</div><div class="v"><b>是</b>（价格触发，可直接在券商 App 设置）</div></div>
+      <div class="line"><div class="k">提示</div><div class="v">已处于 S3 下跌阶段，先减后清，保留分红底仓；不直接清仓</div></div>
+    </div>
+  </div>
+  <div class="plain"><b>股数是怎么算出来的</b>（确定性公式，不需要你自己换算）：<br>
+    <code>可用金额 = min(档位比例 × 总资金, 单只上限剩余额度, 现金可用部分)</code><br>
+    <code>股数 = 向下取整到 100 股/手</code>；卖出时再取「当前可卖持仓」的较小值（T+1 当天买的不能当天卖）。<br>
+    档位比例：轻 &lt;10% / 中 10–15% / 重 15–20%。
+  </div>
+  <div class="note"><b>两条容易忽略的边界</b>：① 股票 T+1，同一标的当天<b>不会同时出现买入和卖出分支</b>；ETF 是 T+0，会分别标注。② 每条分支单独校验硬上限，<b>单条越界就不输出该分支</b>并说明原因，不会给你一个超限的股数。工具不接券商、不自动下单、开盘后不更新。</div>
+</section>
+
+<!-- ============ 4 页面 ============ -->
+<section id="s4">
+  <h2><span class="num">4</span>页面长什么样</h2>
+  <p class="lead">三个视图，职责分得很清楚：大盘只讲环境、板块只讲结构、个股才给动作。下面是线框示意（非最终视觉）。</p>
+  <div class="grid3">
+    <div class="wire"><div class="wh">Tab A · 大盘 / 板块</div><div class="wb">
+      <div class="wrow" style="background:var(--up-bg)"><b>今日风险条</b>　2 严重 / 1 警示 <div class="wchips"><span class="wchip r">可点进详情</span></div></div>
+      <div class="wrow"><b>上证指数</b>　3,412.55 <span style="color:var(--up)">+0.62%</span><div class="wchips"><span class="wchip">主指数固定上证</span></div></div>
+      <div class="wrow"><b>6 格核心指标</b><div class="wchips"><span class="wchip">环境档</span><span class="wchip">市场宽度</span><span class="wchip">分位</span></div></div>
+      <div class="wrow"><b>环境评级 + 节奏</b><div class="wchips"><span class="wchip y">中性 Q2</span><span class="wchip">恒定尾句</span></div></div>
+      <div class="wrow"><b>板块卡</b>　仅自选涉及的<div class="wchips"><span class="wchip">煤炭开采</span><span class="wchip">银行</span><span class="wchip">相关标的 3 只</span></div></div>
+    </div></div>
+
+    <div class="wire"><div class="wh">Tab B · 个股列表</div><div class="wb">
+      <div class="wrow" style="background:var(--warn-bg)"><b>组合层校验</b>　单只 20% / 总仓 80% / 现金 20%<div class="wchips"><span class="wchip y">集中度提示</span></div></div>
+      <div class="wrow"><b>今日需处理</b>　6 只<div class="wchips"><span class="wchip r">减 2</span><span class="wchip g">加 2</span></div></div>
+      <div class="wrow"><b>中国神华 601088</b>　39.12 <span style="color:var(--down)">-0.71%</span><div class="wchips"><span class="wchip r">S3 下跌</span><span class="wchip r">减仓</span><span class="wchip">5 条分支</span></div></div>
+      <div class="wrow"><b>招商银行 600036</b>　40.18 <span style="color:var(--up)">+1.20%</span><div class="wchips"><span class="wchip g">S1 上升</span><span class="wchip g">加仓</span></div></div>
+      <div class="wrow" style="opacity:.62"><b>某停牌标的</b>　—<div class="wchips"><span class="wchip">不可操作 · 灰</span></div></div>
+    </div></div>
+
+    <div class="wire"><div class="wh">详情页 · 10 个区块</div><div class="wb">
+      <div class="wrow"><b>① 人话结论 + ② 四价</b><div class="wchips"><span class="wchip">今天要不要动</span></div></div>
+      <div class="wrow" style="background:var(--purple-bg)"><b>③ 阶段定位与策略匹配</b><div class="wchips"><span class="wchip p">S3 下跌</span><span class="wchip">主策略</span><span class="wchip">禁止买入</span></div></div>
+      <div class="wrow"><b>④ 操作意见</b><div class="wchips"><span class="wchip r">减仓</span></div></div>
+      <div class="wrow" style="background:var(--down-bg)"><b>⑤ 盘前条件计划（默认展开）</b><div class="wchips"><span class="wchip g">可照抄设单</span></div></div>
+      <div class="wrow"><b>⑥ 四要素　⑦ 持仓分红</b></div>
+      <div class="wrow"><b>⑧ 分析过程（6a–6h 折叠）</b><div class="wchips"><span class="wchip">技术解释可展开</span></div></div>
+      <div class="wrow"><b>⑨ 结构化风险块　⑩ 元信息</b></div>
+    </div></div>
+  </div>
+  <div class="plain"><b>为什么详情页把「阶段」放在第 3 区块、操作意见之前</b>：这样你先看到"这只票现在在什么阶段、这个阶段该怎么打"，再看"今天具体要不要动"，逻辑顺序和你说的「先定阶段再分析」一致。阶段区块本身不出现买卖指令，避免和操作意见打架。</div>
+</section>
+
+<!-- ============ 5 映射 ============ -->
+<section id="s5">
+  <h2><span class="num">5</span>策略与页面是否对得上</h2>
+  <p class="lead">需求文档里有一张专门的验算表（§6.0）：决策引擎算出的每一项，都能在页面上找到对应的位置；页面上的每个字段，都能追到它的来源。下面是简化版。</p>
+  <div class="card" style="padding:0;overflow:hidden">
+  <table>
+    <thead><tr><th style="width:24%">决策引擎算出什么</th><th style="width:46%">在哪个页面/位置看到</th><th>有没有遗漏</th></tr></thead>
+    <tbody>
+      <tr><td><b>阶段定位</b>（S1–S4 / S0）</td><td>详情页第 ③ 区块（详细）+ 列表名称后的阶段小标签</td><td class="ok">✓ 有</td></tr>
+      <tr><td><b>操作意见</b>（经阶段门）</td><td>详情页第 ④ 区块 + 列表 + 卡片 + 飞书摘要（四处同源）</td><td class="ok">✓ 有</td></tr>
+      <tr><td><b>风险信号</b>（7 类 / 3 级）</td><td>Tab A 顶部风险条 + 列表角标 + 详情页第 ⑨ 区块 + 卡片</td><td class="ok">✓ 有</td></tr>
+      <tr><td><b>条件计划</b>（分支表）</td><td>详情页第 ⑤ 区块（默认展开）+ 卡片 + 飞书完整文本</td><td class="ok">✓ 有</td></tr>
+      <tr><td><b>技术解释</b>（8 字段）</td><td>详情页第 ⑧ 区块，点击"看技术依据"展开</td><td class="ok">✓ 有</td></tr>
+      <tr><td><b>趋势 / 位置 / 关键价位</b></td><td>详情页第 ⑧ 区块 6a + 第 ⑥ 区块 + 卡片</td><td class="ok">✓ 有</td></tr>
+      <tr><td><b>大盘环境 / 板块强弱</b></td><td>Tab A 上下两区 + 详情页 6c / 6d（只读引用，不重算）</td><td class="ok">✓ 有</td></tr>
+      <tr><td><b>组合层硬上限校验</b></td><td>Tab B 顶部组合层卡片 + 条件计划的仓位校验行</td><td class="ok">✓ 有</td></tr>
+      <tr><td><b>LLM 人话文案</b></td><td>详情页第 ① 区块 + Tab A 总结段 + 飞书摘要</td><td class="ok">✓ 有</td></tr>
+    </tbody>
+  </table>
+  </div>
+  <div class="plain"><b>一致性的硬规矩</b>：同一项（比如操作意见）在列表、详情、卡片、飞书四个地方显示时，必须来自同一份结果、同一段文案——不允许出现"列表写减仓、飞书写持有"。这条已经写进验收项 B5 和 B41。</div>
+</section>
+
+<!-- ============ 6 待确认 ============ -->
+<section id="s6">
+  <h2><span class="num">6</span>还需要你把关的事</h2>
+  <p class="lead">需求本身已经写完整，但有 3 类事项不是"写成文字"就能解决的，需要你拍板或提供材料。</p>
+  <div class="grid3">
+    <div class="mini" style="border-color:#d9e2ff"><div class="ic" style="background:var(--blue-bg);color:var(--blue)">A</div>
+      <h4>整体批准</h4>
+      <p>文档目前是<b>草案 / 待批准</b>。你确认这份需求就是你要的，才会进入原型固化 → 技术方案 → 编码。在此之前不会动工。</p></div>
+    <div class="mini" style="border-color:#ffe1b8"><div class="ic" style="background:var(--warn-bg);color:var(--warn)">B</div>
+      <h4>阈值要靠回看定</h4>
+      <p>箱体宽度 12%、触碰 2 次、位置 50% 二分、连续 2 日防抖等<b>只是初值</b>。会用「1 只票逐字段看 → 10 只票 × 5 天」的纸面回看，以及方案定稿后的回测来最终确定。</p></div>
+    <div class="mini" style="border-color:#e5d9ff"><div class="ic" style="background:var(--purple-bg);color:var(--purple)">C</div>
+      <h4>部署材料</h4>
+      <p>飞书 webhook / app 凭据、大模型渠道与成本上限等属于配置材料，不是需求口径，等部署时提供即可。项目已有的数据源和通知能力会复用，不重复造轮子。</p></div>
+  </div>
+  <div class="note" style="margin-top:18px"><b>一个提醒</b>：年化 10–20% 是你自述的目标，需求明确把它限定为"组合层回看对照"，不会出现在任何操作建议里，也不会变成收益承诺。回测结果只作为验证记录，不承诺未来收益。</div>
+
+  <div class="foot">
+    本解读文档由需求规格 <b>v2.1</b> 生成，用于帮助需求方核对口径，不替代正式需求文档。<br>
+    文中所有数字（价格、股数、指数）均为示意用的模拟数据，不代表真实行情。<br>
+    以上内容由 AI 基于公开信息整理生成，仅供参考，<b>不构成投资建议或个股推荐</b>。投资有风险，决策需谨慎。
+  </div>
+</section>
+
+</main>
+</div>
+
+<script>
+// 目录高亮：滚动时标记当前章节
+var secs=[].slice.call(document.querySelectorAll('section'));
+var links=[].slice.call(document.querySelectorAll('#nav a'));
+function hi(){
+  var y=window.scrollY+100, cur=secs[0]&&secs[0].id;
+  secs.forEach(function(s){if(s.offsetTop<=y)cur=s.id;});
+  links.forEach(function(a){
+    var h=a.getAttribute('href').slice(1);
+    var active=(h===cur)||(a.classList.contains('sub')&&h===cur);
+    a.classList.toggle('on',active);
+  });
+}
+window.addEventListener('scroll',hi,{passive:true});hi();
+</script>
+</body>
+</html>
