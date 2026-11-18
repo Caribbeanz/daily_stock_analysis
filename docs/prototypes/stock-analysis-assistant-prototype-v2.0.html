@@ -1,0 +1,1097 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>股票分析助手 · 交互原型 v2.0（模拟数据）</title>
+<style>
+:root{
+  --bg:#f3f6fa; --surface:#fff; --surface2:#f8fafc; --border:#e3e8f0; --border2:#eef1f6;
+  --text:#1a2432; --text2:#5a6675; --text3:#8b95a4;
+  --up:#d92d20; --up-bg:#fdeceb; --down:#0e9a6b; --down-bg:#e8f7f1; --flat:#8b95a4;
+  --accent:#2563eb; --accent-bg:#eaf1ff; --ai:#7b5cd6; --ai-bg:#f2edff;
+  --severe:#d92d20; --severe-bg:#fdeceb; --warn:#d98808; --warn-bg:#fff4e2; --observe:#8b95a4; --observe-bg:#f1f3f6;
+  --radius:12px; --shadow:0 1px 3px rgba(20,32,55,.05);
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{background:#e9edf4;color:var(--text);font:14px/1.6 -apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei","Segoe UI",Roboto,sans-serif;-webkit-font-smoothing:antialiased}
+button{font-family:inherit;cursor:pointer}
+a{color:var(--accent);text-decoration:none}
+.hidden{display:none !important}
+
+/* ---------- 原型控制条（不属于产品界面） ---------- */
+.proto-bar{position:sticky;top:0;z-index:60;background:#141c2b;color:#dfe7f2;display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:9px 18px;box-shadow:0 2px 12px rgba(0,0,0,.22)}
+.proto-bar .brand{font-weight:700;color:#fff;font-size:13px;letter-spacing:.3px;margin-right:4px}
+.proto-bar .fake{background:#b54708;color:#fff;border-radius:5px;padding:2px 8px;font-size:11px;font-weight:700;white-space:nowrap}
+.proto-bar .hint{font-size:11px;color:#95a5bd;margin-right:auto}
+.seg{display:inline-flex;border:1px solid #3a465c;border-radius:7px;overflow:hidden}
+.seg button{background:transparent;color:#c5d1e2;border:0;padding:5px 11px;font-size:11.5px;line-height:1.5}
+.seg button.on{background:#3b74f0;color:#fff;font-weight:600}
+.pbtn{background:#222d40;color:#d7e1f0;border:1px solid #3a465c;border-radius:7px;padding:5px 11px;font-size:11.5px}
+.pbtn:hover{background:#2d3a52}
+.pbtn.on{background:#3b74f0;border-color:#3b74f0;color:#fff}
+
+/* ---------- 设备舞台 ---------- */
+.stage{display:flex;justify-content:center;align-items:flex-start;padding:22px 16px 70px}
+.device{width:1180px;max-width:100%;background:var(--bg);border:1px solid #d8dfe9;border-radius:14px;overflow:hidden;box-shadow:0 18px 50px rgba(24,38,62,.14);transition:width .25s ease,border-radius .25s ease}
+.device.phone{width:392px;border:9px solid #1b2230;border-radius:30px;box-shadow:0 24px 64px rgba(0,0,0,.3)}
+.phone-status{display:none}
+.device.phone .phone-status{display:flex;align-items:center;justify-content:space-between;padding:8px 20px 4px;background:#fff;font-size:11px;font-weight:600;color:#223}
+.device.phone .phone-notch{width:110px;height:5px;border-radius:6px;background:#d8dee8;margin:0 auto 4px}
+.app-frame{container-name:app;container-type:inline-size;width:100%;background:var(--bg)}
+.device.phone .app-frame{height:748px;overflow-y:auto;overscroll-behavior:contain;scroll-behavior:smooth}
+
+/* ---------- 产品头 ---------- */
+.app-head{background:#fff;border-bottom:1px solid var(--border);padding:12px 18px 0}
+.app-head .title-row{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.app-head h1{font-size:17px;margin:0;font-weight:700;letter-spacing:.2px}
+.app-head .sub{font-size:11.5px;color:var(--text3)}
+.app-head .right{margin-left:auto;display:flex;gap:6px;align-items:center}
+.status-strip{display:flex;gap:8px;flex-wrap:wrap;align-items:center;padding:9px 0 10px;font-size:11.5px;color:var(--text2)}
+.chip{display:inline-flex;align-items:center;gap:4px;border:1px solid var(--border);background:var(--surface2);border-radius:6px;padding:2px 7px;font-size:11px;color:var(--text2);white-space:nowrap}
+.chip.blue{background:var(--accent-bg);border-color:#d5e2ff;color:#1d4ed8}
+.chip.ai{background:var(--ai-bg);border-color:#e2d8ff;color:#6742c4}
+.chip.fake{background:#fff1e6;border-color:#ffd8b5;color:#a7500a}
+.tabbar{display:flex;gap:4px;position:sticky;top:0;z-index:30;background:#fff;border-bottom:1px solid var(--border);padding:0 18px;box-shadow:0 2px 6px rgba(20,32,55,.03)}
+.tab{position:relative;background:none;border:0;padding:11px 16px 10px;font-size:13.5px;color:var(--text2);border-bottom:2px solid transparent}
+.tab.on{color:var(--accent);font-weight:700;border-bottom-color:var(--accent)}
+.tab.disabled{color:#b4bcc8;cursor:not-allowed}
+.tab .soon{margin-left:6px;font-size:10px;background:#f0f2f6;color:#98a2b2;border-radius:4px;padding:1px 5px;font-weight:500}
+
+/* ---------- 通用块 ---------- */
+.view{padding:15px 18px 30px;display:flex;flex-direction:column;gap:13px}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:14px 16px;box-shadow:var(--shadow);position:relative}
+.card.tight{padding:12px 14px}
+.card-h{display:flex;align-items:center;gap:8px;margin-bottom:10px;flex-wrap:wrap}
+.card-h h2{font-size:14.5px;margin:0;font-weight:700}
+.card-h h3{font-size:13px;margin:0;font-weight:700}
+.card-h .desc{font-size:11px;color:var(--text3);font-weight:400}
+.card-h .right{margin-left:auto;display:flex;gap:6px;align-items:center}
+.sec-label{font-size:11px;color:var(--text3);letter-spacing:.5px;font-weight:600;margin:2px 0 -4px}
+.muted{color:var(--text2)}
+.tiny{font-size:11.5px;color:var(--text3)}
+.mono{font-family:"SFMono-Regular",Consolas,"Liberation Mono",monospace;font-size:11.5px}
+.up{color:var(--up)} .down{color:var(--down)} .flat{color:var(--flat)}
+.b{font-weight:700}
+.divider{height:1px;background:var(--border2);margin:10px 0}
+.btn{background:var(--surface2);border:1px solid var(--border);border-radius:7px;padding:5px 10px;font-size:11.5px;color:var(--text2)}
+.btn:hover{background:#eef2f8;color:var(--accent);border-color:#cdd9ee}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+.btn.primary:hover{background:#1d4ed8;color:#fff}
+.btn.sm{padding:3px 8px;font-size:11px}
+.term{border:0;background:none;padding:0;color:var(--accent);border-bottom:1px dashed #a8c0f5;font-size:inherit;font-weight:inherit}
+.lv{display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:700;border-radius:5px;padding:2px 7px;white-space:nowrap}
+.lv.severe{background:var(--severe-bg);color:var(--severe)}
+.lv.warn{background:var(--warn-bg);color:var(--warn)}
+.lv.observe{background:var(--observe-bg);color:#6b7585}
+.lv.none{background:var(--observe-bg);color:#7b8595}
+.pill{font-size:10.5px;border:1px solid var(--border);border-radius:5px;padding:1px 6px;color:var(--text2);background:var(--surface2);white-space:nowrap}
+.pill.buy{background:var(--up-bg);border-color:#f6cfcb;color:var(--up)}
+.pill.sell{background:var(--down-bg);border-color:#c9ebdc;color:var(--down)}
+.pill.neutral{background:#f1f3f7;border-color:var(--border);color:var(--text2)}
+.pill.state{background:#f4f5f8;border-color:#e0e4eb;color:#7c8695}
+.pill.plan{background:var(--accent-bg);border-color:#d5e2ff;color:#1d4ed8}
+.pill.ai{background:var(--ai-bg);border-color:#e2d8ff;color:#6742c4}
+
+/* ---------- 阶段定位（§5.14） ---------- */
+.stage-card{border-left:4px solid #cfd8e6}
+.stage-card.s1{border-left-color:var(--up);background:linear-gradient(100deg,#fff8f7,#fff 46%)}
+.stage-card.s2{border-left-color:var(--warn);background:linear-gradient(100deg,#fffbf3,#fff 46%)}
+.stage-card.s3{border-left-color:var(--down);background:linear-gradient(100deg,#f4fbf8,#fff 46%)}
+.stage-card.s4{border-left-color:var(--accent);background:linear-gradient(100deg,#f5f9ff,#fff 46%)}
+.stage-card.s0{border-left-color:#b8c1cf;background:var(--surface2)}
+.stage-top{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.stage-badge{display:inline-flex;align-items:baseline;gap:7px;font-weight:800;letter-spacing:.2px}
+.stage-badge .id{font-size:11.5px;font-weight:800;border-radius:5px;padding:2px 6px;background:#eef2f8;color:#54607a;letter-spacing:.5px}
+.stage-badge .nm{font-size:19px}
+.stage-card.s1 .stage-badge .id{background:var(--up-bg);color:var(--up)}
+.stage-card.s2 .stage-badge .id{background:var(--warn-bg);color:var(--warn)}
+.stage-card.s3 .stage-badge .id{background:var(--down-bg);color:var(--down)}
+.stage-card.s4 .stage-badge .id{background:var(--accent-bg);color:#1d4ed8}
+.stage-say{margin-top:9px;font-size:13px;line-height:1.75;background:#fff;border:1px dashed var(--border);border-radius:8px;padding:9px 11px}
+.ev-list{margin:7px 0 0;padding:0;list-style:none;display:flex;flex-direction:column;gap:4px}
+.ev-list li{font-size:11.8px;color:var(--text2);line-height:1.55;padding-left:12px;position:relative}
+.ev-list li::before{content:'·';position:absolute;left:3px;top:-2px;font-weight:800;color:#9aa6b8}
+.playgrid{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
+.playgrid .p{flex:1 1 200px;min-width:0;border:1px solid var(--border);border-radius:8px;padding:8px 10px;background:#fff}
+.playgrid .p .k{font-size:10.5px;font-weight:800;letter-spacing:.4px;color:var(--text3)}
+.playgrid .p .v{font-size:12.3px;line-height:1.6;margin-top:3px;color:var(--text)}
+.playgrid .p.wide{flex:1 1 100%}
+.playgrid .p.allow{background:#f6fbf9;border-color:#d7ece4}
+.playgrid .p.deny{background:#fff7f6;border-color:#f4dedb}
+.playgrid .p.next{background:var(--surface2)}
+.stage-tag{font-size:10px;font-weight:700;border:1px solid var(--border);background:var(--surface2);color:var(--text2);border-radius:5px;padding:1px 5px;white-space:nowrap}
+.stage-tag.s1{background:var(--up-bg);border-color:#f6cfcb;color:var(--up)}
+.stage-tag.s2{background:var(--warn-bg);border-color:#f3ddb7;color:#a96b05}
+.stage-tag.s3{background:var(--down-bg);border-color:#c9ebdc;color:var(--down)}
+.stage-tag.s4{background:var(--accent-bg);border-color:#d5e2ff;color:#1d4ed8}
+
+/* ---------- 浮动「回到页首」 ---------- */
+.fab{position:fixed;z-index:80;width:46px;height:46px;border-radius:50%;border:1px solid #d5e2ff;background:#fff;
+ color:#1d4ed8;box-shadow:0 6px 20px rgba(20,32,55,.18);display:flex;flex-direction:column;align-items:center;
+ justify-content:center;gap:1px;padding:0;opacity:0;transform:translateY(10px);pointer-events:none;
+ transition:opacity .18s ease,transform .18s ease,background .15s}
+.fab .ar{font-size:15px;line-height:1;font-weight:800}
+.fab .tx{font-size:9px;font-weight:700;letter-spacing:.5px}
+.fab.on{opacity:1;transform:none;pointer-events:auto}
+.fab:hover{background:#f3f7ff}
+.fab:active{transform:scale(.94)}
+
+/* 需求对照标注 */
+[data-spec]{position:relative}
+body.show-spec [data-spec]::before{content:attr(data-spec);position:absolute;top:-9px;right:8px;background:#334155;color:#fff;font-size:10px;line-height:1.4;padding:1px 6px;border-radius:4px;z-index:3;font-weight:600;letter-spacing:.2px}
+body.show-spec [data-spec]{outline:1px dashed #c7d2e2}
+
+/* ---------- 状态/风险条 ---------- */
+.notice{border-radius:10px;padding:11px 13px;font-size:12.5px;line-height:1.65}
+.notice.blue{background:var(--accent-bg);border:1px solid #d5e2ff;color:#204494}
+.notice.gray{background:var(--surface2);border:1px solid var(--border);color:var(--text2)}
+.notice.warn{background:#fffaf0;border:1px solid #f6e2bb;color:#8a5b0c}
+.notice.ai{background:var(--ai-bg);border:1px solid #e2d8ff;color:#5b3eae}
+.risk-bar{background:#fff;border:1px solid #f0d5d2;border-radius:var(--radius);padding:0;overflow:hidden}
+.risk-bar .rb-head{display:flex;align-items:center;gap:8px;padding:10px 14px;background:#fff7f6;border-bottom:1px solid #f6e3e1;font-size:13px;font-weight:700;color:#a3271d}
+.risk-item{display:flex;gap:9px;align-items:flex-start;padding:9px 14px;border-bottom:1px solid var(--border2);cursor:pointer;font-size:12.3px;background:#fff}
+.risk-item:last-child{border-bottom:0}
+.risk-item:hover{background:#fafbfd}
+.risk-item .rb-txt{flex:1;line-height:1.55}
+.risk-item .rb-meta{font-size:10.8px;color:var(--text3);margin-top:2px}
+.risk-item .arrow{color:#b6bfcc;font-size:15px;align-self:center}
+
+/* ---------- 指数 / 指标 ---------- */
+.idx-strip{display:flex;gap:10px;overflow-x:auto;padding-bottom:2px}
+.idx{min-width:210px;flex:1;border:1px solid var(--border);border-radius:10px;padding:10px 12px;background:var(--surface2)}
+.idx.main{background:linear-gradient(135deg,#fff6f5,#fff);border-color:#f2d6d3}
+.idx .nm{font-size:11.5px;color:var(--text2);display:flex;justify-content:space-between}
+.idx .v{font-size:21px;font-weight:700;letter-spacing:.4px;line-height:1.35}
+.idx .p{font-size:12.5px;font-weight:700}
+.grid{display:grid;gap:9px}
+.g6{grid-template-columns:repeat(6,1fr)}
+.g3{grid-template-columns:repeat(3,1fr)}
+.g2{grid-template-columns:repeat(2,1fr)}
+.g4{grid-template-columns:repeat(4,1fr)}
+.metric{border:1px solid var(--border);border-radius:9px;padding:9px 10px;background:var(--surface2);min-width:0}
+.metric .k{font-size:11px;color:var(--text2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.metric .v{font-size:16px;font-weight:700;margin:2px 0 1px;white-space:nowrap}
+.metric .s{font-size:10.5px;color:var(--text3)}
+.metric .tech-toggle{margin-top:4px}
+.tech-toggle{border:0;background:none;padding:0;color:var(--accent);font-size:10.8px;line-height:1.5}
+.tech-toggle:hover{text-decoration:underline}
+.tech-body{background:#f7f9fd;border:1px dashed #d4deee;border-radius:8px;padding:9px 11px;margin-top:7px;font-size:11.5px;color:var(--text2);line-height:1.7}
+.tech-body .l1{color:var(--text);font-size:12px;margin-bottom:6px}
+.tech-full{margin-top:7px;border-top:1px solid #dde5f2;padding-top:7px}
+.kv{display:grid;grid-template-columns:88px 1fr;gap:3px 8px;font-size:11px}
+.kv .k{color:var(--text3)}
+.quad{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:8px}
+.quad .q{border:1px solid var(--border);background:var(--surface2);border-radius:8px;padding:7px 9px;font-size:11px;color:var(--text2)}
+.quad .q.on{background:var(--accent-bg);border-color:#b9cffb;color:#1d4ed8;font-weight:700;box-shadow:inset 0 0 0 1px #b9cffb}
+.quad .q b{display:block;font-size:12px;color:inherit}
+.regime-box{display:flex;gap:12px;align-items:flex-start;flex-wrap:wrap}
+.regime-main{flex:1 1 260px}
+.regime-tag{display:inline-block;background:var(--accent-bg);color:#1d4ed8;border:1px solid #cddcff;border-radius:8px;padding:5px 12px;font-size:17px;font-weight:800}
+.counts{display:flex;gap:6px;flex-wrap:wrap;margin-top:9px}
+
+/* ---------- 板块 ---------- */
+.sector-card{border:1px solid var(--border);border-radius:var(--radius);background:#fff;padding:12px 14px}
+.sector-card .sh{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.sector-card .sh b{font-size:14px}
+.sector-card .line{font-size:12.2px;color:var(--text2);margin-top:7px;line-height:1.65}
+.sector-card .line .k{color:var(--text3);font-size:11.5px;display:inline-block;min-width:66px}
+.sector-card .r7{background:var(--surface2);border:1px solid var(--border2);border-radius:8px;padding:8px 10px;margin-top:9px;font-size:11.8px;color:var(--text2);line-height:1.7}
+.rel-bar{margin-top:9px;border-top:1px dashed var(--border);padding-top:8px;display:flex;gap:7px;flex-wrap:wrap;align-items:center}
+.rel-link{border:1px solid var(--border);background:#fafbfe;border-radius:6px;padding:3px 8px;font-size:11.5px;color:var(--accent)}
+.rel-link:hover{background:var(--accent-bg)}
+
+/* ---------- 列表 ---------- */
+.portfolio{display:flex;gap:10px;flex-wrap:wrap}
+.pf{flex:1 1 150px;background:var(--surface2);border:1px solid var(--border);border-radius:9px;padding:9px 11px}
+.pf .k{font-size:11px;color:var(--text3)}
+.pf .v{font-size:16px;font-weight:700}
+.pf .s{font-size:10.5px;color:var(--text3)}
+.todo-head{display:flex;align-items:center;gap:8px;background:#fff8f1;border:1px solid #f4dfc2;border-radius:10px;padding:10px 13px;font-size:13px;font-weight:700;color:#8a5b0c}
+.list-head,.stock-row{display:grid;grid-template-columns:minmax(170px,1.7fr) 96px 92px minmax(120px,1.1fr) 132px;gap:10px;align-items:center}
+.list-head{padding:0 13px 6px;font-size:11px;color:var(--text3);letter-spacing:.3px}
+.stock-row{background:#fff;border:1px solid var(--border);border-radius:10px;padding:10px 13px;cursor:pointer;transition:box-shadow .15s,border-color .15s;margin-bottom:7px}
+.stock-row:hover{border-color:#b8cdf7;box-shadow:0 3px 12px rgba(37,99,235,.1)}
+.stock-row.state-row{background:#fbfcfe}
+.s-name{font-weight:700;font-size:13.5px;display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.s-name .code{font-weight:400;color:var(--text3);font-size:11.5px;font-family:"SFMono-Regular",Consolas,monospace}
+.s-price{text-align:right;font-weight:700;font-size:14px}
+.s-pct{text-align:right;font-weight:700;font-size:13px}
+.s-advice{display:flex;align-items:center;gap:5px;flex-wrap:wrap}
+.s-tags{display:flex;gap:4px;justify-content:flex-end;flex-wrap:wrap}
+.stock-row .sub{font-size:10.8px;color:var(--text3);font-weight:400}
+
+/* ---------- 详情 ---------- */
+.crumb{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--text3);flex-wrap:wrap}
+.hero-name{display:flex;align-items:baseline;gap:9px;flex-wrap:wrap}
+.hero-name b{font-size:20px}
+.hero-name .code{font-family:"SFMono-Regular",Consolas,monospace;color:var(--text3);font-size:13px}
+.human{background:linear-gradient(135deg,#f6f3ff,#fff);border:1px solid #e4dbff;border-radius:10px;padding:11px 13px;font-size:13.5px;line-height:1.7;color:#3c2d70}
+.ohlc{display:grid;grid-template-columns:repeat(5,1fr);gap:8px;text-align:center}
+.ohlc div{background:var(--surface2);border:1px solid var(--border2);border-radius:8px;padding:7px 4px}
+.ohlc .k{font-size:10.5px;color:var(--text3)}
+.ohlc .v{font-size:13.5px;font-weight:700}
+.advice-box{display:flex;align-items:center;gap:10px;flex-wrap:wrap;border:1px solid #d8e2f6;border-radius:10px;background:var(--accent-bg);padding:11px 13px}
+.advice-box .main{font-size:20px;font-weight:800;color:#1d4ed8}
+.four{display:grid;grid-template-columns:repeat(4,1fr);gap:9px}
+.four .f{background:var(--surface2);border:1px solid var(--border);border-radius:9px;padding:9px 10px}
+.four .f .k{font-size:11px;color:var(--text3)}
+.four .f .v{font-size:14px;font-weight:700;margin-top:2px}
+.four .f .s{font-size:10.5px;color:var(--text3)}
+
+/* 条件计划 */
+.plan-intro{font-size:12.5px;background:var(--accent-bg);border:1px solid #d5e2ff;border-radius:8px;padding:9px 11px;color:#204494;line-height:1.7}
+.branch{border:1px solid var(--border);border-left:4px solid var(--accent);border-radius:9px;padding:10px 12px;background:#fff;margin-bottom:8px}
+.branch.act-buy{border-left-color:var(--up)}
+.branch.act-sell{border-left-color:var(--down)}
+.branch.act-none{border-left-color:#b6c0cf;background:#fcfdff}
+.branch .bh{display:flex;align-items:center;gap:7px;flex-wrap:wrap;margin-bottom:7px}
+.branch .bh b{font-size:13px}
+.branch .bh .right{margin-left:auto;display:flex;gap:5px;align-items:center}
+.brow{display:grid;grid-template-columns:82px 1fr;gap:4px 9px;font-size:12px;padding:2px 0;line-height:1.6}
+.brow .k{color:var(--text3);font-size:11px}
+.brow .v{word-break:break-word}
+.brow .v b{font-size:13px}
+.check-ok{color:var(--down);font-weight:700}
+.check-no{color:var(--up);font-weight:700}
+.combo-check{background:#fffaf0;border:1px solid #f2ddb6;border-radius:9px;padding:10px 12px;font-size:12.2px;line-height:1.75;color:#7d5710}
+.plan-foot{font-size:11px;color:var(--text3);border-top:1px dashed var(--border);padding-top:9px;margin-top:4px;line-height:1.7}
+
+/* 折叠分析 */
+.fold{border:1px solid var(--border);border-radius:9px;background:#fff;margin-bottom:7px;overflow:hidden}
+.fold>.fh{display:flex;align-items:center;gap:8px;padding:9px 12px;cursor:pointer;background:var(--surface2);font-size:12.5px;font-weight:700}
+.fold>.fh:hover{background:#f0f4fa}
+.fold>.fh .right{margin-left:auto;font-size:11px;color:var(--text3);font-weight:400}
+.fold>.fb{padding:10px 12px;font-size:12px;color:var(--text2);line-height:1.75}
+.dim-row{display:flex;gap:8px;padding:6px 0;border-bottom:1px dashed var(--border2)}
+.dim-row:last-child{border-bottom:0}
+.dim-row .dk{flex:0 0 92px;font-weight:700;color:var(--text)}
+.dim-row .dv{flex:1}
+
+/* 风险表 */
+.risk-table{border:1px solid var(--border);border-radius:9px;overflow:hidden}
+.rt-head,.rt-row{display:grid;grid-template-columns:70px 132px 1.3fr 84px 76px 1fr;gap:8px;align-items:start}
+.rt-head{background:var(--surface2);font-size:10.8px;color:var(--text3);padding:7px 10px;border-bottom:1px solid var(--border)}
+.rt-row{padding:9px 10px;border-bottom:1px solid var(--border2);font-size:11.5px;line-height:1.6}
+.rt-row:last-child{border-bottom:0}
+.rt-row.severe{background:#fffafa}
+.rt-row .human{grid-column:1/-1;background:none;border:0;padding:5px 0 0;font-size:11.8px;color:var(--text2);line-height:1.6}
+
+/* 术语/弹层 */
+.modal-mask{position:fixed;inset:0;background:rgba(15,22,36,.5);z-index:100;display:flex;align-items:center;justify-content:center;padding:18px}
+.modal{background:#fff;border-radius:14px;width:min(620px,100%);max-height:82vh;display:flex;flex-direction:column;box-shadow:0 24px 70px rgba(0,0,0,.3);overflow:hidden}
+.modal .mh{display:flex;align-items:center;padding:13px 16px;border-bottom:1px solid var(--border);font-weight:700;font-size:14px}
+.modal .mh .x{margin-left:auto;background:none;border:0;font-size:20px;color:var(--text3);line-height:1}
+.modal .mb{padding:14px 16px;overflow-y:auto;font-size:12.5px;line-height:1.8;color:var(--text2)}
+.modal .mf{padding:10px 16px;border-top:1px solid var(--border);display:flex;gap:8px;justify-content:flex-end}
+.feishu-text{background:#f6f8fb;border:1px solid var(--border);border-radius:9px;padding:12px 14px;font:12px/1.85 "SFMono-Regular",Consolas,"Microsoft YaHei",monospace;white-space:pre-wrap;color:#25334a}
+.toast{position:fixed;left:50%;bottom:28px;transform:translateX(-50%);background:#1d2736;color:#fff;padding:9px 16px;border-radius:8px;font-size:12.5px;z-index:200;box-shadow:0 8px 26px rgba(0,0,0,.24);opacity:0;pointer-events:none;transition:opacity .2s}
+.toast.on{opacity:1}
+.foot{background:#fff;border-top:1px solid var(--border);padding:11px 18px;font-size:11px;color:var(--text3);line-height:1.7}
+.device.phone .foot{padding-bottom:56px}
+
+/* ---------- H5 响应式（容器查询，同一套代码） ---------- */
+@container app (max-width:920px){
+  .g6{grid-template-columns:repeat(3,1fr)}
+  .g4{grid-template-columns:repeat(2,1fr)}
+}
+@container app (max-width:720px){
+  .view{padding:12px 11px 24px;gap:11px}
+  .card{padding:12px 12px}
+  .app-head{padding:10px 12px 0}
+  .app-head h1{font-size:15.5px}
+  .app-head .sub{display:none}
+  .tabbar{padding:0 8px}
+  .tab{padding:10px 10px 9px;font-size:12.5px;flex:1;text-align:center}
+  .tab .soon{display:none}
+  .g6{grid-template-columns:repeat(2,1fr)}
+  .g3,.g2{grid-template-columns:1fr}
+  .g4{grid-template-columns:repeat(2,1fr)}
+  .idx{min-width:172px}
+  .idx .v{font-size:18px}
+  .list-head{display:none}
+  .stock-row{display:flex;flex-wrap:wrap;gap:5px 9px;padding:10px 11px}
+  .s-name{flex:1 1 100%;font-size:13.5px}
+  .s-price,.s-pct{text-align:left;font-size:13px}
+  .s-advice{flex:1 1 100%}
+  .s-tags{flex:1 1 100%;justify-content:flex-start;margin-top:2px}
+  .ohlc{grid-template-columns:repeat(5,1fr);gap:4px}
+  .ohlc .v{font-size:11.5px}
+  .four{grid-template-columns:repeat(2,1fr)}
+  .brow{grid-template-columns:1fr;gap:1px}
+  .brow .k{font-size:10.5px}
+  .branch{padding:10px}
+  .rt-head{display:none}
+  .rt-row{display:flex;flex-wrap:wrap;gap:4px 8px;padding:9px 10px}
+  .rt-row>span:nth-child(n+3){flex:1 1 100%}
+  .rt-row .human{display:block}
+  .kv{grid-template-columns:74px 1fr}
+  .regime-box{flex-direction:column}
+  .modal{width:100%}
+}
+</style>
+</head>
+<body>
+<div class="proto-bar">
+  <span class="brand">交互原型 v2.0</span>
+  <span class="fake">模拟数据 · 非真实行情</span>
+  <span class="hint">需求对照：§6 三视图展示契约 / §5.14 阶段定位与策略匹配 / §5.10 风险 / §5.11 条件计划 / §5.13 LLM 文案层</span>
+  <div class="seg" id="deviceSeg">
+    <button data-device="pc" class="on">PC 宽屏</button>
+    <button data-device="phone">移动 H5</button>
+  </div>
+  <button class="pbtn" id="specBtn">需求对照：关</button>
+  <button class="pbtn" data-act="feishu">飞书推送预览</button>
+  <button class="pbtn" data-act="reset">回到首页</button>
+</div>
+
+<div class="stage">
+  <div class="device" id="device">
+    <div class="phone-status"><span>08:02</span><span class="phone-notch"></span><span>●●● 100%</span></div>
+    <div class="app-frame" id="appFrame">
+      <header class="app-head">
+        <div class="title-row">
+          <h1>盘前助手 · 高抛低吸</h1>
+          <span class="sub">中长期分红策略 / 技术面为主</span>
+          <div class="right"><span class="chip blue">已登录</span><span class="chip fake">原型模拟数据</span></div>
+        </div>
+        <div class="status-strip" id="statusStrip"></div>
+      </header>
+      <nav class="tabbar" id="tabbar"></nav>
+      <main id="views"></main>
+      <footer class="foot">
+        以上为盘前静态结论与条件计划，由本人在券商端自行设置条件单；工具不自动下单、不监控盘中、开盘后不更新。数据为原型模拟数据，不构成任何投资建议或收益承诺。投资有风险，决策需谨慎。
+      </footer>
+    </div>
+  </div>
+</div>
+
+<div id="modalRoot"></div>
+<div class="toast" id="toast"></div>
+<button class="fab" id="fab" data-act="to-top" aria-label="回到页首" title="回到页首"><span class="ar">↑</span><span class="tx">顶部</span></button>
+
+<script>
+/* ============================================================
+   股票分析助手 v2.0 · 交互原型
+   全部数据为模拟数据，仅用于验证信息架构 / 展示契约 / 交互。
+   数据严格遵循 docs/requirements/...v2.0.md 的字段与口径。
+   ============================================================ */
+const SNAP = {
+  data_date:'2026-11-10', decision_time:'2026-11-11 07:30', render_time:'2026-11-11 08:02',
+  next_trade_date:'2026-11-11', snapshot_id:'snap-20261111-0730', calc_version:'cv2.0.3',
+  source_tag:'D1', is_trading_day:true, triple_ok:true,
+  total_capital:500000, position_pct:62.4, cash_pct:37.6, t_pct:3.1,
+  market:{
+    main:{name:'上证指数',code:'sh000001',close:'3,286.42',pct:0.62},
+    aux:[{name:'深证成指',v:'10,482.16',pct:0.34},{name:'创业板指',v:'2,174.85',pct:-0.18}],
+    cells:[
+      {k:'MA20 位置',v:'上方',s:'above · 偏多',tone:'up',tech:'ma20'},
+      {k:'均线排列',v:'多头',s:'MA5>MA10>MA20',tone:'up',tech:'arrange'},
+      {k:'量能比',v:'1.12',s:'放量（仅确认）',tone:'flat',tech:'vol'},
+      {k:'RSI(14)',v:'58.4',s:'中性区',tone:'flat',tech:'rsi'},
+      {k:'20 日位置',v:'72%',s:'偏高位',tone:'flat',tech:'pos20'},
+      {k:'5 日涨幅',v:'+1.86%',s:'近 5 交易日',tone:'up',tech:'pct5'}
+    ],
+    breadth:{up:2876,down:2105,flat:219,style:'大盘价值略占优',note:'样本充足 · 不参与硬结论'},
+    regime:{label:'中性',quadrant:'Q2',A:'above',B:'not_up',factors:2,volume:'放量 1.12',volume_ok:true,degraded:false,degraded_reason:'none',
+      tempo:'价格仍在均线之上，但均线动能减弱，等确认、不追高。',tail:'个股仍按各自纪律执行'},
+    counts:{'减/清':2,'加/建':2,'持有':3,'观望':1,'状态位':3}, total:11,
+    summary:'上证指数收于 3,286.42 点、涨 0.62%，量能比 1.12 为放量，价格位于 MA20 上方但均线斜率未继续向上，环境评级为「中性」，节奏以等确认为主。自选 11 只标的中，减/清 2 只、加/建 2 只、持有 3 只、观望 1 只、状态位 3 只；具体动作仍按各标的自身纪律执行。'
+  },
+  page_risks:[
+    {level:'severe',name:'中国神华 601088',scope:'个股 / 技术面',cat:'TEC-2 跌破趋势失效位',
+     text:'收盘 39.12 元已跌破趋势失效位 39.30 元，连续 2 日收于其下，已进入「先减后清」的 L1 状态，保留分红底仓。',affects:'是 · 建议降级为减仓',code:'601088'},
+    {level:'severe',name:'大秦铁路 601006',scope:'板块 / 估值',cat:'SEC-2 价值陷阱',
+     text:'PE 历史分位 8% 处于低位，但价格与所属板块已连续 5 日下行、长周期位置走低；估值低不等于安全，本期禁止任何买入类意见。',affects:'是 · 禁止买入类意见',code:'601006'},
+    {level:'warn',name:'长江电力 600900',scope:'个股 / 技术面',cat:'TEC-1 转弱但未破位',
+     text:'趋势档由「偏强」转为「中性」、位置标签转高位且出现量价背离，尚未跌破失效位 26.80 元；属于破位前的预警，主档「持有」不变，本期禁止加仓 / 建仓类动作。',affects:'是 · 禁止买入类动作',code:'600900'},
+    {level:'observe',name:'招商银行 600036',scope:'数据质量',cat:'DQ-2 使用缓存 / 主备源切换',
+     text:'主行情源超时，已切换至备用源并使用当日缓存快照，数据日期仍为 2026-11-10；仅记数据质量，不改变建议档位。',affects:'否 · 仅注记',code:'600036'}
+  ],
+  sectors:[
+    {code:'BK0428',name:'电力',type:'东财行业板块',sw:'公用事业（申万一级对照 · 仅展示）',strength:'偏强',pct:0.31,rank:24,total:86,pctile:73,rs:'强于大盘',rs_diff:'-0.31',up:21,down:8,flat:2,excluded:1,leader:'华能国际(600011) +2.14%',
+     holdings:['600900','600025','601985'],h_stat:'3 只：2 只跑赢、1 只跑输、0 只持平',r7:'当日涨跌 +0.31%，全市场 86 个板块中排第 24（分位 73%）；相对上证指数：强于大盘（差 -0.31 个百分点）；板块内 上涨 21/下跌 8/平盘 2 家（1 只无数据未计入），领涨 华能国际(600011) +2.14%；板块内自选标的 3 只：2 只跑赢、1 只跑输、0 只持平（结构描述，不构成换股建议）。'},
+    {code:'BK0475',name:'银行',type:'东财行业板块',sw:'银行（申万一级对照 · 仅展示）',strength:'中性',pct:-0.08,rank:49,total:86,pctile:43,rs:'相近',rs_diff:'-0.70',up:14,down:17,flat:5,excluded:0,leader:'招商银行(600036) +1.02%',
+     holdings:['600036','601398'],h_stat:'2 只：1 只跑赢、1 只跑输、0 只持平',r7:'当日涨跌 -0.08%，全市场 86 个板块中排第 49（分位 43%）；相对上证指数：相近（差 -0.70 个百分点）；板块内 上涨 14/下跌 17/平盘 5 家（0 只无数据未计入），领涨 招商银行(600036) +1.02%；板块内自选标的 2 只：1 只跑赢、1 只跑输、0 只持平（结构描述，不构成换股建议）。'},
+    {code:'BK0421',name:'铁路公路',type:'东财行业板块',sw:'交通运输（申万一级对照 · 仅展示）',strength:'偏弱',pct:-1.24,rank:79,total:86,pctile:9,rs:'弱于大盘',rs_diff:'-1.86',up:3,down:28,flat:1,excluded:2,leader:'宁沪高速(600377) 停牌',
+     holdings:['601006','600377'],h_stat:'2 只：0 只跑赢、1 只跑输、1 只无数据',r7:'当日涨跌 -1.24%，全市场 86 个板块中排第 79（分位 9%）；相对上证指数：弱于大盘（差 -1.86 个百分点）；板块内 上涨 3/下跌 28/平盘 1 家（2 只无数据未计入），领涨 宁沪高速(600377) 停牌未计入；板块内自选标的 2 只：0 只跑赢、1 只跑输、1 只无数据（结构描述，不构成换股建议）。'}
+  ],
+  more_sectors:[
+    {name:'煤炭开采',n:1}, {name:'指数-跟踪（宽基，不构成行业板块）',n:1},
+    {name:'建筑装饰',n:1}, {name:'食品加工',n:1}
+  ],
+  holdings:[
+    {name:'中国神华',code:'601088',type:'股票',holding:true,price:39.12,prev:39.40,pct:-0.71,open:39.38,high:39.55,low:39.02,fail_price:39.30,l2_price:38.10,advice:'减仓',state:'有效',risk:'severe',planMode:'sell3',planCount:5,sector:'煤炭开采',trend:'偏弱',pos:'价格位置：中位；估值位置：低位（PE 分位 21%）',cost:36.80,pnl:6.30,days:412,div:'5.8%（分位 66%），连续分红 12 年',note:'已进入 L1：先减一部分，保留分红底仓'},
+    {name:'大秦铁路',code:'601006',type:'股票',holding:true,price:6.42,prev:6.48,pct:-0.92,open:6.47,high:6.49,low:6.40,fail_price:6.50,l2_price:6.20,advice:'减仓',state:'有效',risk:'severe',planMode:'sell3',planCount:5,sector:'铁路公路',trend:'偏弱',pos:'价格位置：低位；估值位置：低位（PE 分位 8%）',cost:7.15,pnl:-10.21,days:603,div:'6.1%（分位 71%），连续分红 14 年',note:'SEC-2 价值陷阱：估值低但价格／板块持续下行'},
+    {name:'长江电力',code:'600900',type:'股票',holding:true,price:27.86,prev:27.74,pct:0.43,open:27.75,high:27.98,low:27.70,advice:'持有',state:'有效',risk:'warn',planMode:'hold',planCount:5,sector:'电力',trend:'中性',pos:'价格位置：高位；估值位置：中位（PE 分位 54%）',cost:22.40,pnl:24.38,days:820,div:'3.4%（分位 48%），连续分红 18 年',note:'警示级：禁止买入类动作，主档不变'},
+    {name:'招商银行',code:'600036',type:'股票',holding:true,price:38.75,prev:38.36,pct:1.02,open:38.40,high:38.92,low:38.31,advice:'加仓',state:'有效',risk:'observe',planMode:'buy3',planCount:6,sector:'银行',trend:'偏强',pos:'价格位置：中位；估值位置：低位（PB 分位 19%）',cost:34.12,pnl:13.57,days:356,div:'5.1%（分位 62%），连续分红 11 年',note:'观察级数据质量信号，不改变建议档位'},
+    {name:'华能水电',code:'600025',type:'股票',holding:false,price:9.87,prev:9.90,pct:-0.30,open:9.89,high:9.93,low:9.84,advice:'观望',state:'有效',risk:'none',planMode:'hold',planCount:5,sector:'电力',trend:'中性',pos:'价格位置：中位；估值位置：中位（PE 分位 50%）',cost:null,pnl:null,days:null,div:'3.0%（分位 41%），连续分红 8 年',note:'观望是评分模型产出的有效意见，不是无数据'},
+    {name:'中国核电',code:'601985',type:'股票',holding:true,price:9.34,prev:9.32,pct:0.21,open:9.33,high:9.39,low:9.29,advice:'持有',state:'有效',risk:'none',planMode:'hold',planCount:5,sector:'电力',trend:'中性',pos:'价格位置：中位；估值位置：中位（PE 分位 47%）',cost:8.90,pnl:4.94,days:210,div:'2.9%（分位 39%），连续分红 7 年',note:''},
+    {name:'工商银行',code:'601398',type:'股票',holding:true,price:6.18,prev:6.17,pct:0.16,open:6.17,high:6.21,low:6.15,advice:'持有',state:'有效',risk:'none',planMode:'hold',planCount:5,sector:'银行',trend:'中性',pos:'价格位置：高位；估值位置：低位（PB 分位 14%）',cost:5.42,pnl:14.02,days:730,div:'5.6%（分位 68%），连续分红 16 年',note:''},
+    {name:'沪深300ETF',code:'510300',type:'ETF',holding:true,price:4.052,prev:4.057,pct:-0.12,open:4.055,high:4.070,low:4.041,advice:'等待买点',state:'有效',risk:'none',planMode:'buy2',planCount:5,sector:'指数-跟踪',trend:'中性',pos:'价格位置：中位；估值位置：中位（PE 分位 45%）',cost:3.910,pnl:3.63,days:180,div:'ETF 无财报维度；分红以基金分红公告为准',note:'ETF 按 100 份/手；T+0 允许同日买卖分支'},
+    {name:'双汇发展',code:'000895',type:'股票',holding:true,price:25.60,prev:null,pct:null,open:null,high:null,low:null,advice:'不可操作',state:'不可操作',risk:'none',planMode:'none',planCount:0,sector:'食品加工',trend:'—',pos:'停牌，未计算',cost:26.30,pnl:-2.66,days:150,div:'4.6%（分位 55%），连续分红 15 年',note:'停牌：显示停牌前最后收盘价（2026-11-05），涨跌幅「—」不着色'},
+    {name:'中国建筑',code:'601668',type:'股票',holding:true,price:null,prev:null,pct:null,open:null,high:null,low:null,advice:'待同步',state:'待同步',risk:'none',planMode:'none',planCount:0,sector:'建筑装饰',trend:'—',pos:'—',cost:5.10,pnl:null,days:400,div:'4.8%（分位 58%），连续分红 10 年',note:'三元组不一致：显示「待同步」，不显旧值、不显旧计划'},
+    {name:'宁沪高速',code:'600377',type:'股票',holding:true,price:null,prev:null,pct:null,open:null,high:null,low:null,advice:'无数据',state:'无数据',risk:'none',planMode:'none',planCount:0,sector:'铁路公路',trend:'—',pos:'—',cost:8.20,pnl:null,days:520,div:'5.0%（分位 60%），连续分红 13 年',note:'关键输入缺失：不生成操作意见，不显旧值 / 不 0 填充'}
+  ],
+  todo_codes:['601088','601006','600900','600036','510300','000895']
+};
+
+/* ---------- 阶段定位（§5.14）：五阶段定义 + 每只标的的阶段证据 ---------- */
+const STAGE_DEF={
+ S1:{name:'上升趋势',tag:'趋势段',play:'趋势跟随 + 回踩加仓（不追高）',
+  allow:'回踩买入 / 持有 / 移动止盈后的减仓 / 正 T（底仓不动）',
+  deny:'箱体上沿逆势高抛 / 左侧猜顶 / 跌破 MA20 仍加仓',
+  next:'跌破 MA20 且连续 2 日不收回 → 转 S2 或 S3',
+  tpl:'回踩买（主）+ 突破买（次）+ 区间 / 破位不动'},
+ S2:{name:'高位震荡',tag:'箱体段',play:'箱体高抛低吸（区间内做 T，底仓不动）',
+  allow:'上沿减（T 仓）/ 下沿买（T 仓或分批）/ 持有',
+  deny:'追突破重仓 / 箱体中部开仓 / 连续加仓突破单只 20%',
+  next:'放量突破箱体上沿并站稳 2 日 → S1；跌破下沿 → S3',
+  tpl:'上沿减 + 下沿买 + 区间内不动'},
+ S3:{name:'下跌趋势',tag:'防守段',play:'反弹减 + 破位清，不抄底',
+  allow:'减仓 / 清仓 / 反弹到压力位减 / 反 T（先卖已持有 T 仓）',
+  deny:'任何买入类动作（含 T 低吸、补仓摊薄、「估值低所以买」）',
+  next:'站上 MA20 且斜率走平 2 日 → 转 S4 观察',
+  tpl:'反弹减 + 破位减 L1 + 破位清 L2 + 反弹不过压力不动'},
+ S4:{name:'低位筑底',tag:'观察段',play:'右侧确认才买，不提前埋伏',
+  allow:'观望；确认后买入（站上 MA20 + 放量 + 突破箱体上沿）',
+  deny:'左侧越跌越买 / 无确认加仓 / 把「便宜」当买点',
+  next:'放量突破箱体上沿 → S1；再破箱体下沿 → S3',
+  tpl:'确认买（站上箱体上沿 + 放量）+ 再破新低不动'},
+ S0:{name:'无法判定',tag:'状态位',play:'不出策略、不出计划',
+  allow:'无（只显示状态位）',deny:'全部',
+  next:'数据恢复 / 快照同步后重新判定',
+  tpl:'不生成'}
+};
+const STAGE_OF={
+ '601088':{id:'S3',conf:'高',ev:['收盘 39.12 元 < MA20 39.86 元，且低于 ε=0.5% 的缓冲带','MA20 斜率 −1.9%（k=5）< −θ，均线空头排列','连续 5 个交易日收于 MA20 下方，前低已破','近 60 日箱体不成立（宽度 15.8% > 12%），不属震荡'],say:'现在是下跌趋势，所以今天只做减仓和破位保护，不抄底、不补仓。'},
+ '601006':{id:'S3',conf:'高',ev:['收盘 6.42 元 < MA20 6.61 元，价在均线下方','MA20 斜率 −2.4%，均线空头','连续 5 日下行，长周期位置由 34% 降至 12%','PE 分位 8% 属低位，但 SEC-2 已判定价值陷阱：便宜不是买点'],say:'现在是下跌趋势，便宜不是买入理由，今天按反弹减、破位清执行。'},
+ '600900':{id:'S2',conf:'中',ev:['收盘 27.86 元在 MA20 27.71 元上方，但斜率 +0.08% 落在 θ 死区内','近 60 日箱体 26.80–28.35 元，宽度 5.8%，上下沿各触碰 3 次 / 2 次','pos20 = 0.78 ≥ 0.5 → 属高位震荡，不是低位筑底','量价背离，TEC-1 已记警示级信号'],say:'现在是高位震荡，只能在箱体上下沿做 T，不追突破、不加仓。'},
+ '600036':{id:'S1',conf:'高',ev:['收盘 38.75 元 > MA20 37.92×(1+ε)，站上均线','MA20 斜率 +1.6% > θ，MA5>MA10>MA20 多头排列','回踩 37.90 元一带未破，前高 39.20 元尚未突破','箱体不成立：斜率已离开死区，不按震荡处理'],say:'现在是上升趋势，所以今天回踩买、突破买，不追高。'},
+ '600025':{id:'S4',conf:'中',ev:['收盘 9.87 元与 MA20 9.90 元几乎重合，落在 ε 缓冲带内','MA20 斜率 −0.05%，落在 θ 死区内 → 无趋势','近 60 日箱体 9.42–10.15 元，宽度 7.7%，上下沿各触碰 2 次','pos20 = 0.42 < 0.5 → 低位震荡；长周期位置 31%'],say:'现在是低位筑底，还没右侧确认，所以只观望、不提前埋伏。'},
+ '601985':{id:'S2',conf:'中',ev:['收盘 9.34 元在 MA20 9.30 元上方，斜率 +0.04% 落在死区','近 60 日箱体 9.10–9.55 元，宽度 4.9%，上下沿各触碰 3 次','pos20 = 0.53 → 高位震荡','量能比 0.96，无放量突破'],say:'现在是箱体震荡，按上下沿做 T，其余不动。'},
+ '601398':{id:'S1',conf:'中',ev:['收盘 6.18 元 > MA20 6.09×(1+ε)','MA20 斜率 +0.9% > θ','MA5>MA10>MA20 多头排列成立','量能温和，突破未确认（不追高）'],say:'现在是上升趋势，底仓继续持有，回踩才考虑加。'},
+ '510300':{id:'S2',conf:'中',ev:['收盘 4.052 元在 MA20 4.031 元上方，斜率 +0.02% 落在死区','近 60 日箱体 3.905–4.075 元，宽度 4.3%，上下沿各触碰 2 次','pos20 = 0.71 → 高位震荡','ETF 无财报维度，阶段只看价格结构'],say:'现在是宽基的箱体震荡，等下沿再买，不追高。'},
+ '000895':{id:'S0',conf:'—',ev:['停牌，无最近交易日 K 线','有效 bar 不足 min_valid_bars=20，无法计算 MA20 与箱体'],say:'停牌中，无法判定阶段，不生成策略与计划。'},
+ '601668':{id:'S0',conf:'—',ev:['三元组 [data_date, snapshot_id, calc_version] 不一致，快照待同步','不使用旧值判定阶段，不用旧结论顶替'],say:'数据待同步，阶段无法判定，不出策略与计划。'},
+ '600377':{id:'S0',conf:'—',ev:['关键输入缺失：无收盘价与均线序列'],say:'数据缺失，阶段无法判定。'}
+};
+const STAGE_ALLOW={S1:['加仓','等待买点','持有','减仓','清仓','观望'],S2:['持有','加仓','等待买点','减仓','观望'],S3:['减仓','清仓','等待卖点','持有','观望'],S4:['观望','等待买点','持有'],S0:[]};
+
+/* ---------- 术语词典（附录 B） ---------- */
+const GLOSSARY={
+  'MA20':'MA20＝最近 20 个交易日的收盘价平均值。它是一条「平均成本线」：价格在上方说明近 20 天买入的人多数还在赚钱；在下方则相反。本助手只看它在上方 / 下方 / 附近三种状态，不预测方向。',
+  '分位':'分位＝把一段历史数据从小到大排队，当前值排在什么位置。例如「PE 分位 19%」表示当前估值比过去 81% 的时间都便宜。注意：价格分位（价格位置）与估值分位（PE/PB 位置）是两套不同口径，不能混用。',
+  '箱体':'箱体＝价格在某一段时间内反复震荡的上下边界。上边界常称压力，下边界常称支撑。缠论里最接近的概念叫「中枢」，本助手只做简化的箱体判定（重叠区间 + 触碰次数），不做级别递归。触发价可能来自箱体边界，但条件单里只写具体价格，不写「箱体」这个词。',
+  'T 仓':'T 仓＝专门用于做 T（当日内低买高卖或高卖低买）的一小部分仓位，不动中长期底仓。本项目硬上限为总资金的 10%，且同时计入单只 20% 与总仓 80% 上限。',
+  '失效位':'失效位＝判断「原来的趋势判断不算数了」的参考价格。跌破它不等于立刻清仓：本助手采用分级止损 L1 先减一部分、L2 继续下跌才清仓，以便留住分红底仓。',
+  '股息率':'股息率＝每股分红 ÷ 当前股价。它衡量「光靠分红能拿回多少」，是分红兜底逻辑的核心指标。分红中断会直接触发严重级风险信号。',
+  '估值分位':'估值分位＝当前 PE 或 PB 在历史序列中的百分位位置，回答「贵不贵」。与「价格位置」分别标注：价格低不代表估值低，估值低也不代表马上会涨。',
+  '量能比':'量能比＝当日成交量 ÷ 过去 N 日平均成交量。≥1.1 为放量、≤0.9 为缩量。本项目只把它当第 3 因子的确认标注，不参与环境评级的硬判定。',
+  'RSI':'RSI（相对强弱指标）＝用一段时间内涨幅与跌幅的比例衡量买卖力量，取值 0–100。通常 70 以上偏热、30 以下偏冷，本助手只作辅助展示档位。',
+  '不复权':'不复权＝直接使用交易所原始收盘价，不因分红送股调整历史价格。展示价与条件单触发价都用不复权，保证你挂单的价格和页面看到的数字完全一致。',
+  '三元组':'一致性三元组＝[data_date, snapshot_id, calc_version]。页面、飞书推送、导出卡片必须三者完全一致；不一致时统一显示「待同步」，绝不用旧结论顶替。',
+  '条件单':'条件单＝你在券商 App 里预先设好「价格达到 X 就自动按设定下单」的指令。本助手只输出触发价和股数，不接券商、不自动下单、不监控盘中。',
+  '同向过滤':'同向过滤＝条件计划里的每个动作，必须和当天的操作意见方向一致。例如当天意见是「减仓」，就不会出现任何买入分支；反向情景一律写「不操作」并给一句原因。',
+  'L1/L2':'分级止损：L0 未破位（正常）；L1 趋势失效位被有效跌破 → 先减一部分、保留分红底仓；L2 在 L1 之后继续下跌 → 再清仓。轻度破位不会直接清仓。',
+  'sector_strength':'板块强弱档＝用板块指数多日日线（价格 vs 均线、均线斜率）跑 2×2 四格得到的三档结论（偏强 / 中性 / 偏弱），用于建议层。与卡片上的「相对大盘单日差值 rs_t」是两套东西，不能互相代替。',
+  '照抄设单':'照抄设单＝条件计划的每条分支按固定字段顺序给出「若…则买/卖 N 股」，股数已取整到 100 股/手，你不需要再换算金额，直接照着在券商 App 设条件单即可。',
+  '阶段定位':'阶段定位＝先判断这只票现在处于什么状态：上升趋势（S1）/ 高位震荡（S2）/ 下跌趋势（S3）/ 低位筑底（S4）；数据不足时是 S0。不同阶段的打法完全不同：上升阶段回踩买、震荡阶段箱体做 T、下跌阶段只减不加、筑底阶段等右侧确认。它是「先定打法」的前提，不是涨跌预测。',
+  '阶段门':'阶段门＝阶段定好之后，只允许这个阶段该做的动作。比如判为下跌趋势时，任何买入类动作都会被拦下改成「等待买点」或「减仓」。它只收紧、不放宽，也不改风险等级。',
+  '缠论':'缠论＝用「中枢 + 走势类型（趋势/盘整）+ 背驰」判断买卖点的一套理论。本助手只借用它的两层内核：中枢≈箱体、走势类型≈趋势/盘整；更细的笔、线段、级别递归本期不做。',
+  '背驰':'背驰＝价格创了新高（或新低），但推动它的动能没跟上，通常被视为转折提示。本助手只把它当观察注记，不单独触发买卖，因为它是否成立带有主观阈值。',
+  '右侧确认':'右侧确认＝不猜底，等价格自己走出确认信号（站上 MA20 + 放量 + 突破箱体上沿）再买。对应的「左侧」就是还没确认就提前埋伏，本助手不做。'
+};
+
+/* ---------- 技术解释八字段（§6.6） ---------- */
+const TECH={
+  ma20:{m:'MA20 位置',v:'上方（above）',input:'2026-09-28 至 2026-11-10 不复权日线收盘，共 30 根，有效 bar 30/30，含停牌日 0 天',formula:'MA20 = mean(最近 W 根有效 close)，缺 bar 不插值、不补位',threshold:'ma_window=20、缓冲带 ε=0.005、斜率回看 k=5、θ=0.003',hit:'因子A=above（收盘 3286.42 > MA20 3241.08×(1+ε)）',plain:'把最近 20 天收盘价取平均得到 3,241.08，当前 3,286.42 在它上方，因此记为「上方」。'},
+  arrange:{m:'均线排列',v:'多头',input:'同上，不复权日线 30 根；MA5/MA10/MA20 均由有效 close 派生',formula:'比较 MA5 > MA10 > MA20 是否同时成立；任一缺失则该项降级',threshold:'ma_windows=[5,10,20]、缺失率阈值 5%',hit:'MA5=3279.6 > MA10=3262.4 > MA20=3241.1，三项同向',plain:'短、中、长三条平均线依次向上排开，说明近期买入成本逐级抬高。'},
+  vol:{m:'量能比',v:'1.12（放量）',input:'2026-11-10 成交量 + 前 20 根有效成交量，不复权口径',formula:'量能比 = 当日成交量 / mean(前 vol_ma_window 根成交量)',threshold:'vol_ma_window=20、放量阈值 1.1、缩量阈值 0.9、死区 α=0.02',hit:'1.12 ≥ 1.1 → 放量；仅作第 3 因子确认标注，不进 2×2 硬判定',plain:'今天成交量是近 20 天平均的 1.12 倍，属于放量；它只作确认说明，不改变环境评级。'},
+  rsi:{m:'RSI(14)',v:'58.4',input:'2026-10-21 至 2026-11-10 不复权收盘 14 根',formula:'RSI = 100 − 100/(1 + mean(涨幅)/mean(跌幅))',threshold:'窗口 14、偏热 70、偏冷 30',hit:'58.4 落在 30–70 中性区',plain:'用近 14 天涨跌力量对比算出 58.4，落在中性区间，既不偏热也不偏冷。'},
+  pos20:{m:'20 日位置',v:'72%',input:'2026-10-13 至 2026-11-10 不复权日线 high/low/close 共 20 根',formula:'位置 = (close − low20)/(high20 − low20)×100%；high20==low20 时返回 null 并降级',threshold:'lookback_n=20、高位边界 70%、低位边界 30%',hit:'low20=3188.40、high20=3324.55 → 72% ≥ 70% → 偏高位',plain:'把最近 20 天的最高、最低价当成一把尺子，当前价格落在 72% 的位置，属于偏高位。'},
+  pct5:{m:'5 日涨幅',v:'+1.86%',input:'2026-11-04 与 2026-11-10 不复权收盘价',formula:'涨幅 = (close_t / close_{t−5} − 1)×100%',threshold:'lookback=5 个交易日',hit:'3286.42 / 3226.44 − 1 = +1.86%',plain:'今天收盘比 5 个交易日前高 1.86%。'},
+  regime:{m:'market_regime（环境评级）',v:'中性（Q2）',input:'2026-09-28 至 2026-11-10 不复权日线收盘 30 根，有效 bar 30/30',formula:'2×2：因子A 价格相对 MA20（above/near/below），因子B 均线斜率 slope = MA_t/MA_{t−k} − 1（up/not_up）',threshold:'ma_window=20、k=5、θ=0.003、ε=0.005、min_valid_bars=20、missing_rate_threshold=5%',hit:'因子A=above、因子B=not_up → Q2 → 中性；regime_active_factors=2、volume_confirm_available=true、regime_degraded=false',plain:'价格在均线上方，但均线本身不再往上翘，属于「涨势歇一歇、等确认」的中性环境。量能只作确认，不参与这个判定。'},
+  breadth:{m:'市场宽度',v:'涨 2876 / 跌 2105 / 平 219',input:'2026-11-10 全市场 A 股当日涨跌家数快照（D1）',formula:'按 pct_change >0 / <0 / =0 计数，停牌与无数据剔除分母',threshold:'样本下限 3000 只、风格对比窗口 20 日',hit:'有效样本 5,200 只，上涨占比 55.3%；风格：大盘价值略占优',plain:'全市场上涨家数略多于下跌家数，属温和偏多；这一项只作参考，不参与硬结论。'},
+  sector_pct:{m:'板块全市场分位',v:'第 24 / 86（分位 73%）',input:'2026-11-10 东财行业板块全量快照，有效样本 86 个',formula:'按 pct_change 降序、并列按 sector_code 字典序；分位 = 严格小于该板块的板块数 / 有效样本数',threshold:'有效样本下限 60、并列规则=sector_code 字典序',hit:'该板块 +0.31%，严格小于它的板块 63 个 → 63/86 = 73%',plain:'把 86 个行业板块按当天涨幅排队，电力排第 24 名，比 73% 的板块强。口径是东财行业分类，不能和研报的申万行业口径直接对照。'},
+  sector_rs:{m:'相对大盘强弱 rs_t',v:'强于大盘（差 -0.31 个百分点）',input:'2026-11-10 板块涨跌幅 + 共享基准 market_baseline.pct_change',formula:'rs_t = 板块 pct_change − 基准 pct_change；三档：强于 / 相近 / 弱于',threshold:'相近档死区 ±0.5 个百分点；日期不一致或基准缺失 → 不计算',hit:'rs_t = 0.31 − 0.62 = −0.31，落在相近档死区之外按展示层规则标注',plain:'板块当天涨 0.31%，上证涨 0.62%，算术差为 −0.31 个百分点。这是单日展示量，不进评分、不等于多日板块强弱档。'},
+  sector_strength:{m:'sector_strength（多日板块强弱档）',v:'偏强',input:'板块指数 2026-09-28 至 2026-11-10 日线 30 根，与主指数 M1 同构',formula:'2×2 多日同构：价格相对板块 MA、板块 MA 斜率；Q1–Q4 → 三档；量能仅确认',threshold:'ma_window=20、k=5、θ=0.003、ε=0.005（与 M1 同构且独立配置）',hit:'Q1（above + up）→ 偏强；degraded=false',plain:'用板块自己的多日走势（不是今天的涨跌）判断强弱档，用于建议层；与卡片上的单日相对大盘差值是两套口径。'},
+  dh:{m:'自选标的相对板块 d_h',v:'见各板块卡',input:'2026-11-10 标的不复权收盘涨跌幅 + 同日板块涨跌幅',formula:'d_h = 标的 pct_change − 板块 pct_change；按阈值分跑赢 / 跑输 / 持平',threshold:'跑赢/跑输阈值 ±0.5 个百分点；缺失单独标注、不计入',hit:'电力板块 3 只：2 只跑赢、1 只跑输、0 只持平',plain:'把每只自选股当天涨跌减去所属板块涨跌，看它比板块强还是弱；这只是结构描述，不构成换股建议。'},
+  advice:{m:'advice（操作意见）',v:'见各标的置顶意见',input:'holding_conclusion[code][t] 只读快照，含 is_holding 分支与 §5.1 权重表得分',formula:'守卫短路 S0→S6：三元组 / 停牌 / 数据充分性 / 降级注记 / 风险等级守卫 / 决策表 / 仓位裁剪',threshold:'技术面权重主导；风险三级动作矩阵；硬上限 单只20% / 总仓80% / 现金20% / T仓10%',hit:'S4 风险等级守卫命中记录随卡片展开；条件计划不参与本守卫链',plain:'意见是盘前引擎按守卫顺序算出来的唯一真值，页面、推送、导出都只读这一份，不会在前端重算。'},
+  trigger:{m:'条件计划触发价',v:'见各分支触发条件',input:'2026-08-03 至 2026-11-10 不复权日线 high/low/close，含前高/前低/箱体边界/失效位',formula:'触发价 = 关键价位三级（关注买点区 / 减仓止盈区 / 支撑压力 / 失效位）中对应级别的取数窗口结果',threshold:'前高前低回看 60 根、箱体边界容差 0.5%、价位取整到 0.01 元',hit:'买入分支 ← 近 60 日前高 + 容差；卖出分支 ← 趋势失效位 / 次级支撑；均为不复权、与展示价同口径；当前标的的具体触发价见各分支',plain:'触发价来自历史前高、前低、箱体边界或趋势失效位，用不复权价格，保证你在券商挂单的数字和页面一致。技术依据放这里，触发条件行本身保持干净。'},
+  valuation:{m:'估值位置（PE/PB 分位）',v:'见详情页 6b',input:'近 5 年 PE(TTM)/PB 序列 + 2026-11-10 收盘价，估值源 D2',formula:'分位 = 严格小于当前值的历史样本数 / 有效样本数；与价格位置分别计算',threshold:'低位 ≤25%、高位 ≥75%、窗口 5 年、最少样本 250 个',hit:'PE 分位 19% → 低位；价格位置为中位（两者口径不同）',plain:'估值分位回答「贵不贵」，价格位置回答「价格在近期区间的哪一段」，两者分开标注，不能混为一谈。'},
+  dividend:{m:'股息率及分红连续性',v:'见详情页 6 / 持仓与分红',input:'最近 12 个月每股分红 + 2026-11-10 不复权收盘价 + 历年分红记录',formula:'股息率 = 近 12 月每股分红 / 收盘价；连续性 = 连续分红年数',threshold:'分红中断 = 连续年数下降或近 12 月为 0 → DIV-1 严重级',hit:'连续分红 11 年、股息率 5.1%（历史分位 62%）',plain:'分红是中长期底仓的兜底逻辑；一旦中断会直接触发严重级风险信号。'},
+  risk:{m:'风险信号 trigger_basis',v:'见结构化风险块',input:'事实性输入 + 数据日期（价格序列 / 已披露财报 / 分红记录 / 板块快照 / 组合仓位）',formula:'按 §5.10.2 七类信号各自确定性规则判定；多信号取最高、不叠加升级',threshold:'连续 N 日、分位、跌幅、集中度、等级边界均进 calc_version=cv2.0.3',hit:'TEC-2 跌破失效位 → 严重；SEC-2 估值低位 + 持续下行 → 严重；DQ-2 缓存 → 观察',plain:'风险来自已发生的事实，不是预测；等级只决定限制与降级方向，不会凭空生成买卖建议。'},
+  counts:{m:'总结段联动计数 counts',v:'减/清 2 · 加/建 2 · 持有 3 · 观望 1 · 状态位 3（合计 11）',input:'watchlist_conclusions 只读，与 Tab B 列表同源',formula:'按操作意见枚举分组计数；sum(counts.values()) == total 硬校验通过才输出总结段',threshold:'total = 自选标的数 11；状态位单独成组，不冒充「观望」',hit:'2+2+3+1+3 = 11 ✓',plain:'这段统计和下方个股列表来自同一份快照，数字对不上就不会输出总结。'},
+  stage:{m:'stage（阶段定位）',v:'见第 3 区块',input:'该标的不复权日线：近 60 根 high/low/close + MA20 序列（ma_window=20），有效 bar ≥ 20',formula:'判定顺序 S0→S3→S1→S2/S4：S3＝close<MA20×(1−ε) 且 slope20(k=5)<−θ 且均线空头；S1＝close>MA20×(1+ε) 且 slope20>θ 且均线多头；S2/S4＝|slope20|≤θ + 箱体成立（宽度≤12%、上下沿各触碰≥2 次），再按 pos20 二分',threshold:'ma_window=20、k=5、θ=0.003、ε=0.005、box_lookback=60、box_width_max=12%、触碰≥2 次/边、切换需连续 2 日',hit:'本例 close=39.12、MA20=39.86、slope20=−1.9%、连续 5 日收于 MA20 下方、箱体不成立 → S3 下跌趋势；stage_confidence=高（4/5 条证据同向）',plain:'价格在 20 日均线下方、均线本身也在往下走、连续几天没收回、也不在箱体里，所以判为下跌趋势；这个阶段只做减仓与破位保护，不抄底。'}
+};
+
+/* ---------- 工具函数 ---------- */
+const $=s=>document.querySelector(s);
+const H=s=>String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+const n2=x=>(Math.round(x*100)/100).toFixed(2);
+const n3=x=>(Math.round(x*1000)/1000).toFixed(3);
+const fmtPct=p=>p===null||p===undefined?'—':(p>0?'+':'')+p.toFixed(2)+'%';
+const clsPct=p=>p===null||p===undefined?'flat':(p>0?'up':(p<0?'down':'flat'));
+const lvText={severe:'严重',warn:'警示',observe:'观察',none:'无特别提示'};
+const getH=code=>SNAP.holdings.find(h=>h.code===code)||SNAP.holdings[3];
+const stageOf=code=>STAGE_OF[code]||{id:'S0',conf:'—',ev:['数据不足，未判定阶段'],say:'数据不足，阶段无法判定。'};
+function stageTag(code){const s=stageOf(code);if(s.id==='S0')return '<span class="stage-tag">S0 待判定</span>';return '<span class="stage-tag '+s.id.toLowerCase()+'">'+s.id+' '+STAGE_DEF[s.id].name+'</span>';}
+function stageAllowed(h){return (STAGE_ALLOW[stageOf(h.code).id]||[]).indexOf(h.advice)>=0;}
+const term=(t,label)=>'<button class="term" data-act="term" data-term="'+t+'">'+(label||t)+'</button>';
+const techBtn=(key,label)=>'<button class="tech-toggle" data-act="tech" data-key="'+key+'">▸ '+(label||'看技术依据')+'</button><div class="tech-body hidden"></div>';
+function toast(msg){const t=$('#toast');t.textContent=msg;t.classList.add('on');clearTimeout(t._t);t._t=setTimeout(()=>t.classList.remove('on'),2100);}
+function statusStrip(){return [
+ '<span class="chip blue">行情基准日 '+SNAP.data_date+' 收盘</span>',
+ '<span class="chip">'+(SNAP.is_trading_day?'交易日':'非交易日 · 不更新')+'</span>',
+ '<span class="chip">来源 '+SNAP.source_tag+'</span>',
+ '<span class="chip mono">'+SNAP.snapshot_id+'</span>',
+ '<span class="chip mono">'+SNAP.calc_version+'</span>',
+ '<span class="chip">生成 '+SNAP.decision_time+'</span>',
+ '<span class="chip">打开 '+SNAP.render_time+'</span>',
+ '<span class="chip fake">模拟数据</span>'
+].join('');}
+function specTag(s){return ' data-spec="'+s+'"';}
+
+/* 状态：视图与交互 */
+const state={device:'pc',tab:'A',view:'A',code:'600036',from:'list',sector:null,spec:false,todoOnly:false,moreSectors:false};
+
+/* ---------- 条件计划生成（§5.11 / §6.7） ---------- */
+function makeBranch(o){
+ return Object.assign({
+   action:'不操作',shares:0,amount:0,pct:0,settable:true,
+   valid:SNAP.next_trade_date+' 09:30–15:00，收盘未触发作废',
+   invalidate:'收盘未触发 / 次日快照重新生成 / 除权日价位重算 / 三元组不一致转待同步（不因其他分支触发而失效）',
+   check:'单只 12.8%≤20% ✓ | 总仓 62.4%≤80% ✓ | 现金 37.6%≥20% ✓ | T 仓 3.1%≤10% ✓',
+   notes:'',basis:false
+ },o);
+}
+function plansFor(h){
+ if(h.state!=='有效') return {reason:h.note,branches:[]};
+ const p=h.price, r=x=>h.type==='ETF'?n3(x):n2(x);
+ const up1=p*1.0116, back=p*0.9884, back2=p*0.9767;
+ const sup=h.fail_price||p*0.9551, brk=h.l2_price||p*0.9400;
+ const unit=h.type==='ETF'?'份':'股';
+ const buyShares=Math.floor(28000/up1/100)*100, buyAmt=Math.round(buyShares*up1), buyPct=+(buyAmt/SNAP.total_capital*100).toFixed(1);
+ const sellShares=500, sellAmt=Math.round(sellShares*sup), sellPct=+(sellAmt/SNAP.total_capital*100).toFixed(1);
+ const B=(id,scenario,trigger,o)=>makeBranch(Object.assign({id,scenario,trigger,unit},o));
+ const noop=(id,scenario,trigger,reason,extra)=>B(id,scenario,trigger,Object.assign({action:'不操作',shares:0,amount:0,pct:0,notes:reason},extra||{}));
+ if(h.planMode==='buy3'){
+  return {reason:'',branches:[
+   B('A','上行突破','价格 ≥ '+r(up1)+' 元',{action:'买入',shares:buyShares,amount:buyAmt,pct:buyPct,cls:'buy',settable:true,notes:'触发价来自近 60 日前高；T+1，当日买入不可当日卖出',basis:true}),
+   B('B','回踩不破','价格 ≤ '+r(back)+' 元',{action:'买入',shares:buyShares,amount:Math.round(buyShares*back),pct:+((buyShares*back)/SNAP.total_capital*100).toFixed(1),cls:'buy',settable:true,notes:'回踩至箱体下沿附近企稳；与前高触发为独立分支，请自行取舍',basis:true}),
+   noop('C','区间震荡','价格 ≥ '+r(back)+' 元 且 ≤ '+r(up1)+' 元','区间内未达买点，本情景不动；触发后次日重评',{settable:false,basis:false,notes:'需人工判断，不能直接设单：券商条件单通常不支持价格区间双条件（§6.7.4）'}),
+   B('F','回踩加深','价格 ≤ '+r(back2)+' 元',{action:'买入',shares:buyShares,amount:Math.round(buyShares*back2),pct:+((buyShares*back2)/SNAP.total_capital*100).toFixed(1),cls:'buy',settable:true,notes:'跌破短期支撑前的最后一档买点；独立分支，不与 B 共享额度',basis:true}),
+   noop('D','跌破支撑','价格 ≤ '+r(sup)+' 元','与当前「加仓」建议反向，本情景不动；触发后次日重评',{basis:true}),
+   noop('E','破位加速','价格 ≤ '+r(brk)+' 元','与当前「加仓」建议反向，本情景不动；触发后次日重评',{basis:true})
+  ]};
+ }
+ if(h.planMode==='buy2'){
+  return {reason:'',branches:[
+   B('A','上行突破','价格 ≥ '+r(up1)+' 元',{action:'买入',shares:buyShares,amount:buyAmt,pct:buyPct,cls:'buy',settable:true,notes:'ETF 按 100 份/手；T+0 允许同日买卖分支',basis:true}),
+   B('B','回踩不破','价格 ≤ '+r(back)+' 元',{action:'买入',shares:buyShares,amount:Math.round(buyShares*back),pct:+((buyShares*back)/SNAP.total_capital*100).toFixed(1),cls:'buy',settable:true,notes:'ETF 无财报维度；独立分支',basis:true}),
+   noop('C','区间震荡','价格 ≥ '+r(back)+' 元 且 ≤ '+r(up1)+' 元','区间内未达买点，本情景不动',{settable:false,notes:'需人工判断，不能直接设单'}),
+   noop('D','跌破支撑','价格 ≤ '+r(sup)+' 元','与当前「等待买点」建议反向，本情景不动',{}),
+   noop('E','破位加速','价格 ≤ '+r(brk)+' 元','与当前「等待买点」建议反向，本情景不动',{})
+  ]};
+ }
+ if(h.planMode==='sell3'){
+  /* S3 下跌阶段模板：反弹减（主动）+ 破位清（被动），不含任何买入分支（§5.14.6） */
+  const rb=r(sup), rb2=r(sup*1.015), l2=r(brk);
+  return {reason:'',branches:[
+   B('A','反弹到失效位','价格 ≥ '+rb+' 元',{action:'减仓',shares:sellShares,amount:Math.round(sellShares*sup),pct:sellPct,cls:'sell',settable:true,notes:'S3 主卖点：反抽到失效位 / MA20 附近不过就先减，不等破位；卖出股数 ≤ 当前可卖持仓 1,200 股',basis:true}),
+   noop('B','反弹站回上方','价格 ≥ '+rb2+' 元','站回失效位上方，本期不追减、也不买回；触发后次日重评',{settable:false,notes:'不设单，仅提示：站回说明下跌结构待确认'}),
+   noop('C','区间磨底','价格 ≥ '+l2+' 元 且 ≤ '+rb+' 元','区间内不触发减仓，本情景不动；触发后次日重评',{settable:false,notes:'区间双条件通常无法直接设单（§6.7.4）'}),
+   B('D','跌破次级支撑','价格 ≤ '+l2+' 元',{action:'清仓',shares:1200,amount:Math.round(1200*brk),pct:+((1200*brk)/SNAP.total_capital*100).toFixed(1),cls:'sell',settable:true,notes:'已处于 L1，继续跌破次级支撑才执行 L2 清仓；卖出股数 ≤ 当前可卖持仓',basis:true}),
+   noop('E','一字跌停','跌幅 ≥ 9.8%（基准 '+r(p)+' 元）','跌停或一字板当日无法成交，本情景不动；次日按新快照重评',{settable:false,notes:'无法成交，不设单；也不因跌停改变阶段判定'})
+  ]};
+ }
+ if(h.planMode==='sell'){
+  const f=r(sup), l=r(brk), hi=r(up1);
+  return {reason:'',branches:[
+   noop('A','上行突破','涨幅 ≥ +1.16%（基准 '+r(p)+' 元）','与当前「减仓」建议反向，本情景不动',{}),
+   noop('B','回踩不破','价格 ≥ '+f+' 元','重新站回失效位上方，本期不追、不动；触发后次日重评',{}),
+   noop('C','区间震荡','价格 ≥ '+f+' 元 且 ≤ '+hi+' 元','区间内不触发减仓；触发后次日重评',{settable:false,notes:'需人工判断，不能直接设单'}),
+   B('D','跌破支撑','价格 ≤ '+f+' 元',{action:'减仓',shares:sellShares,amount:sellAmt,pct:sellPct,cls:'sell',settable:true,notes:'L1 先减：保留分红底仓，不直接清仓；触发价 = 趋势失效位；卖出股数 ≤ 当前可卖持仓 1,200 股',basis:true}),
+   B('E','破位加速','价格 ≤ '+l+' 元',{action:'清仓',shares:1200,amount:Math.round(1200*brk),pct:+((1200*brk)/SNAP.total_capital*100).toFixed(1),cls:'sell',settable:true,notes:'L2：已处于 L1 状态后继续跌破次级支撑才执行；卖出股数 ≤ 当前可卖持仓',basis:true})
+  ]};
+ }
+ return {reason:'',branches:[
+  noop('A','上行突破','价格 ≥ '+r(up1)+' 元','当日意见为「'+h.advice+'」，同向过滤后本情景不动',{}),
+  noop('B','回踩不破','价格 ≤ '+r(back)+' 元','当日意见为「'+h.advice+'」，同向过滤后本情景不动',{}),
+  noop('C','区间震荡','价格 ≥ '+r(back)+' 元 且 ≤ '+r(up1)+' 元','本情景不动；触发后次日重评',{settable:false,notes:'需人工判断，不能直接设单'}),
+  noop('D','跌破支撑','价格 ≤ '+r(sup)+' 元','当日意见为「'+h.advice+'」，同向过滤后本情景不动；触发后次日重评',{}),
+  noop('E','破位加速','价格 ≤ '+r(brk)+' 元','当日意见为「'+h.advice+'」，同向过滤后本情景不动；触发后次日重评',{})
+ ]};
+}
+function comboCheck(h,branches){
+ const buys=branches.filter(b=>b.action==='买入');
+ if(!buys.length) return '<div class="combo-check"><b>组合校验提示</b>：本期无买入分支，无需进行组合额度校验（卖出分支只校验可卖持仓，不占用买入额度）。</div>';
+ const sum=buys.reduce((a,b)=>a+b.amount,0), sumPct=+(sum/SNAP.total_capital*100).toFixed(1);
+ const current=h.code==='600036'?12.8:4.1, after=+(current+sumPct).toFixed(1);
+ if(after>20){
+  return '<div class="combo-check"><b>组合校验提示 · 越界</b><br>若以上 '+buys.length+' 条买入分支同时触发：合计 <b>'+sum.toLocaleString()+' 元</b> / 总资金 <b>'+sumPct+'%</b>；叠加当前单只 '+current+'% 后为 <b>'+after+'% &gt; 单只 20% 上限</b>。<br><span class="check-no">同时执行会超出上限，请自行取舍。</span> 系统不设优先级、不删改任何分支股数、不代为决定。<br>参考组合（不越界）：仅执行分支 A（'+buys[0].shares+' 股 / '+buys[0].pct+'%），单只 '+(current+buys[0].pct).toFixed(1)+'% ≤ 20%、总仓 67.9% ≤ 80%、现金 32.1% ≥ 20%。<b>仅供参考，系统不代为决定。</b></div>';
+ }
+ return '<div class="combo-check"><b>组合校验提示 · 无越界</b><br>若以上 '+buys.length+' 条买入分支同时触发：合计 '+sum.toLocaleString()+' 元 / 总资金 '+sumPct+'%，叠加当前单只 '+current+'% 后为 '+after+'% ≤ 20%。<b>全部分支同时执行仍在硬上限内</b>（总仓 67.9% ≤ 80%、现金 32.1% ≥ 20%、T 仓 3.1% ≤ 10%）。各分支仍独立，由你自行取舍。</div>';
+}
+function branchText(h,b){
+ return [
+  '['+b.scenario+' · 分支 '+b.id+']  若 '+b.trigger+'（不复权；基准 '+SNAP.data_date+' 收盘）',
+  '   → '+b.action+(b.shares?' '+b.shares+' '+b.unit+'（100 '+b.unit+'/手）≈ '+b.amount.toLocaleString()+' 元，占总资金 '+b.pct+'%':' 0 '+b.unit),
+  '   有效期：'+b.valid,
+  '   失效条件：'+b.invalidate,
+  '   仓位校验：'+b.check,
+  '   可直接设条件单：'+(b.settable?'是（价格触发）':'否，需人工判断'),
+  (b.notes?'   提示：'+b.notes:'')
+ ].join('\n');
+}
+
+/* ---------- 风险信号（§5.10，与页级风险条同源） ---------- */
+function riskRowsFor(h){
+ const map={
+  '601088':[{level:'severe',cat:'TEC-2 跌破趋势失效位',basis:'收盘 39.12 元 < 失效位 39.30 元，且连续 2 日收于其下；失效位来自近 60 日结构低点 39.28 元',date:SNAP.data_date,affects:'是 · 建议降级为减仓',action:'L1 先减 500 股，保留分红底仓；禁止任何买入类意见与新 T 计划',human:'已经跌破原来的趋势判断位，今天先减一部分、留住分红底仓，不要加仓。'},
+            {level:'warn',cat:'TEC-4 放量下跌',basis:'量能比 1.34 且 pct_change −0.71%，与 TEC-1 合并展示、不重复计级',date:SNAP.data_date,affects:'否 · 已合并',action:'并入 TEC 类最高等级，不单独升级',human:'下跌时成交放大，属于同一条技术面风险的补充说明。'},
+            {level:'observe',cat:'POS-3 成本倒挂 + 高仓位',basis:'本例成本 36.80 元仍低于现价，未倒挂；仅作加速观察因子登记',date:SNAP.data_date,affects:'否 · 仅注记',action:'不作 L1→L2 触发前置',human:'成本仍有浮盈，这条只是记录，不改变操作。'}],
+  '601006':[{level:'severe',cat:'SEC-2 价值陷阱',basis:'PE 历史分位 8% ≤ 25% 低位阈值，同时价格连续 5 日下行、长周期位置由 34% 降至 12%、板块 sector_strength=偏弱',date:SNAP.data_date,affects:'是 · 禁止买入类意见',action:'建议降级为减仓；不得输出「低估可买」',human:'看着便宜但一直在跌，便宜不等于安全，本期不能买、按减仓处理。'},
+            {level:'warn',cat:'SEC-1 板块持续弱于大盘',basis:'铁路公路板块 sector_strength=偏弱且 rs_t 连续 5 日为负',date:SNAP.data_date,affects:'是 · 禁止买入类动作',action:'与 SEC-2 合并取最高等级，不叠加升级',human:'所属板块已经连续一段时间比大盘弱。'}],
+  '600900':[{level:'warn',cat:'TEC-1 转弱但未破位',basis:'趋势档由「偏强」转「中性」、位置标签转高位且量价背离；尚未跌破失效位 26.80 元（收盘 27.86 元）',date:SNAP.data_date,affects:'是 · 禁止加仓/建仓',action:'主档「持有」不变；不下发新 T 计划',human:'走势有点转弱但还没破位，今天不加仓，原有底仓继续拿着。'},
+            {level:'observe',cat:'DIV-2 股息率异常 / 除权日临近',basis:'股息率 3.4%，历史分位 48%，除权日 2026-12-08（未临近）',date:SNAP.data_date,affects:'否 · 展示与观察',action:'不改档',human:'分红节奏正常，只是给你留意一下。'}],
+  '600036':[{level:'observe',cat:'DQ-2 使用缓存 / 主备源切换',basis:'主行情源超时，切换 D2 备用源并使用 '+SNAP.data_date+' 缓存快照，source_tag=D1→D2',date:SNAP.data_date,affects:'否 · 仅注记',action:'不改变 advice 档位，只下调置信度',human:'今天这只票的行情是从备用源读的，数据日期没变，建议不受影响。'},
+            {level:'none',cat:'无严重 / 警示级信号',basis:'—',date:SNAP.data_date,affects:'否',action:'—',human:'无特别提示。'}]
+ };
+ return map[h.code]||[{level:'none',cat:'无特别提示',basis:'—',date:SNAP.data_date,affects:'否',action:'—',human:'本期无风险信号，按操作意见与条件计划执行。'}];
+}
+
+/* ---------- 渲染：公共 ---------- */
+function renderChrome(){
+ $('#statusStrip').innerHTML=statusStrip();
+ $('#tabbar').innerHTML=
+  '<button class="tab '+(state.view==='A'?'on':'')+'" data-act="tab" data-tab="A">大盘 · 板块</button>'+
+  '<button class="tab '+(state.view==='B'?'on':'')+'" data-act="tab" data-tab="B">个股列表</button>'+
+  '<button class="tab disabled" data-act="tab" data-tab="C">选股<span class="soon">下一阶段</span></button>'+
+  (state.view==='D'?'<button class="tab on" data-act="back">个股详情</button>':'');
+}
+
+/* ---------- 渲染：Tab A ---------- */
+function renderA(){
+ const m=SNAP.market;
+ const idx='<div class="idx-strip">'+
+  '<div class="idx main"><div class="nm"><span>'+m.main.name+' <span class="mono">'+m.main.code+'</span></span><span class="pill">主指数</span></div>'+
+   '<div class="v up">'+m.main.close+'</div><div class="p up">'+fmtPct(m.main.pct)+'</div></div>'+
+  m.aux.map(a=>'<div class="idx"><div class="nm"><span>'+a.name+'</span><span class="tiny">辅助</span></div><div class="v">'+a.v+'</div><div class="p '+clsPct(a.pct)+'">'+fmtPct(a.pct)+'</div></div>').join('')+
+ '</div><div class="tiny" style="margin-top:6px">主指数固定为上证指数（sh000001），成长风格请参考下方风格对比；辅助指数只作参考展示。</div>';
+
+ const cells='<div class="grid g6">'+m.cells.map(c=>'<div class="metric"><div class="k">'+c.k+'</div><div class="v '+c.tone+'">'+c.v+'</div><div class="s">'+c.s+'</div>'+techBtn(c.tech)+'</div>').join('')+'</div>';
+
+ const breadth='<div class="card tight" '+specTag('§6.1 ⑤')+'><div class="card-h"><h3>市场宽度 / 风格 <span class="desc">L2 可选 · 不参与硬结论</span></h3><div class="right">'+techBtn('breadth')+'</div></div>'+
+  '<div class="counts"><span class="pill buy">上涨 '+m.breadth.up+'</span><span class="pill sell">下跌 '+m.breadth.down+'</span><span class="pill state">平盘 '+m.breadth.flat+'</span><span class="pill">风格：'+m.breadth.style+'</span></div>'+
+  '<div class="tiny" style="margin-top:7px">'+m.breadth.note+'</div></div>';
+
+ const q=m.regime.quadrant;
+ const quads=[['Q1','above + up','偏强 · 顺趋势不追高'],['Q2','above + not_up','中性 · 动能减弱等确认'],['Q3','below + up','中性 · 趋势回调等企稳'],['Q4','below + not_up','偏弱 · 防守优先不重仓']];
+ const regime='<div class="card" '+specTag('§6.1 ⑥')+'><div class="card-h"><h2>环境评级与节奏</h2><div class="right">'+techBtn('regime','看象限与两因子')+'</div></div>'+
+  '<div class="regime-box"><div class="regime-main"><div class="regime-tag">'+m.regime.label+'</div>'+
+  '<div class="tiny" style="margin-top:8px">象限 '+q+'（因子A='+m.regime.A+'、因子B='+m.regime.B+'）· 生效因子数 '+m.regime.factors+' · 量能确认 '+m.regime.volume+' · '+term('量能比')+'仅确认 · regime_degraded='+m.regime.degraded+'</div>'+
+  '<div style="margin-top:9px;font-size:13px;line-height:1.8"><b>节奏：</b>'+m.regime.tempo+'<br><b class="muted">'+m.regime.tail+'</b></div>'+
+  '<div class="tiny" style="margin-top:8px">本区只给环境与节奏，不给动作词、不给建议总仓位、不给个股买卖。</div></div>'+
+  '<div style="flex:0 1 300px"><div class="sec-label">2×2 四格 → 三档</div><div class="quad">'+quads.map(x=>'<div class="q '+(x[0]===q?'on':'')+'"><b>'+x[0]+(x[0]===q?' · 当前':'')+'</b>'+x[1]+'<br>'+x[2]+'</div>').join('')+'</div></div></div></div>';
+
+ const counts='<div class="counts">'+Object.entries(m.counts).map(([k,v])=>'<span class="pill '+(k==='减/清'?'sell':(k==='加/建'?'buy':'neutral'))+'">'+k+' '+v+'</span>').join('')+'<span class="pill">合计 '+m.total+'</span></div>';
+ const summary='<div class="notice ai" '+specTag('§6.1 ⑦ · §5.13 ③')+'><span class="pill ai">AI 生成摘要</span> 以结构化字段为准 · 规则模板可降级<br>'+m.summary+counts+
+  '<div style="margin-top:7px">'+techBtn('counts','看联动计数依据')+'</div></div>';
+
+ const risks='<div class="risk-bar" '+specTag('§6.1 ② · §5.10.6 ①')+'><div class="rb-head">⚠ 今日风险 '+SNAP.page_risks.length+' 条 <span class="tiny" style="font-weight:400;color:#8a6a66">（按 严重 → 警示 → 观察 排序，与「今日需处理」同一快照、计数口径不同）</span></div>'+
+  SNAP.page_risks.map(r=>'<div class="risk-item" data-act="risk-jump" data-code="'+r.code+'"><span class="lv '+r.level+'">'+lvText[r.level]+'</span><div class="rb-txt"><b>'+r.name+'</b> · '+r.cat+'<br><span class="muted">'+r.text+'</span><div class="rb-meta">'+r.scope+' · 数据日期 '+SNAP.data_date+' · 是否影响建议：'+r.affects+' · 点击查看依据 →</div></div><span class="arrow">›</span></div>').join('')+'</div>';
+
+ const sectorIntro='<div class="notice gray" '+specTag('§6.2 口径说明条')+'><b>口径说明（必显）</b>：本期板块采用<b>东财行业板块口径</b>（行情商自定义分类），<b>不是申万 / 中证行业分类</b>；板块名称与全市场分位不可与研报行业口径直接对照。'+term('sector_strength','板块强弱档')+'为多日同构 2×2 三档，与单日相对大盘差值是两套口径。本期不按成分股逐层穿透、概念板块默认关闭（NG-6）。<br><span class="tiny">S1 申万一级对照标签仅展示、不参与任何计算；映射不到显示「申万对照：未标注」并标降级。</span></div>';
+
+ const sectorCards=SNAP.sectors.map(s=>{
+  const links=s.holdings.map(c=>{const h=getH(c);return '<button class="rel-link" data-act="detail" data-code="'+h.code+'" data-from="sector_card" data-sector="'+s.code+'">'+h.name+' ('+h.code+') · '+(h.type==='ETF'?'ETF':'股票')+' <span class="tiny '+clsPct(h.pct)+'">'+fmtPct(h.pct)+'</span></button>';}).join('');
+  return '<div class="sector-card" id="sector-'+s.code+'" '+specTag('§6.2 卡片')+'>'+
+   '<div class="sh"><b>'+s.name+'</b><span class="pill">'+s.type+'</span><span class="pill '+(s.strength==='偏强'?'buy':(s.strength==='偏弱'?'sell':'neutral'))+'">多日强弱：'+s.strength+'</span><span class="tiny">'+SNAP.data_date+'</span><div class="right">'+techBtn('sector_strength','看多日档依据')+'</div></div>'+
+   '<div class="line"><span class="k">强弱定位</span><span class="'+clsPct(s.pct)+' b">'+fmtPct(s.pct)+'</span> · 全市场 '+s.total+' 个板块中排第 '+s.rank+'（分位 '+s.pctile+'%）'+techBtn('sector_pct','依据')+'</div>'+
+   '<div class="line"><span class="k">相对大盘</span>相对上证指数：<b>'+s.rs+'</b>（差 '+s.rs_diff+' 个百分点，单日展示）'+techBtn('sector_rs','依据')+'</div>'+
+   '<div class="line"><span class="k">内部结构</span>上涨 '+s.up+' / 下跌 '+s.down+' / 平盘 '+s.flat+' 家（'+s.excluded+' 只无数据未计入）；领涨 '+s.leader+' <span class="tiny">参考展示层，不参与硬结论</span></div>'+
+   '<div class="line"><span class="k">自选相对</span>板块内自选标的 '+s.holdings.length+' 只：'+s.h_stat.replace(/^\d+ 只：/,'')+techBtn('dh','依据')+'</div>'+
+   '<div class="line"><span class="k">申万对照</span><span class="tiny">'+s.sw+' · 仅展示、不参与计算</span></div>'+
+   '<div class="r7"><b>R7 一句话结论（纯结构描述 · 无买卖词）</b><br>'+s.r7+'</div>'+
+   '<div class="rel-bar"><span class="tiny" style="flex:1 1 100%">相关标的（纯导航，不展示操作建议、不出现动作词）：</span>'+links+'</div></div>';
+ }).join('');
+
+ const more='<div class="card tight" '+specTag('§6.2 折叠不截断')+'><div class="card-h"><button class="btn sm" data-act="sector-more">'+(state.moreSectors?'收起':'展开')+'另有 '+SNAP.more_sectors.length+' 个涉及板块未展开</button><span class="desc">主排序：覆盖标的数降序 → |涨跌幅| 降序 → 板块代码字典序；K_max 超额折叠、不静默截断</span></div>'+
+  (state.moreSectors?'<div class="counts">'+SNAP.more_sectors.map(s=>'<span class="pill">'+s.name+' · '+s.n+' 只</span>').join('')+'</div>':'')+'</div>';
+
+ return '<div class="view">'+
+  '<div class="notice blue" '+specTag('§6.1 ①')+'><b>交易日 / 缓存状态条</b> · 行情基准日 '+SNAP.data_date+' 收盘（非「今日 / 实时 / 最新」）· 交易日 · source_tag='+SNAP.source_tag+' · 无降级 · 三元组一致 ✓ · 非交易日整区不触发</div>'+
+  risks+idx+
+  '<div class="card" '+specTag('§6.1 ④')+'><div class="card-h"><h2>核心指标（6 格）</h2><span class="desc">每项可展开「这次的数怎么来的」（§6.6 八字段）</span></div>'+cells+'</div>'+
+  breadth+regime+summary+
+  '<div class="sec-label">TAB A · 下半 · 板块 / 概念分析区（只分析自选标的涉及的板块）</div>'+sectorIntro+
+  '<div class="grid g2">'+sectorCards+'</div>'+more+
+  '<div class="notice gray"><b>底部提醒</b>：板块涨跌不得直接推导个股买卖；相对强弱为算术差、未剔市值因子、未做行业中性化；领涨股 / 涨跌家数属结构描述，不构成推荐。板块风险信号 SEC-1 / SEC-2 / SEC-3 按 §5.10 统一裁定等级。</div>'+
+ '</div>';
+}
+
+/* ---------- 渲染：Tab B ---------- */
+function renderB(){
+ const pf='<div class="card" '+specTag('§6.3 组合层')+'><div class="card-h"><h2>组合层</h2><span class="desc">建议总仓位百分比只在列表 / 组合层出现，大盘区不输出</span></div><div class="portfolio">'+
+  '<div class="pf"><div class="k">总资金（固定金额）</div><div class="v">¥'+SNAP.total_capital.toLocaleString()+'</div><div class="s">不随市值每日重算</div></div>'+
+  '<div class="pf"><div class="k">总持仓市值占比</div><div class="v">62.4%</div><div class="s">≤ 80% ✓</div></div>'+
+  '<div class="pf"><div class="k">现金可用</div><div class="v">37.6%</div><div class="s">≥ 20% ✓</div></div>'+
+  '<div class="pf"><div class="k">T 仓占用</div><div class="v">3.1%</div><div class="s">≤ 10% ✓</div></div>'+
+  '<div class="pf"><div class="k">资产类别分散度</div><div class="v" style="font-size:13px">股票 10 / ETF 1</div><div class="s">行业集中度 银行 27% ≥25% → 仅提示、不硬限</div></div>'+
+  '</div></div>';
+
+ const todo='<div class="todo-head" '+specTag('§3.3 今日待办')+'>📌 今日需处理 '+SNAP.todo_codes.length+' 只 <span class="tiny" style="font-weight:400">与 Tab A「今日风险 4 条」同一快照；操作意见计数与风险计数分开统计</span><button class="btn sm" style="margin-left:auto" data-act="todo-toggle">'+(state.todoOnly?'显示全部 11 只':'只看这 '+SNAP.todo_codes.length+' 只')+'</button></div>';
+
+ const listH='<div class="list-head"><span>标的（名称 / 编码）</span><span style="text-align:right">收盘价</span><span style="text-align:right">涨跌幅</span><span>操作建议</span><span style="text-align:right">风险 / 计划</span></div>';
+ const rows=(state.todoOnly?SNAP.holdings.filter(h=>SNAP.todo_codes.includes(h.code)):SNAP.holdings).map(h=>{
+  const cls=clsPct(h.pct), isState=h.state!=='有效';
+  const advicePill=isState?'<span class="pill state">'+h.advice+'</span>':'<span class="pill '+(['减仓','清仓'].includes(h.advice)?'sell':(['加仓','等待买点'].includes(h.advice)?'buy':'neutral'))+'">'+h.advice+'</span>';
+  const price=h.price===null?'—':(h.type==='ETF'?h.price.toFixed(3):h.price.toFixed(2));
+  const riskPill=h.risk==='none'?'<span class="lv none">无特别提示</span>':'<span class="lv '+h.risk+'">'+lvText[h.risk]+'</span>';
+  const pl=plansFor(h), actsN=pl.branches.filter(b=>b.action!=='不操作').length;
+  const planPill=h.planCount?'<span class="pill plan">'+pl.branches.length+' 条分支 · '+actsN+' 可执行</span>':'<span class="pill state">不出计划</span>';
+  return '<div class="stock-row '+(isState?'state-row':'')+'" data-act="detail" data-code="'+h.code+'" data-from="list" tabindex="0" '+specTag('§6.3 5 必显字段')+'>'+
+   '<div class="s-name">'+h.name+' <span class="code">'+h.code+'</span> <span class="pill">'+h.type+'</span>'+(h.holding?'<span class="pill">持仓</span>':'<span class="pill">自选</span>')+stageTag(h.code)+
+     '<div class="sub" style="flex:1 1 100%">'+(h.note||('最近交易日收盘价 · 不复权 · '+SNAP.data_date))+'</div></div>'+
+   '<div class="s-price '+cls+'">'+price+'</div>'+
+   '<div class="s-pct '+cls+'">'+fmtPct(h.pct)+'</div>'+
+   '<div class="s-advice">'+advicePill+'<span class="tiny">'+h.state+'</span></div>'+
+   '<div class="s-tags">'+riskPill+planPill+'</div></div>';
+ }).join('');
+
+ const legend='<div class="notice gray"><b>口径提示</b>：'+term('观望','「观望」')+'是评分模型产出的<b>有效意见</b>；「待同步 / 无数据 / 不可操作」是<b>状态位</b>（灰色 + 明确文字），禁止留白或渲染成观望。价格取最近已收盘交易日<b>不复权收盘价</b>，不取盘中最新价；'+term('三元组')+'不一致时不显旧值。默认排序：风险等级降序 → 信号优先级 → 意见分组 → 代码升序，<b>禁止按涨跌幅动态排序导致刷新跳变</b>。<br>名称后的 <b>阶段小标签</b>（如 <span class="stage-tag s3">S3 下跌趋势</span>）是可选辅助信息（§5.14.7），<b>不占</b>上表五个必显字段；阶段与操作意见、风险角标三套口径分别标注，不互相推导。</div>';
+
+ return '<div class="view">'+pf+todo+listH+rows+legend+'</div>';
+}
+
+/* ---------- 渲染：详情页 ---------- */
+function renderD(){
+ const h=getH(state.code), cls=clsPct(h.pct), plan=plansFor(h), risks=riskRowsFor(h);
+ const st=stageOf(h.code), sd=STAGE_DEF[st.id];
+ const isState=h.state!=='有效';
+ const price=h.price===null?'—':(h.type==='ETF'?h.price.toFixed(3):h.price.toFixed(2));
+ const human=isState?
+  '今天这只票暂不生成操作意见（'+h.advice+'）：'+h.note+'。不用做任何动作，等下一份盘前快照恢复后再看。':
+  (h.advice==='加仓'?'今天可以在回踩或突破时按条件单加仓 '+h.name+'，其余情况不动；已经算好股数，直接照抄设单即可。':
+   h.advice==='减仓'?'今天这只票按纪律先减一部分、保留分红底仓；只有继续破位才考虑清仓，不要加仓。':
+   h.advice==='等待买点'?'今天还没到买点，价格触发到设定位置再买，其余情况不动。':
+   h.advice==='观望'?'今天是观望：不买也不卖，等下一次盘前结论再说。注意观望是有效意见，不是没数据。':
+   '今天继续持有 '+h.name+'，按条件计划执行即可，不需要额外动作。');
+
+ const crumb='<div class="crumb"><button class="btn sm" data-act="back">← 返回'+(state.from==='sector_card'?'板块区':(state.from==='market_summary'?'大盘总结':'个股列表'))+'</button><span>来源 from='+state.from+(state.sector?'&sector_code='+state.sector:'')+'</span><span>· 以 code 为主键的独立路由 · 不把 advice 放 URL</span></div>';
+
+ const hero='<div class="card" '+specTag('§6.4 ① 人话结论')+'><div class="hero-name"><b>'+h.name+'</b><span class="code">'+h.code+'</span><span class="pill">'+h.type+'</span><span class="pill">'+(h.holding?'持仓':'自选')+'</span><span class="tiny">数据截止 '+SNAP.data_date+' 收盘</span></div>'+
+  '<div class="human" style="margin-top:10px"><span class="pill ai">AI 生成摘要</span> 以结构化字段为准 · 失败降级为规则模板句<br><b>'+human+'</b></div>'+
+  (h.note?'<div class="tiny" style="margin-top:7px">'+h.note+'</div>':'')+'</div>';
+
+ const ohlc='<div class="card" '+specTag('§6.4 ② 价格与四价')+'><div class="card-h"><h2>价格与四价</h2><div class="right"><span class="pill">不复权</span><span class="pill">'+SNAP.data_date+' 收盘</span></div></div>'+
+  '<div style="display:flex;align-items:baseline;gap:12px;flex-wrap:wrap"><span style="font-size:27px;font-weight:800" class="'+cls+'">'+price+'</span><span style="font-size:16px;font-weight:700" class="'+cls+'">'+fmtPct(h.pct)+'</span><span class="tiny">收盘价（最近已收盘交易日）· 前收 '+(h.prev===null?'—':h.prev.toFixed(2))+' · 数据日期 '+SNAP.data_date+'</span></div>'+
+  '<div class="ohlc" style="margin-top:10px">'+
+   [['开',h.open],['高',h.high],['低',h.low],['收',h.price],['前收',h.prev]].map(x=>'<div><div class="k">'+x[0]+'</div><div class="v">'+(x[1]===null?'—':(h.type==='ETF'?x[1].toFixed(3):x[1].toFixed(2)))+'</div></div>').join('')+'</div>'+
+  '<div class="tiny" style="margin-top:8px">三时间分离：data_date '+SNAP.data_date+' / decision_time '+SNAP.decision_time+' / render_time '+SNAP.render_time+'。禁用「今日 / 实时 / 最新」。</div></div>';
+
+ /* 第 3 区块：阶段定位与策略匹配（§5.14）——先定阶段，再给意见 */
+ const riskExtra=(h.risk==='severe'||h.risk==='warn')?'；风险等级（'+lvText[h.risk]+'）在阶段门之上<b>再收紧</b>买入类动作':'';
+ const gateLine=isState
+  ? '<div class="tiny" style="margin-top:9px">阶段 = S0：不出策略、不出条件计划，只显示状态位（'+h.advice+'）；<b>不用旧结论顶替</b>，数据恢复后重新判定。</div>'
+  : '<div class="tiny" style="margin-top:9px"><b>阶段门 S5.5</b>：当前意见「'+h.advice+'」'+(stageAllowed(h)?'<b>在</b>本阶段允许集合内，放行':'<b>不在</b>本阶段允许集合内 → 改写为合规动作并留痕 stage_gate_hit')+riskExtra+'。</div>';
+ const stageCard='<div class="card stage-card '+st.id.toLowerCase()+'" '+specTag('§6.4 ③ · §5.14 阶段定位')+'>'+
+  '<div class="card-h"><h2>阶段定位与策略匹配</h2><span class="desc">先定阶段、再定打法；阶段是前置门，不加减分（§5.14）</span><div class="right">'+techBtn('stage','看阶段判定依据（§6.6 八字段）')+'</div></div>'+
+  '<div class="stage-top"><span class="stage-badge"><span class="id">'+st.id+'</span><span class="nm">'+sd.name+'</span></span>'+
+   '<span class="pill">'+sd.tag+'</span><span class="pill '+(st.conf==='高'?'plan':(st.conf==='中'?'':'state'))+'">置信度 '+st.conf+'</span>'+
+   '<span class="pill">'+SNAP.data_date+' 收盘</span><span class="tiny">按同向证据条数分级，<b>不是概率</b>；连续 2 日满足才切换</span></div>'+
+  '<div class="stage-say"><b>人话：</b>'+st.say+'</div>'+
+  '<div style="margin-top:10px"><div class="sec-label">怎么判出来的（'+st.ev.length+' 条证据 · 口径见'+term('阶段定位')+'）</div><ul class="ev-list">'+st.ev.map(x=>'<li>'+x+'</li>').join('')+'</ul></div>'+
+  '<div class="playgrid">'+
+   '<div class="p wide"><div class="k">本阶段主策略</div><div class="v" style="font-size:13px"><b>'+sd.play+'</b></div></div>'+
+   '<div class="p allow"><div class="k">允许的动作</div><div class="v">'+sd.allow+'</div></div>'+
+   '<div class="p deny"><div class="k">禁止的动作</div><div class="v">'+sd.deny+'</div></div>'+
+   '<div class="p"><div class="k">条件计划模板</div><div class="v">'+sd.tpl+'</div></div>'+
+   '<div class="p next"><div class="k">什么情况下换打法</div><div class="v">'+sd.next+'</div></div>'+
+  '</div>'+
+  '<div class="tiny" style="margin-top:9px">阶段 <b>≠</b> 趋势档：趋势档（'+ (h.trend||'—') +'）是<b>评分项</b>，阶段是<b>动作集合</b>；两者分别标注、<b>不互相推导</b>。'+term('阶段门')+'只收紧不放宽，也不改风险等级。</div>'+
+  gateLine+'</div>';
+
+ const adv='<div class="card" '+specTag('§6.4 ④ 操作意见置顶')+'><div class="advice-box"><span class="main">'+h.advice+'</span><span class="pill '+(isState?'state':'blue')+'">'+h.state+'</span><span class="pill">decision_time '+SNAP.decision_time+'</span><span class="pill">data_date '+SNAP.data_date+'</span><span class="tiny" style="flex:1 1 100%">只读 holding_conclusion；'+term('advice','意见')+'为唯一真值，条件计划不改写它。</span></div>'+
+  '<div style="margin-top:9px">'+techBtn('advice','看守卫 S0–S6 命中记录')+'</div></div>';
+
+ let planHtml='';
+ if(!plan.branches.length){
+  planHtml='<div class="card" '+specTag('§6.4 ⑤ · §6.7')+'><div class="card-h"><h2>盘前条件计划</h2><span class="pill state">不生成</span></div><div class="notice warn"><b>本期不生成条件计划</b><br>'+plan.reason+'<br><span class="tiny">不显旧计划（§8.3）。停牌 / 数据不足 / 除权未重算 / 三元组不一致均按此处理。</span></div></div>';
+ }else{
+  const acts=plan.branches.filter(b=>b.action!=='不操作');
+  const buys=acts.filter(b=>b.action==='买入').length;
+  const intro=acts.length
+   ? acts.slice(0,2).map(b=>b.trigger+' → '+b.action+' '+(b.shares?b.shares+' '+b.unit:'0 '+b.unit)).join('；')+'；其余情况不动。'
+   : '今天没有可执行的分支，全部不动。';
+  planHtml='<div class="card" '+specTag('§6.4 ⑤ · §6.7 条件计划')+'><div class="card-h"><h2>盘前条件计划 <span class="pill plan">'+plan.branches.length+' 条分支</span></h2><div class="right"><button class="btn sm" data-act="copy-all" data-code="'+h.code+'">复制全部（照抄设单）</button></div></div>'+
+   '<div class="plan-intro"><b>'+(acts.length?'照抄设单':'本期无可执行分支')+'：</b>'+intro+'<br><span class="tiny">多情景互斥且完备、不带概率、不排序、不说哪种更可能；每条动作经'+term('同向过滤')+'与当日意见同向。'+term('照抄设单')+'股数已取整到 100 股/手，无需自行换算。</span>'+
+   '<div class="tiny" style="margin-top:5px"><b>计划模板（按阶段选择）</b>：'+st.id+' · '+sd.name+' → '+sd.tpl+'；同向过滤在此之上再筛一次，两条都过不了就不出该分支（§5.14.6）。</div></div>'+
+   (h.risk==='severe'?'<div class="notice warn" style="margin-top:9px"><b>风险等级约束（严重级）</b>：本期禁止任何买入类分支与新建 T 计划分支；下行分支保留。'+term('L1/L2','分级止损')+'已对齐。</div>':'')+
+   (h.risk==='warn'?'<div class="notice warn" style="margin-top:9px"><b>风险等级约束（警示级）</b>：本期禁止买入类分支、不下发新 T 计划；主档不变。</div>':'')+
+   '<div style="margin-top:11px">'+plan.branches.map(b=>{
+     const actCls=b.action==='买入'?'act-buy':(b.action==='减仓'||b.action==='清仓'?'act-sell':'act-none');
+     return '<div class="branch '+actCls+'" id="branch-'+b.id+'"><div class="bh"><span class="pill">分支 '+b.id+'</span><b>'+b.scenario+'</b>'+
+      '<span class="pill '+(b.action==='买入'?'buy':(b.action==='不操作'?'neutral':'sell'))+'">'+b.action+'</span><div class="right">'+(b.settable?'<span class="pill plan">可直接设单</span>':'<span class="pill state">需人工判断</span>')+'<button class="btn sm" data-act="copy-branch" data-code="'+h.code+'" data-id="'+b.id+'">复制</button></div></div>'+
+      '<div class="brow"><span class="k">触发条件</span><span class="v"><b>'+b.trigger+'</b> <span class="tiny">（不复权；基准 '+SNAP.data_date+' 收盘）</span></span></div>'+
+      '<div class="brow"><span class="k">动作与股数</span><span class="v"><b>'+b.action+' '+(b.shares?b.shares+' '+b.unit:'0 '+b.unit)+'</b>'+(b.shares?' <span class="tiny">（100 '+b.unit+'/手，向下取整）</span>':'')+'</span></div>'+
+      '<div class="brow"><span class="k">金额 / 占比</span><span class="v">'+(b.amount?'≈ '+b.amount.toLocaleString()+' 元 · 占总资金 '+b.pct+'%':'—')+'</span></div>'+
+      '<div class="brow"><span class="k">有效期</span><span class="v">'+b.valid+'</span></div>'+
+      '<div class="brow"><span class="k">失效条件</span><span class="v">'+b.invalidate+'</span></div>'+
+      '<div class="brow"><span class="k">仓位校验</span><span class="v '+((b.check.indexOf('≤')>=0)?'check-ok':'')+'">'+b.check+'</span></div>'+
+      '<div class="brow"><span class="k">可设单</span><span class="v">'+(b.settable?'是（价格 / 涨跌幅触发）':'否 · 需人工判断，不能直接设单')+'</span></div>'+
+      '<div class="brow"><span class="k">提示</span><span class="v">'+(b.notes||'—')+'</span></div>'+
+      (b.basis?'<div style="margin-top:5px">'+techBtn('trigger','看触发价的技术依据（§6.6 八字段）')+'</div>':'')+
+     '</div>';
+    }).join('')+'</div>'+ comboCheck(h,plan.branches)+
+   '<div class="plan-foot">字段顺序固定：触发条件 → 动作与股数 → 金额与占比 → 有效期与失效 → 仓位校验 → 可设单标记 → 提示。触发条件只用价格 / 涨跌幅，不出现均线、指标、形态等设不了的条件；技术依据折叠在技术解释层，不写进触发条件行。<br><b>以上为盘前静态条件计划，由本人在券商端自行设置条件单；工具不自动下单、不监控盘中、开盘后不更新。</b></div></div>';
+ }
+
+ const four='<div class="card" '+specTag('§6.4 ⑥ 四要素')+'><div class="card-h"><h2>四要素</h2><span class="desc">取不到标注「未计算 / 数据不足」，禁止虚报</span></div><div class="four">'+
+  '<div class="f"><div class="k">参考价位</div><div class="v">'+(h.price?(h.price*0.9884).toFixed(2)+' – '+(h.price*1.0116).toFixed(2):'未计算')+'</div><div class="s">箱体下沿 / 近 60 日前高</div></div>'+
+  '<div class="f"><div class="k">止损 / 失效位</div><div class="v">'+(h.price?(h.fail_price||h.price*0.9551).toFixed(2):'未计算')+'</div><div class="s">L1 先减后清 · '+term('失效位')+'</div></div>'+
+  '<div class="f"><div class="k">目标 / 减仓区</div><div class="v">'+(h.price?(h.price*1.055).toFixed(2):'未计算')+'</div><div class="s">非收益承诺，仅纪律参考</div></div>'+
+  '<div class="f"><div class="k">仓位</div><div class="v">中（10–15%）</div><div class="s">单只 ≤20% ✓ · 不突破硬上限</div></div>'+
+  '</div></div>';
+
+ const hold='<div class="card" '+specTag('§6.4 ⑦ 持仓与分红')+'><div class="card-h"><h2>持仓与分红</h2><div class="right">'+techBtn('dividend','看股息率依据')+'</div></div>'+
+  '<div class="counts"><span class="pill">成本价 '+(h.cost===null?'未录入':h.cost.toFixed(2))+'</span><span class="pill '+(h.pnl===null?'state':(h.pnl>0?'buy':'sell'))+'">浮动盈亏 '+(h.pnl===null?'未录入':fmtPct(h.pnl))+'</span><span class="pill">持有 '+(h.days===null?'—':h.days+' 天')+'</span></div>'+
+  '<div class="tiny" style="margin-top:8px">'+h.div+' · '+term('估值分位')+'与价格位置分别标注：'+h.pos+'。'+term('股息率')+'连续性下降会触发 DIV-1 严重级。</div>'+
+  '<div style="margin-top:8px">'+techBtn('valuation','看估值分位依据')+'</div></div>';
+
+ const dims=[
+  ['6a 技术面 · 主导',h.trend==='—'?'数据不足，本期不计算':'趋势档：'+h.trend+'；依据 均线排列 + MA 斜率 + 价相对 MA 离散计数（3 项同向，冲突时降为中性）。'+term('MA20')+'位置与'+term('分位','20 日位置')+'见指标区。位置标签：4 类主指标 2/4 类同向，布林带未计入。评分 / 置信度按离散项加权；关键价位三级，取不到标「未计算」。<br><b>与阶段的分工</b>：本项是评分项（趋势档），阶段（'+st.id+' '+sd.name+'）是动作集合，见第 3 区块；两者分别标注、<b>不得互相推导</b>（§5.14）。','tech:advice'],
+  ['6b 估值与分红 · 低权重',h.pos+' · '+h.div+'。估值位置与价格位置<b>分别标注</b>；分红中断 → 风险提示。','tech:valuation'],
+  ['6c 所属板块归因 · 低权重','直接复用 sector_snapshot['+(SNAP.sectors.find(s=>s.name===h.sector)?.code||h.sector)+']['+SNAP.data_date+']，不重取数：板块「'+h.sector+'」· '+term('sector_strength')+' · 全市场分位 / 相对大盘 / 本标的相对板块 d_h 见板块卡。涨跌家数与领涨股标注「参考，不参与硬结论」。'+'<button class="btn sm" data-act="jump-sector">跳回板块锚点</button>','tech:dh'],
+  ['6d 大盘环境 · 低权重','引用 market_regime='+SNAP.market.regime.label+'（'+SNAP.market.regime.quadrant+'）、regime_degraded='+SNAP.market.regime.degraded+'；不重算、不改读 market_baseline。大盘风险作为全局系数只约束买入类动作，不改写 advice 主档。','tech:regime'],
+  ['6e 风险 · 止损 · 仓位','纪律校验非预测：引用同一 risk_signals[]（见下方风险块）。分级止损 '+term('L1/L2')+' 状态；逐条校验 单只20% / 总仓80% / 现金20% / T仓10%；行业集中度 27% ≥25% 仅提示。','tech:risk'],
+  ['6f 基本面 / 财报 · 低权重',h.type==='ETF'?'ETF 无财报维度，本块跳过并标注。':'事实性数据参与评分加减分与置信度；可触发 FUN-1 / FUN-2 风险信号；取数失败 → 观察级数据质量信号、不阻塞报告。','tech:risk'],
+  ['6g 消息 / 政策 · 低权重','只取事实性公告与政策事件时间戳；不做情绪打分、不做题材热度；重大事实事件可触发风险信号。','tech:risk'],
+  ['6h 长周期位置 · 低权重','年线 / 月线级分位、距 3–5 年高低点位置；与估值分位共同构成 SEC-2 '+term('分位','价值陷阱')+'判定输入；不单独触发买卖。','tech:valuation']
+ ];
+ const analysis='<div class="card" '+specTag('§6.4 ⑧ 可展开分析过程 · §6.6')+'><div class="card-h"><h2>分析过程（默认折叠 / 摘要）</h2><span class="desc">先意见后理由；每个具体数值可展开到八字段</span></div>'+
+  dims.map((d,i)=>{
+   const tkey=d[2]?d[2].split(':')[1]:'advice';
+   return '<div class="fold"><div class="fh" data-act="fold"><span>'+d[0]+'</span><span class="right">'+(i===0?'默认展开':'点击展开')+' ▾</span></div><div class="fb '+(i===0?'':'hidden')+'">'+d[1]+'<div style="margin-top:6px">'+techBtn(tkey,'看这项的技术依据（八字段）')+'</div></div></div>';
+  }).join('')+
+  '<div class="fold"><div class="fh" data-act="fold"><span>权重明细（技术面主导 · 各维度得分与加减分）</span><span class="right">默认折叠 ▾</span></div><div class="fb hidden">技术面 55% / 基本面·财报 10% / 消息政策（事实性）5% / 分红 10% / 板块 10% / 大盘 10%；风险为横切层，<b>不占权重表</b>，只在维度评分之外通过限制 / 降级参与决策。每个维度附数据日期与来源（'+SNAP.data_date+' / '+SNAP.source_tag+'）。'+term('三元组')+'：'+SNAP.snapshot_id+' · '+SNAP.calc_version+'。</div></div></div>';
+
+ const riskTable='<div class="card" id="risk" '+specTag('§6.4 ⑨ · §5.10.6 ③')+'><div class="card-h"><h2>结构化风险块</h2><span class="desc">与页级风险条、列表角标、卡片四处同源（只读 risk_signals[]）</span></div>'+
+  '<div class="risk-table"><div class="rt-head"><span>等级</span><span>类别</span><span>触发依据</span><span>数据日期</span><span>影响建议</span><span>对应动作</span></div>'+
+  risks.map(r=>'<div class="rt-row '+r.level+'"><span class="lv '+r.level+'">'+lvText[r.level]+'</span><span class="b">'+r.cat+'</span><span>'+r.basis+'</span><span class="mono">'+r.date+'</span><span>'+r.affects+'</span><span>'+r.action+'</span><div class="human">💬 '+r.human+'</div></div>').join('')+
+  '</div><div style="margin-top:8px">'+techBtn('risk','看触发依据八字段')+'</div>'+
+  '<div class="tiny" style="margin-top:8px">严重级默认展开、观察级折叠；风险是已发生事实的提示，不是预测。多信号取最高、不叠加升级；大盘风险最高只到警示级，不触发全场清仓。</div></div>';
+
+ const meta='<div class="card" '+specTag('§6.4 ⑩ 元信息与免责')+'><div class="card-h"><h3>数据日期与免责声明</h3></div>'+
+  '<div class="counts"><span class="chip mono">data_date '+SNAP.data_date+'</span><span class="chip mono">decision_time '+SNAP.decision_time+'</span><span class="chip mono">'+SNAP.calc_version+'</span><span class="chip mono">'+SNAP.snapshot_id+'</span><span class="chip">source_tag '+SNAP.source_tag+'</span><span class="chip">无缓存</span></div>'+
+  '<div class="tiny" style="margin-top:9px">工具不自动下单、不监控盘中、开盘后不更新结论；条件单由本人在券商端自行设置。以上为 AI 基于公开信息与模拟数据整理生成，仅供参考，不构成任何投资建议或个股推荐。投资有风险，决策需谨慎。</div></div>';
+
+ return '<div class="view">'+crumb+hero+ohlc+stageCard+adv+planHtml+four+hold+analysis+riskTable+meta+'</div>';
+}
+
+/* ---------- 渲染入口 ---------- */
+function render(){
+ renderChrome();
+ const v=$('#views');
+ v.innerHTML=state.view==='A'?renderA():state.view==='B'?renderB():renderD();
+ // 恢复展开态（ fold / tech 由点击直接切换 DOM，重渲染后重置为默认）
+}
+function setView(view,code,from,sector){
+ state.view=view; if(code)state.code=code; if(from)state.from=from; state.sector=sector||null;
+ render();
+ const f=$('#appFrame'); if(state.device==='phone')f.scrollTop=0; else window.scrollTo({top:0,behavior:'smooth'});
+ updateFab();
+}
+
+/* ---------- 弹层 ---------- */
+function openModal(title,body,footer){
+ $('#modalRoot').innerHTML='<div class="modal-mask" data-act="modal-close"><div class="modal" data-stop="1"><div class="mh">'+title+'<button class="x" data-act="modal-close">×</button></div><div class="mb">'+body+'</div><div class="mf">'+(footer||'<button class="btn" data-act="modal-close">关闭</button>')+'</div></div></div>';
+}
+function closeModal(){$('#modalRoot').innerHTML='';}
+function feishuText(){
+ const h=getH('600036'), plan=plansFor(h), buys=plan.branches.filter(b=>b.action==='买入');
+ const sum=buys.reduce((a,b)=>a+b.amount,0), sumPct=+(sum/SNAP.total_capital*100).toFixed(1), after=+(12.8+sumPct).toFixed(1);
+ return [
+  '【盘前助手 · '+SNAP.next_trade_date+'】行情基准 '+SNAP.data_date+' 收盘 | '+SNAP.snapshot_id+' | '+SNAP.calc_version+' | 来源 '+SNAP.source_tag,
+  '',
+  '■ 摘要（AI 生成，以结构化字段为准）',
+  '上证指数 3,286.42 / +0.62%，环境「中性」，节奏以等确认为主。自选 11 只：减/清 2、加/建 2、持有 3、观望 1、状态位 3。',
+  '',
+  '■ 阶段定位（示例：招商银行 600036）',
+  stageOf('600036').id+' '+STAGE_DEF[stageOf('600036').id].name+'（置信度 '+stageOf('600036').conf+'）→ '+STAGE_DEF[stageOf('600036').id].play+'；禁止：'+STAGE_DEF[stageOf('600036').id].deny,
+  '',
+  '■ 今日风险 4 条（按等级）',
+  '严重 · 中国神华 601088｜TEC-2 跌破趋势失效位，进入 L1 先减后清｜'+SNAP.data_date+'｜影响建议：是',
+  '严重 · 大秦铁路 601006｜SEC-2 价值陷阱：估值低但持续下行，禁止买入类意见｜'+SNAP.data_date+'｜影响建议：是',
+  '警示 · 长江电力 600900｜TEC-1 转弱但未破位，禁止买入类动作｜'+SNAP.data_date+'｜影响建议：是',
+  '观察 · 招商银行 600036｜DQ-2 使用缓存，仅注记｜'+SNAP.data_date+'｜影响建议：否',
+  '',
+  '■ 今日需处理 6 只',
+  '601088 减仓 / 601006 减仓 / 600900 持有(警示) / 600036 加仓 / 510300 等待买点 / 000895 停牌不可操作',
+  '',
+  '■ 条件计划（示例：招商银行 600036 · 加仓 · 阶段 '+stageOf('600036').id+' 模板）',
+  ...buys.slice(0,2).map(b=>branchText(h,b).replace(/\n/g,'\n  ')),
+  '',
+  '■ 组合校验：'+buys.length+' 条买入分支全触发合计 '+sum.toLocaleString()+' 元 / '+sumPct+'%，叠加当前单只 12.8% 后 '+after+'% > 单只 20%，同时执行会超出上限，请自行取舍。仅供参考，系统不代为决定。',
+  '',
+  '以上为盘前静态条件计划，由本人在券商端自行设置条件单；工具不自动下单、不监控盘中、开盘后不更新。',
+  '触发条件、股数、风险等级、数据日期为关键字段，渠道压缩时不得删减。完整内容见 WebUI 页面。',
+  '免责声明：以上由 AI 基于公开信息整理生成（本原型为模拟数据），仅供参考，不构成投资建议或收益承诺。'
+ ].join('\n');
+}
+
+/* ---------- 交互（事件委托） ---------- */
+document.addEventListener('click',e=>{
+ const el=e.target.closest('[data-act]');
+ const devBtn=e.target.closest('#deviceSeg button');
+ if(devBtn){
+  state.device=devBtn.dataset.device;
+  $('#device').classList.toggle('phone',state.device==='phone');
+  document.querySelectorAll('#deviceSeg button').forEach(b=>b.classList.toggle('on',b===devBtn));
+  if(state.device==='phone')$('#appFrame').scrollTop=0; else window.scrollTo({top:0});
+  updateFab();
+  return;
+ }
+ if(e.target.id==='specBtn'){
+  state.spec=!state.spec;document.body.classList.toggle('show-spec',state.spec);
+  $('#specBtn').textContent='需求对照：'+(state.spec?'开':'关');$('#specBtn').classList.toggle('on',state.spec);return;
+ }
+ if(!el)return;
+ const act=el.dataset.act;
+
+ if(act==='modal-close'){ if(e.target.closest('[data-stop]') && e.target!==el){} else closeModal(); return; }
+ if(act==='to-top'){
+  if(state.device==='phone')$('#appFrame').scrollTo({top:0,behavior:'smooth'});
+  else window.scrollTo({top:0,behavior:'smooth'});
+  toast('已回到页首');
+  return;
+ }
+ if(act==='reset'){state.tab='A';state.todoOnly=false;setView('A','600036','list');toast('已回到 Tab A · 大盘 · 板块');return;}
+ if(act==='tab'){
+  if(el.dataset.tab==='C'){toast('选股为下一阶段范围，本版不做（§3.4）');return;}
+  state.tab=el.dataset.tab;setView(el.dataset.tab,'600036','list');return;
+ }
+ if(act==='back'){setView((state.from==='sector_card'||state.from==='market_summary')?'A':(state.tab||'B'),'600036','list');return;}
+ if(act==='detail'||act==='risk-jump'){
+  setView('D',el.dataset.code,el.dataset.from||'list',el.dataset.sector||null);
+  if(act==='risk-jump')setTimeout(()=>{const r=$('#risk');if(r)r.scrollIntoView({behavior:'smooth',block:'start'});},120);
+  return;
+ }
+ if(act==='jump-sector'){
+  const c=state.code, sc=SNAP.sectors.find(x=>x.name===getH(c).sector)?.code||SNAP.sectors[0].code;
+  setView('A','600036','list');
+  setTimeout(()=>{const s=$('#sector-'+sc);if(s)s.scrollIntoView({behavior:'smooth',block:'start'});},140);
+  return;
+ }
+ if(act==='todo-toggle'){state.todoOnly=!state.todoOnly;render();return;}
+ if(act==='sector-more'){state.moreSectors=!state.moreSectors;render();return;}
+ if(act==='fold'){
+  const body=el.nextElementSibling;if(body){body.classList.toggle('hidden');el.querySelector('.right').textContent=body.classList.contains('hidden')?'点击展开 ▾':'已展开 ▴';}
+  return;
+ }
+ if(act==='tech'){
+  const body=el.nextElementSibling;if(!body)return;
+  if(!body.classList.contains('hidden')){body.classList.add('hidden');el.textContent='▸ '+el.textContent.replace(/^▾\s*/,'');return;}
+  const t=TECH[el.dataset.key];
+  if(!body.dataset.filled){
+   body.innerHTML='<div class="l1"><b>① 这次怎么来的（人话版）</b><br>'+t.plain+' <button class="tech-toggle" data-act="tech2">▸ 展开完整八字段（可回测 / 复核）</button></div>'+
+    '<div class="tech-full hidden"><b>② 完整八字段（§6.6.2）</b><div class="kv">'+
+    '<span class="k">metric</span><span>'+H(t.m)+'</span>'+
+    '<span class="k">value</span><span>'+H(t.v)+'</span>'+
+    '<span class="k">input_ref</span><span>'+H(t.input)+'</span>'+
+    '<span class="k">formula</span><span>'+H(t.formula)+'</span>'+
+    '<span class="k">threshold</span><span>'+H(t.threshold)+'</span>'+
+    '<span class="k">hit_detail</span><span>'+H(t.hit)+'</span>'+
+    '<span class="k">provenance</span><span>data_date='+SNAP.data_date+' · source_tag='+SNAP.source_tag+' · calc_version='+SNAP.calc_version+' · snapshot_id='+SNAP.snapshot_id+' · decision_time='+SNAP.decision_time+'</span>'+
+    '<span class="k">degraded_reason</span><span>none（正常计算；若降级须写明原因、数据日期与来源）</span>'+
+    '</div><div class="tiny" style="margin-top:6px">八字段由盘前引擎随快照一次算出并写入，页面只读展开，禁止前端重算。'+term('MA20','术语')+'可点开词典。</div></div>';
+   body.dataset.filled='1';
+  }
+  body.classList.remove('hidden');el.textContent='▾ '+el.textContent.replace(/^▸\s*/,'');
+  return;
+ }
+ if(act==='tech2'){
+  const f=el.closest('.tech-body').querySelector('.tech-full');f.classList.toggle('hidden');
+  el.textContent=f.classList.contains('hidden')?'▸ 展开完整八字段（可回测 / 复核）':'▾ 收起完整八字段';return;
+ }
+ if(act==='term'){
+  const k=el.dataset.term, txt=GLOSSARY[k]||'（该术语释义待补）';
+  openModal('术语解释 · '+k,'<div style="font-size:13.5px;line-height:1.9;color:var(--text)">'+txt+'</div><div class="tiny" style="margin-top:10px">来源：需求文档 v2.0 附录 B 术语表。术语解释回答「这个词是什么」；「这次的数怎么来的」请看技术解释层（§6.6）。</div>');
+  return;
+ }
+ if(act==='feishu'){
+  const txt=feishuText();
+  openModal('入口二 · 飞书推送预览（文本，不做链接）','<div class="notice blue" style="margin-bottom:10px">复用现有 notification_routing / notification_noise / notification_capabilities / feishu_sender；与 WebUI 同源同版本、只读不重算。摘要为附加段，<b>不得删减</b>触发条件、股数、风险等级、数据日期。</div><div class="feishu-text" id="feishuText">'+H(txt)+'</div>',
+   '<button class="btn" data-act="copy-feishu">复制推送文本</button><button class="btn primary" data-act="modal-close">关闭</button>');
+  return;
+ }
+ if(act==='copy-branch'||act==='copy-all'||act==='copy-feishu'){
+  let txt='';
+  if(act==='copy-feishu')txt=feishuText();
+  else{const h=getH(el.dataset.code||state.code),p=plansFor(h);
+   txt=act==='copy-branch'?branchText(h,p.branches.find(b=>b.id===el.dataset.id)):
+    ['【'+h.name+' '+h.code+' · 盘前条件计划 · '+SNAP.data_date+' 收盘基准】','当日意见：'+h.advice,'',...p.branches.map(b=>branchText(h,b)),'',comboCheck(h,p.branches).replace(/<[^>]+>/g,'').replace(/&gt;/g,'>').replace(/&lt;/g,'<'),'','以上为盘前静态条件计划，由本人在券商端自行设置条件单；工具不自动下单、不监控盘中、开盘后不更新。'].join('\n');
+  }
+  copy(txt);toast('已复制，可直接照抄到券商条件单');return;
+ }
+});
+function copy(txt){
+ const ta=document.createElement('textarea');ta.value=txt;ta.style.position='fixed';ta.style.opacity='0';document.body.appendChild(ta);ta.select();
+ try{document.execCommand('copy');}catch(err){}
+ document.body.removeChild(ta);
+}
+document.addEventListener('keydown',e=>{
+ if(e.key==='Enter'&&e.target.classList&&e.target.classList.contains('stock-row')){e.target.click();}
+ if(e.key==='Escape')closeModal();
+});
+/* URL 深链预览：?device=pc|phone&view=A|B|D&code=601088&from=list&spec=1 */
+(function initFromUrl(){
+ try{
+  const q=new URLSearchParams(location.search);
+  if(q.get('device')==='phone'){
+   state.device='phone';$('#device').classList.add('phone');
+   document.querySelectorAll('#deviceSeg button').forEach(b=>b.classList.toggle('on',b.dataset.device==='phone'));
+  }
+  const v=q.get('view');
+  if(v==='A'||v==='B'){state.view=v;state.tab=v;}
+  if(v==='D'){state.view='D';state.tab=q.get('tab')||'B';}
+  if(q.get('code'))state.code=q.get('code');
+  if(q.get('from'))state.from=q.get('from');
+  if(q.get('spec')==='1'){state.spec=true;document.body.classList.add('show-spec');$('#specBtn').textContent='需求对照：开';$('#specBtn').classList.add('on');}
+  const sc=parseInt(q.get('scroll')||'0',10);
+  if(sc>0)setTimeout(()=>{
+   const f=$('#appFrame');
+   if(state.device==='phone'){const prev=f.style.scrollBehavior;f.style.scrollBehavior='auto';f.scrollTop=sc;f.style.scrollBehavior=prev;}
+   else window.scrollTo(0,sc);
+   updateFab();
+  },80);
+ }catch(e){}
+})();
+/* ---------- 浮动「回到页首」：锚在设备框右下角，滚动超过阈值才出现 ---------- */
+function positionFab(){
+ const fab=$('#fab'); if(!fab)return;
+ const d=$('#device').getBoundingClientRect();
+ const w=46,h=46,m=14;
+ const left=Math.max(8,Math.min(window.innerWidth-8-w,d.right-m-w));
+ const top=Math.max(8,Math.min(window.innerHeight-8-h,d.bottom-m-h));
+ fab.style.left=Math.round(left)+'px';
+ fab.style.top=Math.round(top)+'px';
+}
+function updateFab(){
+ const fab=$('#fab'); if(!fab)return;
+ const y=state.device==='phone'?$('#appFrame').scrollTop:(window.pageYOffset||document.documentElement.scrollTop||0);
+ fab.classList.toggle('on',y>220);
+ positionFab();
+}
+$('#appFrame').addEventListener('scroll',updateFab,{passive:true});
+window.addEventListener('scroll',updateFab,{passive:true});
+window.addEventListener('resize',updateFab);
+
+render();
+updateFab();
+</script>
+</body>
+</html>
