@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>股票分析助手 · 交互原型 v2.0（模拟数据）</title>
+<title>股票分析助手 · 交互原型 v2.1（模拟数据）</title>
 <style>
 :root{
   --bg:#f3f6fa; --surface:#fff; --surface2:#f8fafc; --border:#e3e8f0; --border2:#eef1f6;
@@ -334,7 +334,7 @@ body.show-spec [data-spec]{outline:1px dashed #c7d2e2}
 </head>
 <body>
 <div class="proto-bar">
-  <span class="brand">交互原型 v2.0</span>
+  <span class="brand">交互原型 v2.1</span>
   <span class="fake">模拟数据 · 非真实行情</span>
   <span class="hint">需求对照：§6 三视图展示契约 / §5.14 阶段定位与策略匹配 / §5.10 风险 / §5.11 条件计划 / §5.13 LLM 文案层</span>
   <div class="seg" id="deviceSeg">
@@ -373,9 +373,9 @@ body.show-spec [data-spec]{outline:1px dashed #c7d2e2}
 
 <script>
 /* ============================================================
-   股票分析助手 v2.0 · 交互原型
+   股票分析助手 v2.1 · 交互原型
    全部数据为模拟数据，仅用于验证信息架构 / 展示契约 / 交互。
-   数据严格遵循 docs/requirements/...v2.0.md 的字段与口径。
+   数据严格遵循 docs/requirements/...v2.1.md 的字段与口径。
    ============================================================ */
 const SNAP = {
   data_date:'2026-11-10', decision_time:'2026-11-11 07:30', render_time:'2026-11-11 08:02',
@@ -1019,7 +1019,7 @@ document.addEventListener('click',e=>{
  }
  if(act==='term'){
   const k=el.dataset.term, txt=GLOSSARY[k]||'（该术语释义待补）';
-  openModal('术语解释 · '+k,'<div style="font-size:13.5px;line-height:1.9;color:var(--text)">'+txt+'</div><div class="tiny" style="margin-top:10px">来源：需求文档 v2.0 附录 B 术语表。术语解释回答「这个词是什么」；「这次的数怎么来的」请看技术解释层（§6.6）。</div>');
+  openModal('术语解释 · '+k,'<div style="font-size:13.5px;line-height:1.9;color:var(--text)">'+txt+'</div><div class="tiny" style="margin-top:10px">来源：需求文档 v2.1 附录 B 术语表。术语解释回答「这个词是什么」；「这次的数怎么来的」请看技术解释层（§6.6）。</div>');
   return;
  }
  if(act==='feishu'){
