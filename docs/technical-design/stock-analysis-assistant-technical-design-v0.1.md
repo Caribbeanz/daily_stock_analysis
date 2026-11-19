@@ -213,7 +213,7 @@ src/assistant/data/fetcher.py（新增，包装现有 akshare 调用）
 
 ### 3.2 L1–L4 四层存储表结构
 
-**载体**：沿用现有 SQLite `data/stock_analysis.db`（38 张表基线），新增/扩展以下表。L1 与 L3 同库不同表，都能按 `code + trade_date` 检索（§4.6.2 硬约束 3）。
+**载体**：沿用现有 SQLite `data/stock_analysis.db`。**实存 28 张表**（2026-11-19 实读，不含 schema_migrations；需求 §4.6.1 记 38 张，差异可能因统计口径或库演进，**以实读为准**）。本助手新增/扩展以下表，L1 与 L3 同库不同表，都能按 `code + trade_date` 检索（§4.6.2 硬约束 3）。**实读确认：`holding_conclusion`/`conditional_plan`/`risk_signals`/`market_snapshot`/`sector_snapshot`/`market_regime`/`rs_t`/`sector_strength` 8 张规划表全部不存在，均需新建**（附录 A.0 #1）。
 
 #### L1 原始行情层
 
@@ -903,17 +903,54 @@ stage_gate_hit = {
 
 ## 附录 A：可复用清单总表（代码库实读）
 
-> 来源：需求 v2.4 的 2026-11-10 核查结论 + 本方案 2026-11-19 实读。**编码启动前须逐条复核**（库可能已演进）。
+> 来源：需求 v2.4 的 2026-11-10 核查结论 + 2026-11-19 代码库实读（Explore 全量探查 8 模块）。**编码启动前须逐条复核**（库可能已演进）。
+
+### A.0 实读核查关键发现（2026-11-19，与需求/方案基线的差异）
+
+> 以下为 Explore 实读代码库后的**关键修正与确认**，直接影响 §3–§7 的实现设计。
+
+| # | 发现 | 与基线差异 | 影响章节 | 处理 |
+| --- | --- | --- | --- | --- |
+| 1 | **8 张规划表全部不存在**：`market_regime`/`rs_t`/`sector_strength`/`holding_conclusion`/`conditional_plan`/`risk_signals`/`market_snapshot`/`sector_snapshot` 均需新建 | 需求 §4.6.1 记 38 张表，实读**实存 28 张**（不含 schema_migrations）；差异可能因统计口径或库演进 | §3.2 | 以实读为准；8 张表按 §3.2 设计新建 |
+| 2 | **`source_tag`(D1/D2/D3) 不存在**：代码中无此标记，仅 `docs/requirements` 与 `deliverables/` 中规划；`snapshot.py` 的 `df.attrs["snapshot_source"]`(L106) 可作派生基础 | 需求/方案多处引用 source_tag | §3.1 | 新建：`Pick`/`ScreenResult` 加 `source_tag` 字段 |
+| 3 | **`calc_version` 不存在**：代码层只有 `backtest_engine_version: str = "v1"`（config L1296）；无独立 calc_version 字段 | 方案 §2.4/§5.3 大量引用 calc_version | §2.4/§5.3 | 复用 `backtest_engine_version` 或新增 `calc_version` 字段（走 Config 迁移） |
+| 4 | **复权**：`akshare_fetcher` 全部 `adjust="qfq"`（前复权），无独立 `adj_factor` 接口；`TICKFLOW_KLINE_ADJUST` 有 5 值但默认 `none` | 与 §3.2 修正一致 | §3.2 | 确认需改 `adjust=""` + 新建 adj_factor 取数 |
+| 5 | **通知渠道 13 个**（非需求记的 15+）：WECHAT/FEISHU/DINGTALK/TELEGRAM/EMAIL/PUSHOVER/NTFY/GOTIFY/PUSHPLUS/SERVERCHAN3/CUSTOM/DISCORD/SLACK/ASTRBOT；`route_type` 三类 `report/alert/system_error` | 数字修正 | §6.3 | 以实读为准；新增 route_type 在 `NOTIFICATION_ROUTE_CONFIGS`(L31) 注册 |
+| 6 | **回测 `win_rate_pct` 口径**：分母 = `win_count + loss_count`（**排除 neutral**）；`neutral_rate_pct` 单独算；`_MIN_CALIBRATION_SAMPLES=30` 在 `src/agent/memory.py` L32 | 方案 §7.2 引用 evaluated>=30 | §7.2 | 确认落点；条件计划回测模式须自定胜率口径 |
+| 7 | **回测不支持条件单模拟**：`BacktestResultLike` 有 `hit_stop_loss/take_profit/first_hit` 但无 conditional order；`_classify_outcome` 仅 win/loss/neutral 三分类 | 与 §7.2 缺口判断一致 | §7.2 | 确认需扩展条件计划回测模式 |
+| 8 | **LLM fallback 闭集**：`SUPPORTED_GENERATION_FALLBACK_BACKENDS = frozenset({LITELLM_BACKEND_ID})`，fallback 只能到 litellm；**无独立成本($/token)预算机制**，只有 token 用量统计（`usage.py` → `LLMUsage` 表） | 方案 §6.4 提渠道/成本留编码 | §6.4 | 成本上限需新建 `src/llm/cost_budget.py` |
+| 9 | **条件计划雏形**：`dashboard.phase_decision.watch_conditions + next_check_time`(executor.py L148-149) 是雏形，但**无独立 `conditional_plan` 字段或表** | 方案 §4.6 新建 | §4.6 | 确认需新建 conditional_plan 表 + 生成逻辑 |
+| 10 | **风险信号未持久化**：`risk_flags` 只是 `AgentContext` 内存字段(protocols.py L173)，`add_risk_flag()` 传递但未落库 | 方案 §4.5 新建 risk_signals 表 | §4.5 | 确认需新建 risk_signals 表 |
+| 11 | **持仓建议**：无 `holding_conclusion` 字段；通过 `position_advice.no_position/has_position`(executor.py L121-124) | 方案 §3.2 新建 | §3.2 | 确认需新建 holding_conclusion 表 |
+| 12 | **前端无 `ScreenPage`**：只有 `StockScreeningPage`(/screening)；11 条路由精确列表见 A.1 | 需求 §5.12.1 提到 ScreenPage | §6.1 | 以实读为准 |
+| 13 | **战法 15 个确认**：`bull_trend` 是 `default_active`；内置目录硬编码 `strategies/`（base.py L23） | 与需求 §5.12 一致 | §4.7 | 确认 |
+| 14 | **选股策略 10 个确认**：完整文件名见 A.4 | 与需求 §3.4 一致 | — | 下一阶段复用 |
 
 ### A.1 前端与路由
 
 | 现有能力 | 位置 | 复用方式 | 改动护栏 |
 | --- | --- | --- | --- |
-| React Router 路由体系 | `apps/dsa-web` `App.tsx:90–101`（11 条路由） | 新增 1 条路由注册 | 不得修改现有 11 条 |
+| React Router 路由体系 | `apps/dsa-web/src/App.tsx`（11 条路由） | 新增 1 条路由注册 | 不得修改现有 11 条 |
 | 独立渲染边界 | `StandaloneRouteBoundary`（`/login` 同构） | 新页面沿用此机制不套 Shell | — |
 | 鉴权 | `AuthProvider` | 复用，跟随现有登录 | 不加免登录白名单 |
-| SPA 路由回退 | `api/app.py:549` | 不改（已支持非 API 路径返回 index.html） | 不改后端静态服务 |
-| 选股/回测页面（下一阶段） | `static/assets/BacktestPage-*.js`、`ScreenPage-*.js`、`StockScreeningPage-*.js` | 下一阶段选股 Tab 复用 | 本版不涉及 |
+| SPA 路由回退 | `api/app.py` 已有 SPA fallback（非 API 路径返回 index.html） | 不改 | 不改后端静态服务 |
+| 选股/回测页面（下一阶段） | `StockScreeningPage`(`/screening`)、`BacktestPage`(`/backtest`) | 下一阶段选股 Tab 复用 | 本版不涉及；**无 `ScreenPage`**（实读确认） |
+
+**现有 11 条路由精确列表（实读，新增路由不得占用）**：
+
+| # | 路径 | 组件 |
+| --- | --- | --- |
+| 1 | `/` | HomePage |
+| 2 | `/chat` | ChatPage |
+| 3 | `/portfolio` | PortfolioPage |
+| 4 | `/decision-signals` | DecisionSignalsPage |
+| 5 | `/screening` | StockScreeningPage |
+| 6 | `/data` | DataCenterPage |
+| 7 | `/backtest` | BacktestPage |
+| 8 | `/alerts` | AlertsPage |
+| 9 | `/usage` | TokenUsagePage |
+| 10 | `/settings` | SettingsPage |
+| 11 | `*` | NotFoundPage |
 
 ### A.2 通知与飞书
 
@@ -967,6 +1004,13 @@ stage_gate_hit = {
 | --- | --- | --- | --- |
 | 回测引擎 | `src/core/backtest_engine.py`（Long-only daily-bar，`EvaluationConfig`，`win_rate_pct`） | 复用日线回放；扩展条件计划模式 | 不改原引擎 |
 | 回测服务 | `src/services/backtest_service.py`、`api/v1/endpoints/backtest.py`、`src/repositories/backtest_repo.py` | 复用 | — |
+
+**回测口径实读（2026-11-19）**：
+- `win_rate_pct = win_count / (win_count + loss_count) × 100`，**分母排除 neutral**；`neutral_rate_pct` 单独计算
+- `_MIN_CALIBRATION_SAMPLES = 30`（样本下限）落在 `src/agent/memory.py` L32，非 backtest_engine 内
+- `BacktestResultLike` 有 `hit_stop_loss/take_profit/first_hit` 但**无 conditional order 模拟**；`_classify_outcome` 仅 win/loss/neutral 三分类
+- `engine_version = "v1"`（config L1296），即 `calc_version` 对应物；方案 §2.4 的新 `calc_version` 须复用或扩展此字段
+- 条件计划回测模式（§7.2）须**自定胜率口径**（含分红、扣成本、T+1、部分成交），不复用现有 win/loss/neutral 三分类
 
 ---
 
