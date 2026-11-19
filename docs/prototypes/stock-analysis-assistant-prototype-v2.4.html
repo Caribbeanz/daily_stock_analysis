@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>股票分析助手 · 交互原型 v2.3（模拟数据）</title>
+<title>股票分析助手 · 交互原型 v2.4（模拟数据）</title>
 <style>
 :root{
   --bg:#f3f6fa; --surface:#fff; --surface2:#f8fafc; --border:#e3e8f0; --border2:#eef1f6;
@@ -349,7 +349,7 @@ body.show-spec [data-spec]{outline:1px dashed #c7d2e2}
 </head>
 <body>
 <div class="proto-bar">
-  <span class="brand">交互原型 v2.3</span>
+  <span class="brand">交互原型 v2.4</span>
   <span class="fake">模拟数据 · 非真实行情</span>
   <span class="hint">需求对照：§6 三视图展示契约 / §5.14 阶段定位与策略匹配 / §5.10 风险 / §5.11 条件计划 / §5.13 LLM 文案层</span>
   <div class="seg" id="deviceSeg">
@@ -389,9 +389,9 @@ body.show-spec [data-spec]{outline:1px dashed #c7d2e2}
 
 <script>
 /* ============================================================
-   股票分析助手 v2.3 · 交互原型
+   股票分析助手 v2.4 · 交互原型
    全部数据为模拟数据，仅用于验证信息架构 / 展示契约 / 交互。
-   数据严格遵循 docs/requirements/...v2.3.md 的字段与口径。
+   数据严格遵循 docs/requirements/...v2.4.md 的字段与口径。
    ============================================================ */
 const SNAP = {
   data_date:'2026-11-10', decision_time:'2026-11-11 07:30', render_time:'2026-11-11 08:02',
@@ -453,7 +453,7 @@ const SNAP = {
   todo_codes:['601088','601006','600900','600036','510300','000895']
 };
 
-/* ---------- 阶段定位（§5.14）：六阶段定义（v2.2 含 S5 无结构；v2.3 仅改推送呈现层）+ 每只标的的阶段证据 ---------- */
+/* ---------- 阶段定位（§5.14）：六阶段定义（v2.2 含 S5 无结构；v2.4 仅改推送呈现层）+ 每只标的的阶段证据 ---------- */
 const STAGE_DEF={
  S1:{name:'上升趋势',tag:'趋势段',play:'趋势跟随 + 回踩加仓（不追高）',
   allow:'回踩买入 / 持有 / 移动止盈后的减仓 / 正 T（底仓不动）',
@@ -1200,7 +1200,7 @@ document.addEventListener('click',e=>{
    '<div class="fs-card"><div class="fs-head"><span class="fs-logo">股</span><b>股票智能分析报告</b><span class="fs-tag">飞书 · 卡片消息</span></div><div class="fs-body">'+fsRender(txt)+'</div></div>'+
    '<details class="fs-raw"><summary>查看纯文本（降级 text 时用，已剥离 <code>**</code>）</summary><pre>'+H(txt.replace(/\*\*/g,''))+'</pre></details>'+
    '<div class="fs-legend"><b>图标语义（固定，不随场景换）</b>：🔴 严重 · 🟠 警示 · 🔵 观察 · ⚪ 无 ｜ ➕ 买入/加仓 · ⏳ 等待 · ➖ 减仓 · 🔻 清仓 · ⏸ 持有 · 👀 观望 · ⛔ 不可操作 ｜ ▲▼ 涨跌（不用红绿点，避免与风险色冲突）</div>';
-  openModal('入口二 · 飞书推送预览（v2.3 · 图标分层）',body,
+  openModal('入口二 · 飞书推送预览（v2.4 · 图标分层）',body,
    '<button class="btn" data-act="copy-feishu">复制推送文本</button><button class="btn primary" data-act="modal-close">关闭</button>');
   return;
  }

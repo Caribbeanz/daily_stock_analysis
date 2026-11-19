@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>股票分析助手 · 需求白话解读 v2.3</title>
+<title>股票分析助手 · 需求白话解读 v2.4</title>
 <style>
 :root{
   --bg:#f6f7f9; --card:#ffffff; --ink:#20252f; --ink2:#556070; --ink3:#8791a0;
@@ -179,7 +179,7 @@ svg{display:block;width:100%;height:auto;max-width:100%}
 
 <div class="topbar">
   <div class="logo">股票分析助手 · <b>需求白话解读</b></div>
-  <span class="badge v">v2.3</span>
+  <span class="badge v">v2.4</span>
   <span class="badge d">草案 / 待批准</span>
   <div class="spacer"></div>
   <div class="tip">这份文档的作用是：帮你确认「需求写得对不对、是不是我想要的」</div>
@@ -752,7 +752,7 @@ svg{display:block;width:100%;height:auto;max-width:100%}
 
   <div class="note"><b>还有一个反向校验</b>：四层关卡都只收不放，理论上可能把系统收成「永远观望」。所以回测里加了五个健康度指标——动作分布、改写占比、<b>建议翻转率 ≤25%</b>、<b>阶段切换 ≤8 次/年</b>、连续观望天数。任何一项越界，说明规则过严，要回去调阈值或换档，而不是偷偷放水。</div>
   <!-- 3.8 飞书消息 -->
-  <h3 id="s3h">3.8 飞书消息长什么样（v2.3 新增）</h3>
+  <h3 id="s3h">3.8 飞书消息长什么样（v2.4 新增）</h3>
   <p class="lead">你反馈「文字太多、不好看」。改法不是把内容删掉，而是<b>让它能被一眼扫完</b>：固定七段、每段一个图标、每个动作一个符号、关键数字单独一行方便照抄。下面是改版后你会在手机里收到的样子。</p>
 
   <div class="fsm-grid" style="display:grid;grid-template-columns:minmax(0,1fr) 292px;gap:16px;margin-top:14px;align-items:start">
@@ -915,7 +915,7 @@ S1 上升趋势（置信度 高）
   <div class="note" style="margin-top:18px"><b>一个提醒</b>：年化 10–20% 是你自述的目标，需求明确把它限定为"组合层回看对照"，不会出现在任何操作建议里，也不会变成收益承诺。回测结果只作为验证记录，不承诺未来收益。另外，<b>消息推送与参数配置都不会改变当天的结论</b>——一个只告知、一个只调下一次的算法，这是本版刻意划的两条线。</div>
 
   <div class="foot">
-    本解读文档由需求规格 <b>v2.3</b> 生成，用于帮助需求方核对口径，不替代正式需求文档。<br>
+    本解读文档由需求规格 <b>v2.4</b> 生成，用于帮助需求方核对口径，不替代正式需求文档。<br>
     文中所有数字（价格、股数、指数）均为示意用的模拟数据，不代表真实行情。<br>
     以上内容由 AI 基于公开信息整理生成，仅供参考，<b>不构成投资建议或个股推荐</b>。投资有风险，决策需谨慎。
   </div>
