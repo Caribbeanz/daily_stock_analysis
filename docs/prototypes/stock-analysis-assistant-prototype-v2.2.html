@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>股票分析助手 · 交互原型 v2.1（模拟数据）</title>
+<title>股票分析助手 · 交互原型 v2.2（模拟数据）</title>
 <style>
 :root{
   --bg:#f3f6fa; --surface:#fff; --surface2:#f8fafc; --border:#e3e8f0; --border2:#eef1f6;
@@ -334,7 +334,7 @@ body.show-spec [data-spec]{outline:1px dashed #c7d2e2}
 </head>
 <body>
 <div class="proto-bar">
-  <span class="brand">交互原型 v2.1</span>
+  <span class="brand">交互原型 v2.2</span>
   <span class="fake">模拟数据 · 非真实行情</span>
   <span class="hint">需求对照：§6 三视图展示契约 / §5.14 阶段定位与策略匹配 / §5.10 风险 / §5.11 条件计划 / §5.13 LLM 文案层</span>
   <div class="seg" id="deviceSeg">
@@ -342,6 +342,7 @@ body.show-spec [data-spec]{outline:1px dashed #c7d2e2}
     <button data-device="phone">移动 H5</button>
   </div>
   <button class="pbtn" id="specBtn">需求对照：关</button>
+  <button class="pbtn" data-act="config">⚙ 参数</button>
   <button class="pbtn" data-act="feishu">飞书推送预览</button>
   <button class="pbtn" data-act="reset">回到首页</button>
 </div>
@@ -373,9 +374,9 @@ body.show-spec [data-spec]{outline:1px dashed #c7d2e2}
 
 <script>
 /* ============================================================
-   股票分析助手 v2.1 · 交互原型
+   股票分析助手 v2.2 · 交互原型
    全部数据为模拟数据，仅用于验证信息架构 / 展示契约 / 交互。
-   数据严格遵循 docs/requirements/...v2.1.md 的字段与口径。
+   数据严格遵循 docs/requirements/...v2.2.md 的字段与口径。
    ============================================================ */
 const SNAP = {
   data_date:'2026-11-10', decision_time:'2026-11-11 07:30', render_time:'2026-11-11 08:02',
@@ -426,8 +427,8 @@ const SNAP = {
     {name:'大秦铁路',code:'601006',type:'股票',holding:true,price:6.42,prev:6.48,pct:-0.92,open:6.47,high:6.49,low:6.40,fail_price:6.50,l2_price:6.20,advice:'减仓',state:'有效',risk:'severe',planMode:'sell3',planCount:5,sector:'铁路公路',trend:'偏弱',pos:'价格位置：低位；估值位置：低位（PE 分位 8%）',cost:7.15,pnl:-10.21,days:603,div:'6.1%（分位 71%），连续分红 14 年',note:'SEC-2 价值陷阱：估值低但价格／板块持续下行'},
     {name:'长江电力',code:'600900',type:'股票',holding:true,price:27.86,prev:27.74,pct:0.43,open:27.75,high:27.98,low:27.70,advice:'持有',state:'有效',risk:'warn',planMode:'hold',planCount:5,sector:'电力',trend:'中性',pos:'价格位置：高位；估值位置：中位（PE 分位 54%）',cost:22.40,pnl:24.38,days:820,div:'3.4%（分位 48%），连续分红 18 年',note:'警示级：禁止买入类动作，主档不变'},
     {name:'招商银行',code:'600036',type:'股票',holding:true,price:38.75,prev:38.36,pct:1.02,open:38.40,high:38.92,low:38.31,advice:'加仓',state:'有效',risk:'observe',planMode:'buy3',planCount:6,sector:'银行',trend:'偏强',pos:'价格位置：中位；估值位置：低位（PB 分位 19%）',cost:34.12,pnl:13.57,days:356,div:'5.1%（分位 62%），连续分红 11 年',note:'观察级数据质量信号，不改变建议档位'},
-    {name:'华能水电',code:'600025',type:'股票',holding:false,price:9.87,prev:9.90,pct:-0.30,open:9.89,high:9.93,low:9.84,advice:'观望',state:'有效',risk:'none',planMode:'hold',planCount:5,sector:'电力',trend:'中性',pos:'价格位置：中位；估值位置：中位（PE 分位 50%）',cost:null,pnl:null,days:null,div:'3.0%（分位 41%），连续分红 8 年',note:'观望是评分模型产出的有效意见，不是无数据'},
-    {name:'中国核电',code:'601985',type:'股票',holding:true,price:9.34,prev:9.32,pct:0.21,open:9.33,high:9.39,low:9.29,advice:'持有',state:'有效',risk:'none',planMode:'hold',planCount:5,sector:'电力',trend:'中性',pos:'价格位置：中位；估值位置：中位（PE 分位 47%）',cost:8.90,pnl:4.94,days:210,div:'2.9%（分位 39%），连续分红 7 年',note:''},
+    {name:'华能水电',code:'600025',type:'股票',holding:false,price:9.87,prev:9.90,pct:-0.30,open:9.89,high:9.93,low:9.84,advice:'观望',state:'有效',risk:'none',planMode:'probe',planCount:5,sector:'电力',trend:'中性',pos:'价格位置：中位；估值位置：中位（PE 分位 50%）',cost:null,pnl:null,days:null,div:'3.0%（分位 41%），连续分红 8 年',note:'观望是评分模型产出的有效意见，不是无数据'},
+    {name:'中国核电',code:'601985',type:'股票',holding:true,price:9.34,prev:9.32,pct:0.21,open:9.33,high:9.39,low:9.29,advice:'持有',state:'有效',risk:'none',planMode:'holdS5',planCount:5,sector:'电力',trend:'中性',pos:'价格位置：中位；估值位置：中位（PE 分位 47%）',cost:8.90,pnl:4.94,days:210,div:'2.9%（分位 39%），连续分红 7 年',note:''},
     {name:'工商银行',code:'601398',type:'股票',holding:true,price:6.18,prev:6.17,pct:0.16,open:6.17,high:6.21,low:6.15,advice:'持有',state:'有效',risk:'none',planMode:'hold',planCount:5,sector:'银行',trend:'中性',pos:'价格位置：高位；估值位置：低位（PB 分位 14%）',cost:5.42,pnl:14.02,days:730,div:'5.6%（分位 68%），连续分红 16 年',note:''},
     {name:'沪深300ETF',code:'510300',type:'ETF',holding:true,price:4.052,prev:4.057,pct:-0.12,open:4.055,high:4.070,low:4.041,advice:'等待买点',state:'有效',risk:'none',planMode:'buy2',planCount:5,sector:'指数-跟踪',trend:'中性',pos:'价格位置：中位；估值位置：中位（PE 分位 45%）',cost:3.910,pnl:3.63,days:180,div:'ETF 无财报维度；分红以基金分红公告为准',note:'ETF 按 100 份/手；T+0 允许同日买卖分支'},
     {name:'双汇发展',code:'000895',type:'股票',holding:true,price:25.60,prev:null,pct:null,open:null,high:null,low:null,advice:'不可操作',state:'不可操作',risk:'none',planMode:'none',planCount:0,sector:'食品加工',trend:'—',pos:'停牌，未计算',cost:26.30,pnl:-2.66,days:150,div:'4.6%（分位 55%），连续分红 15 年',note:'停牌：显示停牌前最后收盘价（2026-11-05），涨跌幅「—」不着色'},
@@ -437,7 +438,7 @@ const SNAP = {
   todo_codes:['601088','601006','600900','600036','510300','000895']
 };
 
-/* ---------- 阶段定位（§5.14）：五阶段定义 + 每只标的的阶段证据 ---------- */
+/* ---------- 阶段定位（§5.14）：六阶段定义（v2.2 含 S5 无结构）+ 每只标的的阶段证据 ---------- */
 const STAGE_DEF={
  S1:{name:'上升趋势',tag:'趋势段',play:'趋势跟随 + 回踩加仓（不追高）',
   allow:'回踩买入 / 持有 / 移动止盈后的减仓 / 正 T（底仓不动）',
@@ -454,11 +455,16 @@ const STAGE_DEF={
   deny:'任何买入类动作（含 T 低吸、补仓摊薄、「估值低所以买」）',
   next:'站上 MA20 且斜率走平 2 日 → 转 S4 观察',
   tpl:'反弹减 + 破位减 L1 + 破位清 L2 + 反弹不过压力不动'},
- S4:{name:'低位筑底',tag:'观察段',play:'右侧确认才买，不提前埋伏',
-  allow:'观望；确认后买入（站上 MA20 + 放量 + 突破箱体上沿）',
-  deny:'左侧越跌越买 / 无确认加仓 / 把「便宜」当买点',
+ S4:{name:'低位筑底',tag:'观察段',play:'右侧确认才正式买；确认前可小额试探',
+  allow:'观望 / 试探建仓（回下沿+缩量，限一次，破下沿即清）/ 确认后买入（站上 MA20 + 放量 + 突破箱体上沿）/ 持有',
+  deny:'左侧越跌越买 / 分批摊薄补仓 / 无确认加重仓 / 把「便宜」当买点',
   next:'放量突破箱体上沿 → S1；再破箱体下沿 → S3',
-  tpl:'确认买（站上箱体上沿 + 放量）+ 再破新低不动'},
+  tpl:'确认买（站上箱体上沿 + 放量）+ 试探建仓（回下沿且缩量，限一次）+ 再破新低清试探'},
+ S5:{name:'无结构',tag:'等待段',play:'不动：等结构自己长出来',
+  allow:'观望 / 持有（不因「看不清」砍已持仓）/ 风险驱动的减仓、清仓',
+  deny:'新建仓 / 加仓 / 箱体高抛低吸 / 追突破',
+  next:'箱体成形（宽度 ≤12%、触碰 ≥2 次）或斜率离开死区 → 按新阶段判定',
+  tpl:'不生成买入分支；仅「跌破失效位减 L1 / 清 L2」观察分支，其余情景一律不操作'},
  S0:{name:'无法判定',tag:'状态位',play:'不出策略、不出计划',
   allow:'无（只显示状态位）',deny:'全部',
   next:'数据恢复 / 快照同步后重新判定',
@@ -470,14 +476,14 @@ const STAGE_OF={
  '600900':{id:'S2',conf:'中',ev:['收盘 27.86 元在 MA20 27.71 元上方，但斜率 +0.08% 落在 θ 死区内','近 60 日箱体 26.80–28.35 元，宽度 5.8%，上下沿各触碰 3 次 / 2 次','pos20 = 0.78 ≥ 0.5 → 属高位震荡，不是低位筑底','量价背离，TEC-1 已记警示级信号'],say:'现在是高位震荡，只能在箱体上下沿做 T，不追突破、不加仓。'},
  '600036':{id:'S1',conf:'高',ev:['收盘 38.75 元 > MA20 37.92×(1+ε)，站上均线','MA20 斜率 +1.6% > θ，MA5>MA10>MA20 多头排列','回踩 37.90 元一带未破，前高 39.20 元尚未突破','箱体不成立：斜率已离开死区，不按震荡处理'],say:'现在是上升趋势，所以今天回踩买、突破买，不追高。'},
  '600025':{id:'S4',conf:'中',ev:['收盘 9.87 元与 MA20 9.90 元几乎重合，落在 ε 缓冲带内','MA20 斜率 −0.05%，落在 θ 死区内 → 无趋势','近 60 日箱体 9.42–10.15 元，宽度 7.7%，上下沿各触碰 2 次','pos20 = 0.42 < 0.5 → 低位震荡；长周期位置 31%'],say:'现在是低位筑底，还没右侧确认，所以只观望、不提前埋伏。'},
- '601985':{id:'S2',conf:'中',ev:['收盘 9.34 元在 MA20 9.30 元上方，斜率 +0.04% 落在死区','近 60 日箱体 9.10–9.55 元，宽度 4.9%，上下沿各触碰 3 次','pos20 = 0.53 → 高位震荡','量能比 0.96，无放量突破'],say:'现在是箱体震荡，按上下沿做 T，其余不动。'},
+ '601985':{id:'S5',conf:'中',ev:['收盘 9.34 元与 MA20 9.30 元相距 0.43%，落在 ε=0.5% 缓冲带内 → 无方向','MA20 斜率 +0.04%（k=5），落在 θ=0.3% 死区内','近 60 日高低区间 8.95–10.35 元，宽度 15.6% > 12% → 箱体不成立','上下沿各仅触碰 1 次，画不出有效边界 → 判为 S5 无结构，不按震荡处理'],say:'现在是无结构（看不清方向），所以今天不动、等结构成形，不拿箱体打法硬套。'},
  '601398':{id:'S1',conf:'中',ev:['收盘 6.18 元 > MA20 6.09×(1+ε)','MA20 斜率 +0.9% > θ','MA5>MA10>MA20 多头排列成立','量能温和，突破未确认（不追高）'],say:'现在是上升趋势，底仓继续持有，回踩才考虑加。'},
  '510300':{id:'S2',conf:'中',ev:['收盘 4.052 元在 MA20 4.031 元上方，斜率 +0.02% 落在死区','近 60 日箱体 3.905–4.075 元，宽度 4.3%，上下沿各触碰 2 次','pos20 = 0.71 → 高位震荡','ETF 无财报维度，阶段只看价格结构'],say:'现在是宽基的箱体震荡，等下沿再买，不追高。'},
  '000895':{id:'S0',conf:'—',ev:['停牌，无最近交易日 K 线','有效 bar 不足 min_valid_bars=20，无法计算 MA20 与箱体'],say:'停牌中，无法判定阶段，不生成策略与计划。'},
  '601668':{id:'S0',conf:'—',ev:['三元组 [data_date, snapshot_id, calc_version] 不一致，快照待同步','不使用旧值判定阶段，不用旧结论顶替'],say:'数据待同步，阶段无法判定，不出策略与计划。'},
  '600377':{id:'S0',conf:'—',ev:['关键输入缺失：无收盘价与均线序列'],say:'数据缺失，阶段无法判定。'}
 };
-const STAGE_ALLOW={S1:['加仓','等待买点','持有','减仓','清仓','观望'],S2:['持有','加仓','等待买点','减仓','观望'],S3:['减仓','清仓','等待卖点','持有','观望'],S4:['观望','等待买点','持有'],S0:[]};
+const STAGE_ALLOW={S1:['加仓','等待买点','持有','减仓','清仓','观望'],S2:['持有','加仓','等待买点','减仓','观望'],S3:['减仓','清仓','等待卖点','持有','观望'],S4:['观望','等待买点','持有'],S5:['观望','持有','减仓','清仓'],S0:[]};
 
 /* ---------- 术语词典（附录 B） ---------- */
 const GLOSSARY={
@@ -497,7 +503,11 @@ const GLOSSARY={
   'L1/L2':'分级止损：L0 未破位（正常）；L1 趋势失效位被有效跌破 → 先减一部分、保留分红底仓；L2 在 L1 之后继续下跌 → 再清仓。轻度破位不会直接清仓。',
   'sector_strength':'板块强弱档＝用板块指数多日日线（价格 vs 均线、均线斜率）跑 2×2 四格得到的三档结论（偏强 / 中性 / 偏弱），用于建议层。与卡片上的「相对大盘单日差值 rs_t」是两套东西，不能互相代替。',
   '照抄设单':'照抄设单＝条件计划的每条分支按固定字段顺序给出「若…则买/卖 N 股」，股数已取整到 100 股/手，你不需要再换算金额，直接照着在券商 App 设条件单即可。',
-  '阶段定位':'阶段定位＝先判断这只票现在处于什么状态：上升趋势（S1）/ 高位震荡（S2）/ 下跌趋势（S3）/ 低位筑底（S4）；数据不足时是 S0。不同阶段的打法完全不同：上升阶段回踩买、震荡阶段箱体做 T、下跌阶段只减不加、筑底阶段等右侧确认。它是「先定打法」的前提，不是涨跌预测。',
+  '阶段定位':'阶段定位＝先判断这只票现在处于什么状态：上升趋势（S1）/ 高位震荡（S2）/ 下跌趋势（S3）/ 低位筑底（S4）/ 无结构（S5）；数据不足时是 S0。不同阶段的打法完全不同：上升阶段回踩买、震荡阶段箱体做 T、下跌阶段只减不加、筑底阶段等右侧确认（或小仓试探）、无结构阶段不动。它是「先定打法」的前提，不是涨跌预测。',
+  'S5 无结构':'S5 无结构＝有数据、但看不出方向：既没有趋势，也没有能画出上下沿的箱体（窄幅横盘、均线粘在一起）。这一档的结论就是不动——不新开仓、不做箱体价差。它不是「震荡」：震荡至少有可定义的边界。',
+  '试探仓':'试探仓＝还没右侧确认时，只买一小笔（仅 S4 允许）：额度 ≤ 计划仓位 1/3、只买一次不补仓、跌破箱体下沿立刻清；确认反转后再补成正式仓。目的是不完全踏空，不是越跌越买。',
+  '参数三档':'参数三档＝同一套规则的三套性格：宽松（少拦多做）、标准（默认，回测基线）、严格（宁可错过）。切档只换阈值，不换策略结构；也可以只改某一项（单项覆盖）。',
+  '重大消息':'重大消息＝已公开的公告或事件（业绩预告、并购、立案、政策原文等）。本助手只说「有这件事、谁发的、什么时候」，不判利好利空、不因此改建议，由你自己判断。',
   '阶段门':'阶段门＝阶段定好之后，只允许这个阶段该做的动作。比如判为下跌趋势时，任何买入类动作都会被拦下改成「等待买点」或「减仓」。它只收紧、不放宽，也不改风险等级。',
   '缠论':'缠论＝用「中枢 + 走势类型（趋势/盘整）+ 背驰」判断买卖点的一套理论。本助手只借用它的两层内核：中枢≈箱体、走势类型≈趋势/盘整；更细的笔、线段、级别递归本期不做。',
   '背驰':'背驰＝价格创了新高（或新低），但推动它的动能没跟上，通常被视为转折提示。本助手只把它当观察注记，不单独触发买卖，因为它是否成立带有主观阈值。',
@@ -607,6 +617,31 @@ function plansFor(h){
    noop('E','一字跌停','跌幅 ≥ 9.8%（基准 '+r(p)+' 元）','跌停或一字板当日无法成交，本情景不动；次日按新快照重评',{settable:false,notes:'无法成交，不设单；也不因跌停改变阶段判定'})
   ]};
  }
+ if(h.planMode==='holdS5'){
+  /* S5 无结构 · 已持仓：不生成买入分支，只保留破位保护观察分支（§5.14.6） */
+  const f=r(p*0.964), l2b=r(p*0.940), hi=r(p*1.095);
+  return {reason:'',branches:[
+   noop('A','站上观察位（结构可能成形）','价格 ≥ '+hi+' 元','结构未成形，本期不动；若连续 2 日站稳，阶段可能转 S1，次日按新阶段重评',{settable:false,notes:'不设单：这是阶段切换提示，不是买点'}),
+   noop('B','回踩下沿','价格 ≤ '+r(p*0.955)+' 元','无结构阶段不做箱体低吸，本情景不动',{settable:false,notes:'不设单；箱体未成立，下沿不可靠'}),
+   noop('C','区间内震荡','价格 ≥ '+r(p*0.955)+' 元 且 ≤ '+hi+' 元','区间内不操作',{settable:false,notes:'需人工判断，不能直接设单'}),
+   B('D','跌破失效位','价格 ≤ '+f+' 元',{action:'减仓',shares:sellShares,amount:Math.round(sellShares*(p*0.964)),pct:+(Math.round(sellShares*(p*0.964))/SNAP.total_capital*100).toFixed(1),cls:'sell',settable:true,notes:'L1 先减一部分、保留分红底仓；触发价 = 趋势失效位；卖出股数 ≤ 当前可卖持仓',basis:true}),
+   B('E','破位加速','价格 ≤ '+l2b+' 元',{action:'清仓',shares:1200,amount:Math.round(1200*(p*0.940)),pct:+(Math.round(1200*(p*0.940))/SNAP.total_capital*100).toFixed(1),cls:'sell',settable:true,notes:'L2：已处 L1 后继续破位才清；卖出股数 ≤ 当前可卖持仓',basis:true})
+  ]};
+ }
+ if(h.planMode==='probe'){
+  /* S4 试探仓模板（§5.14.3.1）：小额、一次、带硬止损；不是抄底加仓 */
+  const lower=r(9.45), upper=r(10.18), stop=r(9.37);
+  const probeShares=Math.floor(16667/lower/100)*100;
+  const probeAmt=Math.round(probeShares*lower), probePct=+(probeAmt/SNAP.total_capital*100).toFixed(1);
+  const worst=Math.round((lower-stop)*probeShares);
+  return {reason:'',branches:[
+   B('A','回到箱体下沿（缩量）','价格 ≤ '+lower+' 元 且量能 ≤ 20 日均量 ×0.8',{action:'试探建仓',shares:probeShares,amount:probeAmt,pct:probePct,cls:'buy',settable:false,notes:'试探仓：额度 ≤ 计划仓位 1/3、仅此一次、不补仓；破 '+stop+' 元即清，最坏亏损约 '+worst+' 元。需自行确认缩量，不能直接设单',basis:true}),
+   B('B','突破箱体上沿（确认）','价格 ≥ '+upper+' 元',{action:'买入',shares:buyShares,amount:Math.round(buyShares*upper),pct:+((buyShares*upper)/SNAP.total_capital*100).toFixed(1),cls:'buy',settable:true,notes:'右侧确认（站上 MA20 + 放量 + 突破上沿）后才正式建仓；试探仓可并入，补齐到计划仓位',basis:true}),
+   noop('C','区间内震荡','价格 ≥ '+lower+' 元 且 ≤ '+upper+' 元','区间内不追；已有试探仓只持有，不加',{settable:false,notes:'需人工判断，不能直接设单'}),
+   B('D','跌破箱体下沿','价格 ≤ '+stop+' 元',{action:'清仓',shares:probeShares,amount:Math.round(probeShares*stop),pct:+((probeShares*stop)/SNAP.total_capital*100).toFixed(1),cls:'sell',settable:true,notes:'只清试探仓，不等分级止损；当前无底仓，清 0 后回到空仓观察',basis:true}),
+   noop('E','破位加速','价格 ≤ '+r(9.10)+' 元','已清试探仓，本情景不动；阶段转 S3 后按下跌模板重评',{})
+  ]};
+ }
  if(h.planMode==='sell'){
   const f=r(sup), l=r(brk), hi=r(up1);
   return {reason:'',branches:[
@@ -626,7 +661,7 @@ function plansFor(h){
  ]};
 }
 function comboCheck(h,branches){
- const buys=branches.filter(b=>b.action==='买入');
+ const buys=branches.filter(b=>b.action==='买入'||b.action==='试探建仓');
  if(!buys.length) return '<div class="combo-check"><b>组合校验提示</b>：本期无买入分支，无需进行组合额度校验（卖出分支只校验可卖持仓，不占用买入额度）。</div>';
  const sum=buys.reduce((a,b)=>a+b.amount,0), sumPct=+(sum/SNAP.total_capital*100).toFixed(1);
  const current=h.code==='600036'?12.8:4.1, after=+(current+sumPct).toFixed(1);
@@ -833,9 +868,10 @@ function renderD(){
    (h.risk==='severe'?'<div class="notice warn" style="margin-top:9px"><b>风险等级约束（严重级）</b>：本期禁止任何买入类分支与新建 T 计划分支；下行分支保留。'+term('L1/L2','分级止损')+'已对齐。</div>':'')+
    (h.risk==='warn'?'<div class="notice warn" style="margin-top:9px"><b>风险等级约束（警示级）</b>：本期禁止买入类分支、不下发新 T 计划；主档不变。</div>':'')+
    '<div style="margin-top:11px">'+plan.branches.map(b=>{
-     const actCls=b.action==='买入'?'act-buy':(b.action==='减仓'||b.action==='清仓'?'act-sell':'act-none');
+     const actCls=(b.action==='买入'||b.action==='试探建仓')?'act-buy':(b.action==='减仓'||b.action==='清仓'?'act-sell':'act-none');
      return '<div class="branch '+actCls+'" id="branch-'+b.id+'"><div class="bh"><span class="pill">分支 '+b.id+'</span><b>'+b.scenario+'</b>'+
-      '<span class="pill '+(b.action==='买入'?'buy':(b.action==='不操作'?'neutral':'sell'))+'">'+b.action+'</span><div class="right">'+(b.settable?'<span class="pill plan">可直接设单</span>':'<span class="pill state">需人工判断</span>')+'<button class="btn sm" data-act="copy-branch" data-code="'+h.code+'" data-id="'+b.id+'">复制</button></div></div>'+
+      '<span class="pill '+((b.action==='买入'||b.action==='试探建仓')?'buy':(b.action==='不操作'?'neutral':'sell'))+'">'+b.action+'</span>'+
+      '<div class="right">'+(b.settable?'<span class="pill plan">可直接设单</span>':'<span class="pill state">需人工判断</span>')+'<button class="btn sm" data-act="copy-branch" data-code="'+h.code+'" data-id="'+b.id+'">复制</button></div></div>'+
       '<div class="brow"><span class="k">触发条件</span><span class="v"><b>'+b.trigger+'</b> <span class="tiny">（不复权；基准 '+SNAP.data_date+' 收盘）</span></span></div>'+
       '<div class="brow"><span class="k">动作与股数</span><span class="v"><b>'+b.action+' '+(b.shares?b.shares+' '+b.unit:'0 '+b.unit)+'</b>'+(b.shares?' <span class="tiny">（100 '+b.unit+'/手，向下取整）</span>':'')+'</span></div>'+
       '<div class="brow"><span class="k">金额 / 占比</span><span class="v">'+(b.amount?'≈ '+b.amount.toLocaleString()+' 元 · 占总资金 '+b.pct+'%':'—')+'</span></div>'+
@@ -1019,9 +1055,36 @@ document.addEventListener('click',e=>{
  }
  if(act==='term'){
   const k=el.dataset.term, txt=GLOSSARY[k]||'（该术语释义待补）';
-  openModal('术语解释 · '+k,'<div style="font-size:13.5px;line-height:1.9;color:var(--text)">'+txt+'</div><div class="tiny" style="margin-top:10px">来源：需求文档 v2.1 附录 B 术语表。术语解释回答「这个词是什么」；「这次的数怎么来的」请看技术解释层（§6.6）。</div>');
+  openModal('术语解释 · '+k,'<div style="font-size:13.5px;line-height:1.9;color:var(--text)">'+txt+'</div><div class="tiny" style="margin-top:10px">来源：需求文档 v2.2 附录 B 术语表。术语解释回答「这个词是什么」；「这次的数怎么来的」请看技术解释层（§6.6）。</div>');
   return;
  }
+ if(act==='config'){
+  const presetCard=(name,cur,desc,diff)=>'<div style="flex:1 1 110px;min-width:104px;border:1.5px solid '+(cur?'#3b5bdb':'#e5e9ef')+';background:'+(cur?'#f5f8ff':'#fff')+';border-radius:10px;padding:11px 12px"><div style="display:flex;align-items:center;gap:6px"><b style="font-size:13px">'+name+'</b>'+(cur?'<span class="pill plan">当前</span>':'')+'</div><div class="tiny" style="margin-top:5px;line-height:1.7">'+desc+'</div><div class="tiny" style="margin-top:6px;color:#8791a0">'+diff+'</div></div>';
+  const row=(k,cur,def,rng,note)=>'<tr><td>'+k+'</td><td><b>'+cur+'</b></td><td>'+def+'</td><td>'+rng+'</td><td class="tiny">'+note+'</td></tr>';
+  const body='<div class="notice blue" style="margin-bottom:10px">配置只改<b>数值</b>，不改枚举与守卫链顺序；保存后<b>次日盘前生效</b>，当日已生成结论零改动；历史快照凭 <b>param_hash</b> 可复现，<b>不产生配置版本号</b>（§5.16 / §6.8）。</div>'+
+   '<div style="display:flex;gap:9px;flex-wrap:wrap">'+
+    presetCard('宽松','','少拦、多做；适合天天看盘、愿意手动纠错','箱体 15% · 防抖 1 日 · 试探仓开（1/3）')+
+    presetCard('标准','1','平衡档，也是回测基线；大多数情况选这档','箱体 12% · 防抖 2 日 · 试探仓开（1/3）')+
+    presetCard('严格','','宁可错过不可做错；适合不常看盘、怕回撤','箱体 10% · 防抖 3 日 · 试探仓关')+
+   '</div>'+
+   '<div class="tiny" style="margin:10px 0 5px"><b>当前：标准档 · 2 项自定义</b> · 下次生效 '+SNAP.next_trade_date+'</div>'+
+   '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12px"><thead><tr style="background:#f7f8fa"><th style="text-align:left;padding:6px">参数</th><th style="text-align:left;padding:6px">当前</th><th style="text-align:left;padding:6px">标准档</th><th style="text-align:left;padding:6px">允许区间</th><th style="text-align:left;padding:6px">人话</th></tr></thead><tbody>'+
+    row('阶段防抖天数 <span class="pill">自定义</span>','3','2','1–5','调大 → 阶段更稳、切换更少')+
+    row('S4 试探仓额度 <span class="pill">自定义</span>','1/4','1/3','1/4–1/2','调大 → 试探仓更重、最坏亏损更大')+
+    row('箱体宽度上限','12%','12%','8–20%','调大 → 更多标的算震荡；调小 → 更多进 S5 不动')+
+    row('建议翻转率上限（回测）','25%','25%','—','超过说明规则过严或阈值贴着噪音')+
+   '</tbody></table></div>'+
+   '<div class="tiny" style="margin-top:12px"><b>变更记录（append-only，可回滚，不版本化）</b></div>'+
+   '<table style="width:100%;border-collapse:collapse;font-size:11.5px;margin-top:5px"><thead><tr style="background:#f7f8fa"><th style="text-align:left;padding:5px">时间</th><th style="text-align:left;padding:5px">参数</th><th style="text-align:left;padding:5px">旧值 → 新值</th><th style="text-align:left;padding:5px">生效日</th></tr></thead><tbody>'+
+    '<tr><td style="padding:5px">11-18 21:04</td><td style="padding:5px">阶段防抖天数</td><td style="padding:5px">2 → 3</td><td style="padding:5px">11-20</td></tr>'+
+    '<tr><td style="padding:5px">11-18 20:51</td><td style="padding:5px">S4 试探仓额度</td><td style="padding:5px">1/3 → 1/4</td><td style="padding:5px">11-20</td></tr>'+
+   '</tbody></table>'+
+   '<div class="tiny" style="margin-top:9px">「仅预览影响」会用当前参数在今日数据上试算，<b>只展示、不落快照、不影响线上</b>；越界输入会被拒绝并提示区间（不自动截断）。</div>';
+  openModal('⚙ 参数配置 · 三档预设 + 单项覆盖','<div>'+body+'</div>',
+   '<button class="btn" data-act="config-preview">仅预览影响</button><button class="btn primary" data-act="modal-close">关闭</button>');
+  return;
+ }
+ if(act==='config-preview'){toast('试算：阶段切换 1 只（601985 S2→S5）、计划分支 -2；未保存、未落快照');return;}
  if(act==='feishu'){
   const txt=feishuText();
   openModal('入口二 · 飞书推送预览（文本，不做链接）','<div class="notice blue" style="margin-bottom:10px">复用现有 notification_routing / notification_noise / notification_capabilities / feishu_sender；与 WebUI 同源同版本、只读不重算。摘要为附加段，<b>不得删减</b>触发条件、股数、风险等级、数据日期。</div><div class="feishu-text" id="feishuText">'+H(txt)+'</div>',

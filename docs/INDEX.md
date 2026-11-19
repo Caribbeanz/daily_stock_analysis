@@ -16,9 +16,9 @@
 | 处理数据源失败或降级 | [数据源稳定性与故障处理图示](data-source-stability.md) | [FAQ](FAQ.md) |
 | 确认某个市场支持哪些数据 | [市场支持与边界](market-support.md) | [数据中心](data-center-diagnostics.md) |
 | 参与开发或提交 PR | [贡献指南](CONTRIBUTING.md) | [API 规格](architecture/api_spec.json) |
-| 查看「股票分析助手」需求规格 | [需求规格 v2.1](requirements/stock-analysis-assistant-requirements-v2.1.md) | [需求文档目录说明](requirements/README.md) |
-| 查看「股票分析助手」可交互原型 | [原型 v2.1（PC / H5 · 模拟数据）](prototypes/stock-analysis-assistant-prototype-v2.1.html) | [需求规格 v2.1](requirements/stock-analysis-assistant-requirements-v2.1.md) |
-| 看不懂需求文档？读白话图解版 | [需求白话解读 v2.1（流程图 / 架构图 / 决策引擎详解）](prototypes/stock-analysis-assistant-explained-v2.1.html) | [需求规格 v2.1](requirements/stock-analysis-assistant-requirements-v2.1.md) |
+| 查看「股票分析助手」需求规格 | [需求规格 v2.2](requirements/stock-analysis-assistant-requirements-v2.2.md) | [需求文档目录说明](requirements/README.md) |
+| 查看「股票分析助手」可交互原型 | [原型 v2.2（PC / H5 · 六阶段 / 试探仓 / 参数弹层）](prototypes/stock-analysis-assistant-prototype-v2.2.html) | [需求规格 v2.2](requirements/stock-analysis-assistant-requirements-v2.2.md) |
+| 看不懂需求文档？读白话图解版 | [需求白话解读 v2.2（流程图 / 架构图 / 决策引擎 / 存储与参数）](prototypes/stock-analysis-assistant-explained-v2.2.html) | [需求规格 v2.2](requirements/stock-analysis-assistant-requirements-v2.2.md) |
 
 ## 快速开始
 

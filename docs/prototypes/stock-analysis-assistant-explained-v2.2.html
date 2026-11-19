@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>股票分析助手 · 需求白话解读 v2.1</title>
+<title>股票分析助手 · 需求白话解读 v2.2</title>
 <style>
 :root{
   --bg:#f6f7f9; --card:#ffffff; --ink:#20252f; --ink2:#556070; --ink3:#8791a0;
@@ -122,7 +122,7 @@ svg{display:block;width:100%;height:auto;max-width:100%}
 .step .why{font-size:12px;color:var(--ink3);margin-top:6px;padding-top:6px;border-top:1px dashed var(--line)}
 
 /* ---------- 阶段卡 ---------- */
-.stagegrid{display:grid;grid-template-columns:repeat(5,1fr);gap:10px}
+.stagegrid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
 .stage{border:1px solid var(--line);border-radius:12px;padding:13px;background:#fff}
 .stage .sid{font-size:11px;font-weight:800;color:#fff;padding:2px 8px;border-radius:6px;display:inline-block}
 .stage h4{margin:8px 0 6px;font-size:13.5px}
@@ -178,7 +178,7 @@ svg{display:block;width:100%;height:auto;max-width:100%}
 
 <div class="topbar">
   <div class="logo">股票分析助手 · <b>需求白话解读</b></div>
-  <span class="badge v">v2.1</span>
+  <span class="badge v">v2.2</span>
   <span class="badge d">草案 / 待批准</span>
   <div class="spacer"></div>
   <div class="tip">这份文档的作用是：帮你确认「需求写得对不对、是不是我想要的」</div>
@@ -190,12 +190,15 @@ svg{display:block;width:100%;height:auto;max-width:100%}
   <a href="#s0" class="on">0 · 30 秒速览</a>
   <a href="#s1">1 · 你的原话 → 需求</a>
   <a href="#s2">2 · 系统全景图</a>
+  <a href="#s2s" class="sub">2.1 数据存在哪、多久更新</a>
   <a href="#s3">3 · 决策引擎（重点）</a>
   <a href="#s3a" class="sub">3.1 整体流程图</a>
   <a href="#s3b" class="sub">3.2 八步工作流</a>
-  <a href="#s3c" class="sub">3.3 阶段定位</a>
+  <a href="#s3c" class="sub">3.3 阶段定位（六档）</a>
   <a href="#s3d" class="sub">3.4 风险体系</a>
   <a href="#s3e" class="sub">3.5 条件计划</a>
+  <a href="#s3f" class="sub">3.6 消息：只推送不判断</a>
+  <a href="#s3g" class="sub">3.7 参数三档</a>
   <a href="#s4">4 · 页面长什么样</a>
   <a href="#s5">5 · 策略与页面对照</a>
   <a href="#s6">6 · 待你确认</a>
@@ -224,7 +227,7 @@ svg{display:block;width:100%;height:auto;max-width:100%}
       <p>大模型只负责把算好的结果写成一段人话。它不改数字、不给新建议、不参与打分。这样结果每天可复现、可回测。</p></div>
     <div class="mini"><div class="ic" style="background:var(--warn-bg);color:var(--warn)">②</div>
       <h4>先定阶段，再谈打法</h4>
-      <p>先判断这只票处在上升 / 震荡 / 下跌 / 筑底哪个阶段，再决定这个阶段允许做什么。下跌阶段任何买入都会被拦下——这是本轮你新增的核心要求。</p></div>
+      <p>先判断这只票处在上升 / 震荡 / 下跌 / 筑底 / <b>无结构</b>哪个阶段，再决定这个阶段允许做什么。下跌阶段任何买入都会被拦下、无结构阶段干脆不动——这是你新增的核心要求。</p></div>
     <div class="mini"><div class="ic" style="background:var(--down-bg);color:var(--down)">③</div>
       <h4>只给条件单，不替你下单</h4>
       <p>输出的是「如果涨到 X 就买 N 股」的静态清单，有效期只有当天。工具不接券商、不监控盘中、不自动成交，也不承诺收益。</p></div>
@@ -291,13 +294,33 @@ svg{display:block;width:100%;height:auto;max-width:100%}
         <td><code>§5.13</code> <code>§3.6</code></td><td class="ok">✓ 已覆盖</td></tr>
 
       <tr><td class="q">策略分析要先给股票当前阶段定位；上涨阶段和震荡阶段打法不同；或参考缠论</td>
-        <td>新增第 5 节重点内容：<b>5 个阶段</b>（上升 / 高位震荡 / 下跌 / 低位筑底 / 无法判定），先定阶段再定动作集合。缠论只落地「中枢≈箱体、走势类型≈趋势/盘整」两层，笔 / 线段 / 级别递归本期不做（无法稳定复现，会让回测失真）。</td>
+        <td>新增第 3 节重点内容：<b>6 档阶段</b>（上升 / 高位震荡 / 下跌 / 低位筑底 / <b>无结构</b> / 无法判定），先定阶段再定动作集合。5 档版本有个漏洞：「既没趋势、也画不出箱体」的窄幅横盘无处可归，会被硬塞成假震荡、去做高抛低吸。所以补了 <b>S5 无结构</b>——这一档的结论就是不动。缠论只落地「中枢≈箱体、走势类型≈趋势/盘整」两层，笔 / 线段 / 级别递归本期不做（无法稳定复现，会让回测失真）。</td>
         <td><code>§5.14</code></td><td class="ok">✓ 已覆盖</td></tr>
+
+      <tr><td class="q">阶段是否能覆盖所有场景？<b>→ 你答：是（补 S5）</b></td>
+        <td>补 S5 之后，只要有足够数据，任何一只票必然落在 S1–S5 之一，不存在「无归属」。S0 只留给数据问题（停牌、K 线不足、版本不一致），<b>不再混用</b>。S5 不写成「震荡」，列表标签统一叫「无结构」。</td>
+        <td><code>§5.14.2</code></td><td class="ok">✓ 已覆盖</td></tr>
+
+      <tr><td class="q">低位筑底能不能先建个底仓？<b>→ 你答：允许</b></td>
+        <td>新增「<b>试探仓</b>」：只在筑底阶段、且回到箱体下沿 + 缩量时允许买一小笔，上限是该标的计划仓位的 1/3、<b>只买一次不许补</b>，跌破下沿立刻清；确认反转后再补成正式仓。它解决「等确认就整段错过」的问题，但不变成越跌越买。严格档默认关闭。</td>
+        <td><code>§5.14.3.1</code></td><td class="ok">✓ 已覆盖</td></tr>
+
+      <tr><td class="q">不做消息面情绪判断，但重大消息要推送辅助决策</td>
+        <td>做成「<b>只推送、不判断</b>」：把公告原文的标题、时间、来源给你，按「是否涉及我的持仓 / 有没有生效日」分两级只用于排序；<b>不打分、不判利好利空、不改建议、不暂停条件单</b>。你明确说过消息无法量化、要人工看，所以系统只做「告知」，判断权在你。传闻和自媒体解读一律不入库。</td>
+        <td><code>§5.15</code></td><td class="ok">✓ 已覆盖</td></tr>
+
+      <tr><td class="q">免费稳定的数据源，必须有日/周/月 K 线和关键指标；数据有没有存储、怎么保证完整</td>
+        <td>原来只存 30 天日线、还是前复权，周线月线根本没存——阶段判定和长周期分位算不出来。改为<b>四层存储</b>：原始不复权价 + 复权因子（日/周/月）、派生指标现算不落库、决策快照只追加、你的输入单独存。交易日 17:30 增量更新，缺口 &gt;3 天就标「数据非最新」并停止出计划。</td>
+        <td><code>§4.6</code> <code>§7</code></td><td class="ok">✓ 已覆盖</td></tr>
+
+      <tr><td class="q">阈值能不能统一做成配置项？要配置页、要记录修改、不做版本</td>
+        <td>做成<b>三档预设 + 单项微调</b>：宽松 / 标准 / 严格三套性格，整体可切；也可以只改某一项（页面显示「标准档 · 1 项自定义」）。改动<b>次日盘前生效</b>，历史结论不重算；每次改动记一条变更记录，可回滚，但<b>不生成 v1/v2 这种配置版本号</b>，只给快照留一个参数指纹。</td>
+        <td><code>§5.16</code> <code>§6.8</code></td><td class="ok">✓ 已覆盖</td></tr>
     </tbody>
   </table>
   </div>
 
-  <div class="plain"><b>核对结论</b>：你说的 21 条原始诉求，已全部落到需求条款中，没有发现遗漏或被悄悄改掉的核心意图。有 <b>2 类内容需要你继续把关</b>：① 具体阈值（箱体宽度 12%、触碰 2 次等）只是初值，要靠纸面回看和回测再定；② 飞书凭据、LLM 渠道等属于配置材料，不是需求口径。详见第 6 节。</div>
+  <div class="plain"><b>核对结论</b>：你说的 22 组诉求，已全部落到需求条款中，没有发现遗漏或被悄悄改掉的核心意图。本轮四次拍板（补 S5 / 允许试探仓 / 消息只推送 / 参数三档）已写进正文，并各配一条验收项。仍有 <b>2 类内容需要你继续把关</b>：① 具体阈值（箱体宽度 12%、触碰 2 次等）只是初值，要靠纸面回看和回测再定，三档的另外两套数值也要一起定；② 飞书凭据、大模型渠道、公告接口是否可用（M15–M17）属于配置与实测材料，不是需求口径。详见第 6 节。</div>
 </section>
 
 <!-- ============ 2 全景 ============ -->
@@ -378,6 +401,36 @@ svg{display:block;width:100%;height:auto;max-width:100%}
   </div>
 
   <div class="plain"><b>为什么要「只算一次」</b>：如果列表页算一遍、详情页算一遍、飞书再算一遍，只要取数时间差几秒，三个地方的数字就可能不一致——你会不知道该信哪个。所以需求规定：盘前生成一份带三元组的快照，所有出口只读它。</div>
+
+  <h3 id="s2s">2.1 数据存在哪、多久更新一次（v2.2 新增）</h3>
+  <p class="lead">你问「数据源共享完之后有没有做存储」。答案是：<b>原来只存了一层，而且不够用</b>——只存 30 天日线、存的是前复权价、没有周线月线，导致「箱体要 60 天」「月线做背景」这些都算不出来。所以要把它改成四层。</p>
+
+  <div class="card" style="padding:0;overflow:hidden">
+  <table>
+    <thead><tr><th style="width:16%">层</th><th style="width:34%">存什么</th><th style="width:26%">什么时候写</th><th>特点</th></tr></thead>
+    <tbody>
+      <tr><td><b>L1 原始行情</b></td><td>日线 / 周线 / 月线；<b>不复权原始价 + 复权因子</b>；交易日历；指数与板块行情</td><td>每交易日 17:30 后增量；新标的首次回补 ≥3 年</td><td class="ok">唯一事实来源，全量保留</td></tr>
+      <tr><td><b>L2 派生指标</b></td><td>均线、斜率、箱体、分位、阶段、评分</td><td>每次生成时现算</td><td><b>不落库</b>，避免「用自己算的数再算一遍」</td></tr>
+      <tr><td><b>L3 决策快照</b></td><td>当天的 advice / 阶段 / 风险 / 条件计划 / 参数指纹</td><td>每个交易日一次</td><td><b>只追加、不修改</b>；保留 ≥250 个交易日，用于复盘和回测</td></tr>
+      <tr><td><b>L4 你的输入</b></td><td>持仓成本、股数、笔记、关注清单、参数改动</td><td>你自己操作时</td><td>写操作次日生效，可撤销</td></tr>
+    </tbody>
+  </table>
+  </div>
+
+  <div class="plain"><b>复权这件事为什么要单独说</b>：现在代码里取的是<b>前复权</b>价，好处是看 K 线连续，坏处是<b>每次分红除权都会把历史价格全部改写一遍</b>——今天的数据库里的「去年 3 月的收盘价」，明年可能就变了。这样回测永远对不上，而且和你券商 App 看到的不复权价也不一致。新口径拆成三句话：<br>
+  ① <b>存</b>原始不复权价 + 因子；② <b>看</b>（页面和条件单价）用不复权，和券商一致；③ <b>算</b>（指标和回测）用后复权，避免除权跳空被误判成「破位」。</div>
+
+  <div class="grid3" style="margin-top:14px">
+    <div class="mini" style="border-color:#d9e2ff"><div class="ic" style="background:var(--blue-bg);color:var(--blue)">更</div>
+      <h4>更新频率</h4>
+      <p>交易日 17:30 后补当天数据，18:00 前完成生成；非交易日两边都不跑。这样早上 7:30 打开就是最新收盘。</p></div>
+    <div class="mini" style="border-color:#ffe1b8"><div class="ic" style="background:var(--warn-bg);color:var(--warn)">缺</div>
+      <h4>缺口怎么办</h4>
+      <p>每次生成前先比对交易日历：缺 ≤3 天自动补；缺 &gt;3 天，这只票标「数据非最新」、阶段记 S0、<b>不出条件计划</b>。不会拿旧数据冒充今天。</p></div>
+    <div class="mini" style="border-color:#e5d9ff"><div class="ic" style="background:var(--purple-bg);color:var(--purple)">证</div>
+      <h4>怎么证明数据完整</h4>
+      <p>每份快照记下「用了多少根 K 线、缺了几天」，详情页元信息可展开查看。异常能在页面上看到，不用你猜。</p></div>
+  </div>
 </section>
 
 <!-- ============ 3 决策引擎 ============ -->
@@ -486,7 +539,7 @@ svg{display:block;width:100%;height:auto;max-width:100%}
     <text x="686" y="292" font-size="10.5" fill="#3b5bdb">同一标的方向必须完全一致（单一真值）</text>
     <path d="M602 90 L664 180" stroke="#98a2b3" stroke-width="1.4" stroke-dasharray="4 3" fill="none"/>
   </svg>
-  <div class="cap">图 2：决策引擎工作流。注意两个橙色关卡（S4 风险守卫、S5.5 阶段门）都只能把动作「砍掉」，不能把小动作「放大」成买入。</div>
+  <div class="cap">图 2：决策引擎工作流。注意两个橙色关卡（S4 风险守卫、S5.5 阶段门）都只能把动作「砍掉」，不能把小动作「放大」成买入。<br><span style="color:#8791a0">命名说明：图中 S0–S6 是「守卫链第几步」，不是阶段码；阶段码是另一套 S1–S5（S5＝无结构）。两套编码含义无关，文档里已加消歧。</span></div>
   </div>
 
   <!-- 3.2 八步 -->
@@ -494,8 +547,8 @@ svg{display:block;width:100%;height:auto;max-width:100%}
   <div class="steps">
     <div class="step"><div class="n">0</div><div>
       <h4>先判阶段：这只票现在处于什么状态 <span class="tag p">你本轮新增</span></h4>
-      <p>用价格和 MA20 的关系、MA20 斜率、均线排列、60 日箱体、位置分位，算出 5 档之一：上升 / 高位震荡 / 下跌 / 低位筑底 / 无法判定。需连续 2 天满足才切换，防止一天波动就换打法。</p>
-      <div class="why">为什么：你说的「先给阶段定位，再做分析」。如果不先定阶段，评分会把「下跌中继」误当成「震荡低吸」，在下跌途中一直加仓。</div>
+      <p>用价格和 MA20 的关系、MA20 斜率、均线排列、60 日箱体、位置分位，算出 <b>6 档之一</b>：上升 / 高位震荡 / 下跌 / 低位筑底 / <b>无结构</b> / 无法判定。需连续 2 天满足才切换，防止一天波动就换打法；切换到严格档会要求连续 3 天。</p>
+      <div class="why">为什么：你说的「先给阶段定位，再做分析」。如果不先定阶段，评分会把「下跌中继」误当成「震荡低吸」，在下跌途中一直加仓。「无结构」这一档是为了让「看不出方向」也能诚实地说出来，而不是硬套成震荡。</div>
     </div></div>
 
     <div class="step"><div class="n">1</div><div>
@@ -542,8 +595,8 @@ svg{display:block;width:100%;height:auto;max-width:100%}
   </div>
 
   <!-- 3.3 阶段 -->
-  <h3 id="s3c">3.3 五阶段与各自的打法</h3>
-  <p class="lead">这是你本轮最关心的新增：不同阶段，交易思路完全不同。下面这张图就是系统的「阶段→打法」对照表。</p>
+  <h3 id="s3c">3.3 六阶段与各自的打法</h3>
+  <p class="lead">这是你本轮最关心的新增：不同阶段，交易思路完全不同。下面这张图就是系统的「阶段→打法」对照表。<b>v2.2 补了两处</b>：新增 S5「无结构」，并允许 S4 用小额度试探仓。</p>
   <div class="stagegrid">
     <div class="stage"><span class="sid" style="background:#2f9e44">S1</span><h4>上升趋势</h4>
       <div class="p"><b>主打法</b>：回踩买 + 突破买，不追高。触发价来自 MA20 附近或前期高点。</div>
@@ -555,14 +608,31 @@ svg{display:block;width:100%;height:auto;max-width:100%}
       <div class="p"><b>主打法</b>：反弹减 + 破位清，不抄底。卖点主要挂在反弹压力位，而非只挂破位。</div>
       <div class="ban">禁止：任何买入（含 T 低吸、补仓摊薄、"估值低所以买"）</div></div>
     <div class="stage"><span class="sid" style="background:#7048e8">S4</span><h4>低位筑底</h4>
-      <div class="p"><b>主打法</b>：观察为主，右侧确认才买（站上 MA20 + 放量 + 突破箱体上沿）。</div>
-      <div class="ban">禁止：左侧越跌越买、把「便宜」当买点</div></div>
-    <div class="stage"><span class="sid" style="background:#8791a0">S0</span><h4>无法判定</h4>
-      <div class="p"><b>主打法</b>：不出策略、不出计划，只显示状态位和原因。</div>
+      <div class="p"><b>主打法</b>：观察为主；右侧确认才正式买（站上 MA20 + 放量 + 突破箱体上沿）。<b>确认前允许试探仓</b>：回下沿 + 缩量，上限 1/3，破下沿即清。</div>
+      <div class="ban">禁止：左侧越跌越买、分批摊薄、把「便宜」当买点</div></div>
+    <div class="stage"><span class="sid" style="background:#8791a0">S5</span><h4>无结构</h4>
+      <div class="p"><b>主打法</b>：不动。既没有趋势，也没有能画出上下沿的箱体（窄幅横盘、均线粘在一起），等结构自己长出来。</div>
+      <div class="ban">禁止：新建仓、加仓、箱体高抛低吸、追突破</div></div>
+    <div class="stage"><span class="sid" style="background:#adb5bd">S0</span><h4>无法判定</h4>
+      <div class="p"><b>主打法</b>：不出策略、不出计划，只显示状态位和原因（停牌 / K 线不足 / 数据待同步）。</div>
       <div class="ban">禁止：用旧结论顶替</div></div>
   </div>
 
-  <div class="plain"><b>阶段门的实际效果（举例）</b>：同一只票处在 S3 下跌阶段，评分算出「加仓」→ 阶段门发现「加仓」不在 S3 允许集合内 → 改写成「减仓」，并记下"原本想加仓、被阶段门拦下"。回测时就能统计这道关卡一共拦住了多少次在下跌途中的买入。</div>
+  <div class="note" style="margin-top:14px"><b>S5 为什么必须单独一档</b>：如果只有四档，一只在 8% 区间里横了两三个月的票，会被判成「高位震荡」，于是系统会鼓励你在上沿减、下沿买——但它其实没有可靠的边界，上沿可能是假的，来回做只会被反复打脸。S5 的诚实答案是「看不清就不动」，同时明确告诉你：<b>这不是震荡</b>，别拿震荡的打法套。</div>
+
+  <div class="card" style="margin-top:14px">
+    <b style="font-size:13.5px">试探仓的四个硬约束（避免变成「抄底」）</b>
+    <div style="font-size:12.8px;color:var(--ink2);margin-top:8px;line-height:2">
+      ① <b>只在 S4</b>，且阶段置信度不能是「低」——其它阶段出现试探仓直接判失败；<br>
+      ② <b>上限 = 计划仓位的 1/3</b>（且不超过单只 20% 上限的 1/3），<b>只买一次</b>，不补仓、不分批摊薄；<br>
+      ③ <b>跌破箱体下沿立刻全清</b>，不等分级止损；卡片必须写清「最坏亏多少钱」；<br>
+      ④ <b>确认后才转正</b>：站上 MA20 + 放量 + 突破上沿，才允许补齐到计划仓位；严格档默认不开。
+    </div>
+  </div>
+
+  <div class="plain"><b>阶段门的实际效果（举例）</b>：同一只票处在 S3 下跌阶段，评分算出「加仓」→ 阶段门发现「加仓」不在 S3 允许集合内 → 改写成「减仓」，并记下"原本想加仓、被阶段门拦下"。回测时就能统计这道关卡一共拦住了多少次在下跌途中的买入。同理，S5 里评分若给出「下沿买」，会被改成「观望」并标注「结构未成形，不做箱体交易」。</div>
+
+  <div class="note"><b>关于「禁止箱体上沿逆势高抛」</b>（你问的第 6-a 条）：这条<b>只在上升趋势里生效</b>。趋势向上时在上沿卖高、等回落，等于用震荡思路做趋势票，容易把底仓卖飞（分红底仓尤其不能丢）。到了高位震荡阶段，上沿减 T 仓恰恰是主要动作。判断标准不是「价格到了上沿」，而是<b>当前是什么阶段</b>。</div>
 
   <div class="note"><b>关于缠论</b>：你提到「或类似缠论等理论支撑」。需求只落地了两层容易稳定计算的概念——「中枢≈箱体」「走势类型≈趋势/盘整」；背驰只作观察注记；笔、线段、级别递归本期不做，因为不同实现会给出不同结论，会让回测失去可复现性。项目自带的缠论文件是自然语言策略，按规则不直接接入决策。</div>
 
@@ -615,6 +685,70 @@ svg{display:block;width:100%;height:auto;max-width:100%}
     档位比例：轻 &lt;10% / 中 10–15% / 重 15–20%。
   </div>
   <div class="note"><b>两条容易忽略的边界</b>：① 股票 T+1，同一标的当天<b>不会同时出现买入和卖出分支</b>；ETF 是 T+0，会分别标注。② 每条分支单独校验硬上限，<b>单条越界就不输出该分支</b>并说明原因，不会给你一个超限的股数。工具不接券商、不自动下单、开盘后不更新。</div>
+
+  <!-- 3.6 消息 -->
+  <h3 id="s3f">3.6 重大消息：只推送，不判断（v2.2 新增）</h3>
+  <p class="lead">你说得很清楚：消息没法量化，保留推送、不做情绪判断、你自己看。所以需求把消息做成一条<b>和决策并行的信息通道</b>——它会出现在页面上，但<b>不会碰任何一个结论</b>。</p>
+
+  <div class="grid3">
+    <div class="mini" style="border-color:#d9e2ff"><div class="ic" style="background:var(--blue-bg);color:var(--blue)">①</div>
+      <h4>不进评分</h4>
+      <p>消息不参与打分，连低权重都不算。真正的「事实字段」（财报、分红、政策）走的是另一条路，那个才参与加减分。</p></div>
+    <div class="mini" style="border-color:#ffe1b8"><div class="ic" style="background:var(--warn-bg);color:var(--warn)">②</div>
+      <h4>不改结论</h4>
+      <p>同样的数据，无论今天有没有取到消息，<b>操作意见、阶段、风险等级、条件单必须逐字相同</b>。这条直接写成了验收项。</p></div>
+    <div class="mini" style="border-color:#ffd0d0"><div class="ic" style="background:var(--up-bg);color:var(--up)">③</div>
+      <h4>不暂停计划</h4>
+      <p>不会因为一条突发消息自动停掉你的条件单。要不要改，由你看到消息后自己在券商端决定。</p></div>
+  </div>
+
+  <div class="card" style="padding:0;overflow:hidden;margin-top:14px">
+  <table>
+    <thead><tr><th style="width:16%">级别</th><th style="width:46%">什么算这一级（客观条件，不靠感觉）</th><th>怎么展示</th></tr></thead>
+    <tbody>
+      <tr><td><b>A 级 · 重大</b></td><td>和我持仓 / 自选直接相关，且有明确生效日或金额：业绩预告、定期报告、重大合同、并购重组、停复牌、立案问询处罚、增减持、分红方案、指数调整</td><td>详情页消息区置顶（最多 3 条）+ 推送尾部单列「今日需人工关注 N 条」</td></tr>
+      <tr><td><b>B 级 · 突发</b></td><td>行业或市场层面、没有个股生效日：监管政策、行业事件、交易所风险提示</td><td>只在折叠区，<b>不单条推送</b>，避免变成噪音</td></tr>
+      <tr><td><b>不入库</b></td><td>来源不明、只有媒体解读、没有原文的传闻</td><td>不显示。宁缺勿滥</td></tr>
+    </tbody>
+  </table>
+  </div>
+
+  <div class="plain"><b>为什么分级不算「量化」</b>：分的不是「这条消息影响多大」（那确实量化不了），而是三个客观事实——<b>是否涉及我的持仓、有没有明确生效日、有没有一手来源</b>。这三个都能用字段判断，所以结果可复现；至于利好还是利空，系统一个字都不说。</div>
+
+  <div class="note"><b>和「盘前不看当天新闻」冲突吗？</b> 不冲突。结论仍然只用前一交易日收盘数据算，消息只负责「告诉你发生了什么」。一个是<b>算账的输入</b>，一个是<b>给你看的提示</b>，物理分开。</div>
+
+  <!-- 3.7 参数 -->
+  <h3 id="s3g">3.7 参数三档：严不严，你自己定（v2.2 新增）</h3>
+  <p class="lead">你问「如何在严谨和严格之间取舍」，又说要能配置、要配置页、要记录修改但不做版本。答案不是把阈值写死，也不是让你天天调，而是<b>三档性格 + 单项微调</b>。</p>
+
+  <div class="grid3">
+    <div class="mini" style="border-color:#d9e2ff"><div class="ic" style="background:var(--blue-bg);color:var(--blue)">宽</div>
+      <h4>宽松：少拦，多做</h4>
+      <p>相信结构、容忍噪音；适合天天看盘、愿意手动纠错的人。箱体宽度放到 15%，切换只要连续 1 天。</p></div>
+    <div class="mini" style="border-color:#ffe1b8"><div class="ic" style="background:var(--warn-bg);color:var(--warn)">标</div>
+      <h4>标准（默认）</h4>
+      <p>平衡档，也是回测基线。箱体 12%、连续 2 天切换、试探仓开启。大多数情况选这档。</p></div>
+    <div class="mini" style="border-color:#e5d9ff"><div class="ic" style="background:var(--purple-bg);color:var(--purple)">严</div>
+      <h4>严格：宁可错过</h4>
+      <p>只做高确定性；适合不常看盘、怕回撤的人。箱体收紧到 10%、连续 3 天、<b>试探仓默认关闭</b>。</p></div>
+  </div>
+
+  <div class="card" style="padding:0;overflow:hidden;margin-top:14px">
+  <table>
+    <thead><tr><th style="width:24%">配置页上你会看到</th><th style="width:42%">它长什么样</th><th>你能做什么</th></tr></thead>
+    <tbody>
+      <tr><td><b>当前状态条</b></td><td>「当前：标准档 · 2 项自定义 · 下次生效 11-20」</td><td>一眼知道自己在哪档、改过几项</td></tr>
+      <tr><td><b>三档切换卡</b></td><td>三张卡并列，各写一句话性格 + 3 个关键差异</td><td>整体切换（会问你是否放弃自定义）</td></tr>
+      <tr><td><b>参数分组</b></td><td>阶段判定 / 动作门槛 / 风险 / 仓位 / 条件计划 / 展示</td><td>只改某一项，超出范围直接被拒</td></tr>
+      <tr><td><b>仅预览影响</b></td><td>「用当前参数试算今天」→ 前后对比阶段、意见、分支数</td><td>先看会变成什么样，<b>不会保存、不影响线上</b></td></tr>
+      <tr><td><b>变更记录</b></td><td>时间 / 改了哪项 / 旧值→新值 / 原因 / 何时生效</td><td>可回滚（回滚也是新记一条），<b>没有版本号</b></td></tr>
+    </tbody>
+  </table>
+  </div>
+
+  <div class="plain"><b>为什么不做「配置版本 v1/v2」</b>：版本号会让人误以为「改了配置 = 换了系统」，还会诱导频繁升版。这里只要回答一个问题——「这条建议当时用的是哪套参数」——所以每份快照存一个<b>参数指纹</b>（`param_hash`）就够了：改一次值指纹就变，永远能对上号，也不用维护版本表。</div>
+
+  <div class="note"><b>还有一个反向校验</b>：四层关卡都只收不放，理论上可能把系统收成「永远观望」。所以回测里加了五个健康度指标——动作分布、改写占比、<b>建议翻转率 ≤25%</b>、<b>阶段切换 ≤8 次/年</b>、连续观望天数。任何一项越界，说明规则过严，要回去调阈值或换档，而不是偷偷放水。</div>
 </section>
 
 <!-- ============ 4 页面 ============ -->
@@ -659,9 +793,11 @@ svg{display:block;width:100%;height:auto;max-width:100%}
   <table>
     <thead><tr><th style="width:24%">决策引擎算出什么</th><th style="width:46%">在哪个页面/位置看到</th><th>有没有遗漏</th></tr></thead>
     <tbody>
-      <tr><td><b>阶段定位</b>（S1–S4 / S0）</td><td>详情页第 ③ 区块（详细）+ 列表名称后的阶段小标签</td><td class="ok">✓ 有</td></tr>
+      <tr><td><b>阶段定位</b>（S1–S5 / S0）</td><td>详情页第 ③ 区块（详细）+ 列表名称后的阶段小标签（S5 写「无结构」）+ 试探仓角标</td><td class="ok">✓ 有</td></tr>
       <tr><td><b>操作意见</b>（经阶段门）</td><td>详情页第 ④ 区块 + 列表 + 卡片 + 飞书摘要（四处同源）</td><td class="ok">✓ 有</td></tr>
       <tr><td><b>风险信号</b>（7 类 / 3 级）</td><td>Tab A 顶部风险条 + 列表角标 + 详情页第 ⑨ 区块 + 卡片</td><td class="ok">✓ 有</td></tr>
+      <tr><td><b>重大消息</b>（A/B 级）</td><td>详情页 6g（A 级置顶、B 级折叠）+ 列表「消息」角标 + 推送尾部</td><td class="ok">✓ 有（<b>不进风险条</b>）</td></tr>
+      <tr><td><b>参数与变更记录</b></td><td>独立配置页（三档卡 / 分组参数 / 仅预览 / 变更记录）</td><td class="ok">✓ 有</td></tr>
       <tr><td><b>条件计划</b>（分支表）</td><td>详情页第 ⑤ 区块（默认展开）+ 卡片 + 飞书完整文本</td><td class="ok">✓ 有</td></tr>
       <tr><td><b>技术解释</b>（8 字段）</td><td>详情页第 ⑧ 区块，点击"看技术依据"展开</td><td class="ok">✓ 有</td></tr>
       <tr><td><b>趋势 / 位置 / 关键价位</b></td><td>详情页第 ⑧ 区块 6a + 第 ⑥ 区块 + 卡片</td><td class="ok">✓ 有</td></tr>
@@ -677,22 +813,22 @@ svg{display:block;width:100%;height:auto;max-width:100%}
 <!-- ============ 6 待确认 ============ -->
 <section id="s6">
   <h2><span class="num">6</span>还需要你把关的事</h2>
-  <p class="lead">需求本身已经写完整，但有 3 类事项不是"写成文字"就能解决的，需要你拍板或提供材料。</p>
+  <p class="lead">本轮你答的四个问题已经全部写进需求（补 S5、允许试探仓、消息只推送、参数三档），并且各自配了验收项。剩下的不是「需求没写清」，而是三类<b>必须靠实测或拍板</b>的事。</p>
   <div class="grid3">
     <div class="mini" style="border-color:#d9e2ff"><div class="ic" style="background:var(--blue-bg);color:var(--blue)">A</div>
       <h4>整体批准</h4>
       <p>文档目前是<b>草案 / 待批准</b>。你确认这份需求就是你要的，才会进入原型固化 → 技术方案 → 编码。在此之前不会动工。</p></div>
     <div class="mini" style="border-color:#ffe1b8"><div class="ic" style="background:var(--warn-bg);color:var(--warn)">B</div>
-      <h4>阈值要靠回看定</h4>
-      <p>箱体宽度 12%、触碰 2 次、位置 50% 二分、连续 2 日防抖等<b>只是初值</b>。会用「1 只票逐字段看 → 10 只票 × 5 天」的纸面回看，以及方案定稿后的回测来最终确定。</p></div>
+      <h4>三档的数值要靠回看定</h4>
+      <p>箱体 12% / 触碰 2 次 / 连续 2 日只是<b>标准档初值</b>。宽松与严格两套数值还没定，要用「1 只票逐字段看 → 10 只票 × 5 天」的纸面回看 + 三档对照回测定。三档之间的「宽→严 = 动作更少」这条关系已经锁死，不会倒挂。</p></div>
     <div class="mini" style="border-color:#e5d9ff"><div class="ic" style="background:var(--purple-bg);color:var(--purple)">C</div>
-      <h4>部署材料</h4>
-      <p>飞书 webhook / app 凭据、大模型渠道与成本上限等属于配置材料，不是需求口径，等部署时提供即可。项目已有的数据源和通知能力会复用，不重复造轮子。</p></div>
+      <h4>三项实测 + 部署材料</h4>
+      <p>需要实测：免费源有没有<b>周/月线与复权因子</b>（M15）、公告接口能否取到标题与原文（M16）、3 年首次回补要多久（M17）。飞书凭据、大模型渠道属配置材料，部署时给即可。</p></div>
   </div>
-  <div class="note" style="margin-top:18px"><b>一个提醒</b>：年化 10–20% 是你自述的目标，需求明确把它限定为"组合层回看对照"，不会出现在任何操作建议里，也不会变成收益承诺。回测结果只作为验证记录，不承诺未来收益。</div>
+  <div class="note" style="margin-top:18px"><b>一个提醒</b>：年化 10–20% 是你自述的目标，需求明确把它限定为"组合层回看对照"，不会出现在任何操作建议里，也不会变成收益承诺。回测结果只作为验证记录，不承诺未来收益。另外，<b>消息推送与参数配置都不会改变当天的结论</b>——一个只告知、一个只调下一次的算法，这是本版刻意划的两条线。</div>
 
   <div class="foot">
-    本解读文档由需求规格 <b>v2.1</b> 生成，用于帮助需求方核对口径，不替代正式需求文档。<br>
+    本解读文档由需求规格 <b>v2.2</b> 生成，用于帮助需求方核对口径，不替代正式需求文档。<br>
     文中所有数字（价格、股数、指数）均为示意用的模拟数据，不代表真实行情。<br>
     以上内容由 AI 基于公开信息整理生成，仅供参考，<b>不构成投资建议或个股推荐</b>。投资有风险，决策需谨慎。
   </div>
