@@ -19,6 +19,7 @@
 | 查看「股票分析助手」需求规格 | [需求规格 v2.4](requirements/stock-analysis-assistant-requirements-v2.4.md) | [需求文档目录说明](requirements/README.md) |
 | 查看「股票分析助手」可交互原型 | [原型 v2.4（PC / H5 · 六阶段 / 试探仓 / 参数弹层 / 飞书样张）](prototypes/stock-analysis-assistant-prototype-v2.4.html) | [需求规格 v2.4](requirements/stock-analysis-assistant-requirements-v2.4.md) |
 | 看不懂需求文档？读白话图解版 | [需求白话解读 v2.4（流程图 / 架构图 / 决策引擎 / 存储 / 参数 / 飞书排版）](prototypes/stock-analysis-assistant-explained-v2.4.html) | [需求规格 v2.4](requirements/stock-analysis-assistant-requirements-v2.4.md) |
+| 查看「股票分析助手」技术实现方案 | [技术方案 v0.1（c 阶段：架构 / 存储表 / 决策引擎 / 参数 / 输出层 / 回测）](technical-design/stock-analysis-assistant-technical-design-v0.1.md) | [需求规格 v2.4](requirements/stock-analysis-assistant-requirements-v2.4.md) |
 
 ## 快速开始
 
