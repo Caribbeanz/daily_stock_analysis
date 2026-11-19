@@ -1,0 +1,781 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>股票分析助手 · 技术实现方案 v0.1</title>
+<style>
+:root{
+  --bg:#f6f7f9; --card:#ffffff; --ink:#20252f; --ink2:#556070; --ink3:#8791a0;
+  --line:#e5e9ef; --blue:#3b5bdb; --blue-bg:#eef2ff; --purple:#7048e8; --purple-bg:#f3efff;
+  --up:#e03131; --up-bg:#fff0f0; --down:#2f9e44; --down-bg:#edfbf0;
+  --warn:#e8820c; --warn-bg:#fff6e8; --gray-bg:#f1f3f6;
+  --shadow:0 1px 3px rgba(20,30,60,.06),0 8px 24px rgba(20,30,60,.04);
+  --radius:14px;
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{margin:0;background:var(--bg);color:var(--ink);
+  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;
+  font-size:15px;line-height:1.75;-webkit-font-smoothing:antialiased}
+a{color:var(--blue);text-decoration:none}
+
+/* 顶部 */
+.topbar{position:sticky;top:0;z-index:50;background:rgba(255,255,255,.94);
+  backdrop-filter:blur(12px);border-bottom:1px solid var(--line);padding:13px 26px;
+  display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+.topbar .logo{font-weight:800;font-size:17px;letter-spacing:-.3px}
+.topbar .logo b{color:var(--blue)}
+.badge{display:inline-flex;align-items:center;gap:5px;font-size:11.5px;font-weight:700;
+  padding:3px 10px;border-radius:99px;border:1px solid var(--line);background:var(--gray-bg);color:var(--ink2)}
+.badge.v{background:var(--blue-bg);border-color:#d9e2ff;color:var(--blue)}
+.badge.d{background:var(--warn-bg);border-color:#ffe1b8;color:var(--warn)}
+.topbar .spacer{flex:1}
+.topbar .tip{font-size:12.5px;color:var(--ink2)}
+
+/* 布局 */
+.wrap{max-width:1370px;margin:0 auto;padding:30px 26px 80px;display:grid;
+  grid-template-columns:240px minmax(0,1fr);gap:34px;align-items:start}
+nav.side{position:sticky;top:74px;background:var(--card);border:1px solid var(--line);
+  border-radius:var(--radius);padding:16px 12px;box-shadow:var(--shadow)}
+nav.side .navtitle{font-size:11px;font-weight:800;color:var(--ink3);letter-spacing:1.2px;
+  padding:2px 10px 10px;text-transform:uppercase}
+nav.side a{display:block;padding:8px 10px;border-radius:9px;font-size:13px;color:var(--ink2);
+  margin-bottom:2px;transition:.15s;border-left:3px solid transparent}
+nav.side a:hover{background:var(--blue-bg);color:var(--blue)}
+nav.side a.on{background:var(--blue-bg);color:var(--blue);font-weight:700;border-left-color:var(--blue)}
+nav.side .sub{padding-left:22px;font-size:12px;color:var(--ink3)}
+main{min-width:0}
+
+/* 通用 */
+section{scroll-margin-top:80px;margin-bottom:42px}
+h2{font-size:23px;letter-spacing:-.4px;margin:0 0 6px;display:flex;align-items:center;gap:10px}
+h2 .num{display:inline-flex;width:29px;height:29px;border-radius:9px;background:var(--blue);
+  color:#fff;font-size:14px;align-items:center;justify-content:center;font-weight:800;flex:none}
+h3{font-size:17px;margin:26px 0 10px;letter-spacing:-.2px}
+.lead{color:var(--ink2);margin:0 0 20px;font-size:14px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);
+  padding:22px;box-shadow:var(--shadow);margin-bottom:16px}
+.plain{background:var(--blue-bg);border:1px solid #dbe4ff;border-left:4px solid var(--blue);
+  border-radius:10px;padding:12px 16px;font-size:13.5px;color:#2b3c7a;margin:14px 0}
+.plain b{color:var(--blue)}
+.note{background:var(--warn-bg);border:1px solid #ffe2bb;border-left:4px solid var(--warn);
+  border-radius:10px;padding:12px 16px;font-size:13px;color:#8a5300;margin:14px 0}
+.okbox{background:var(--down-bg);border:1px solid #c8eccf;border-left:4px solid var(--down);
+  border-radius:10px;padding:12px 16px;font-size:13px;color:#1f6b31;margin:14px 0}
+.small{font-size:12px;color:var(--ink3)}
+.tag{display:inline-block;font-size:10.5px;font-weight:800;padding:2px 8px;border-radius:6px;
+  background:var(--gray-bg);color:var(--ink2);margin-left:6px;vertical-align:middle}
+.tag.b{background:var(--blue-bg);color:var(--blue)}
+.tag.g{background:var(--down-bg);color:var(--down)}
+.tag.r{background:var(--up-bg);color:var(--up)}
+.tag.y{background:var(--warn-bg);color:var(--warn)}
+.tag.p{background:var(--purple-bg);color:var(--purple)}
+
+/* 封面 */
+.hero{background:linear-gradient(135deg,#f0f4ff 0%,#faf8ff 55%,#fff 100%);
+  border:1px solid #e2e8ff;border-radius:18px;padding:30px 32px;margin-bottom:28px}
+.hero h1{font-size:30px;margin:0 0 8px;letter-spacing:-.8px}
+.hero p{font-size:14.5px;color:var(--ink2);margin:0 0 18px;max-width:860px}
+.hero .row{display:flex;gap:10px;flex-wrap:wrap}
+.hero .stat{background:#fff;border:1px solid var(--line);border-radius:11px;padding:10px 16px;min-width:118px}
+.hero .stat .n{font-size:21px;font-weight:800;color:var(--blue);line-height:1.2}
+.hero .stat .l{font-size:11.5px;color:var(--ink3)}
+
+/* 网格 */
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
+.grid4{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
+.mini{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px}
+.mini .ic{width:32px;height:32px;border-radius:9px;display:flex;align-items:center;justify-content:center;
+  font-size:15px;font-weight:800;margin-bottom:9px}
+.mini h4{margin:0 0 5px;font-size:14px}
+.mini p{margin:0;font-size:12.5px;color:var(--ink2);line-height:1.65}
+
+/* 表格 */
+table{width:100%;border-collapse:collapse;font-size:12.8px}
+th{text-align:left;background:var(--gray-bg);color:var(--ink2);font-weight:700;
+  padding:9px 11px;border-bottom:1px solid var(--line);white-space:nowrap}
+td{padding:9px 11px;border-bottom:1px solid #eef1f5;vertical-align:top}
+tr:last-child td{border-bottom:none}
+td.ok{color:var(--down);font-weight:700;white-space:nowrap}
+td.wait{color:var(--warn);font-weight:700;white-space:nowrap}
+code{font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:11.5px;
+  background:var(--gray-bg);padding:1px 5px;border-radius:4px;color:#334}
+
+/* SVG 容器 */
+.figure{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);
+  padding:18px;box-shadow:var(--shadow);margin:14px 0}
+.figure .cap{font-size:12px;color:var(--ink3);text-align:center;margin-top:10px}
+svg{display:block;width:100%;height:auto;max-width:100%}
+
+/* 流程节点（守卫链） */
+.chain{display:flex;flex-direction:column;gap:0}
+.chainrow{display:grid;grid-template-columns:118px 1fr;gap:0;align-items:stretch}
+.chainrow .node{position:relative;display:flex;align-items:center;justify-content:center;
+  text-align:center;font-weight:800;font-size:13px;border-radius:11px;color:#fff;padding:10px 6px;margin:5px 0}
+.chainrow .desc{padding:10px 16px;border-left:3px solid var(--line);margin:5px 0 5px 14px;font-size:12.8px;color:var(--ink2)}
+.chainrow .desc b{color:var(--ink);font-size:13.5px}
+.chainrow .desc .out{display:inline-block;margin-top:3px;font-size:11.5px;color:var(--ink3)}
+.n-s0{background:#7a869a}.n-s1,.n-s2,.n-s3{background:#3b5bdb}
+.n-s4{background:#e8820c}.n-s5{background:#7048e8}.n-s55{background:#c92a2a}.n-s6{background:#2f9e44}
+
+/* 阶段卡 */
+.stagegrid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+.stage{border:1px solid var(--line);border-radius:12px;padding:13px;background:#fff}
+.stage .sid{font-size:11px;font-weight:800;color:#fff;padding:2px 8px;border-radius:6px;display:inline-block}
+.stage h4{margin:8px 0 6px;font-size:13.5px}
+.stage .p{font-size:11.8px;color:var(--ink2);line-height:1.6}
+.stage .ban{font-size:11px;color:var(--up);margin-top:7px;padding-top:6px;border-top:1px dashed var(--line)}
+
+/* 飞书七段 */
+.feishu{border:1px solid var(--line);border-radius:12px;overflow:hidden;background:#fff}
+.feishu .fh{background:linear-gradient(135deg,#eef2ff,#f8f9ff);padding:11px 15px;font-size:12.5px;
+  font-weight:700;color:#2b3c7a;display:flex;justify-content:space-between;align-items:center}
+.feishu .fb{padding:8px 12px}
+.fseg{display:grid;grid-template-columns:26px 1fr;gap:9px;padding:8px 4px;border-bottom:1px dashed #eef1f5;align-items:start}
+.fseg:last-child{border:none}
+.fseg .fi{font-size:15px;text-align:center;line-height:1.5}
+.fseg .ft{font-size:12.3px;color:var(--ink2)}
+.fseg .ft b{color:var(--ink);font-size:12.8px}
+.fseg .ft .num{font-family:ui-monospace,Consolas,monospace;color:#334;background:var(--gray-bg);padding:0 4px;border-radius:3px}
+
+/* 参数三档条 */
+.bar{height:7px;border-radius:99px;background:var(--gray-bg);margin-top:4px;overflow:hidden}
+.bar i{display:block;height:100%;border-radius:99px}
+
+/* 页脚 */
+.foot{border-top:1px solid var(--line);margin-top:40px;padding-top:18px;font-size:11.5px;
+  color:var(--ink3);line-height:1.9}
+
+@media(max-width:1100px){.stagegrid{grid-template-columns:repeat(2,1fr)}.grid4{grid-template-columns:repeat(2,1fr)}.grid3{grid-template-columns:1fr 1fr}}
+@media(max-width:900px){
+  .wrap{grid-template-columns:1fr;padding:18px 14px 60px}
+  nav.side{position:static;display:flex;overflow-x:auto;gap:4px;padding:8px}
+  nav.side .navtitle{display:none}
+  nav.side a{white-space:nowrap;margin:0;border-left:none;border-bottom:2px solid transparent}
+  nav.side a.on{border-left:none;border-bottom-color:var(--blue)}
+  nav.side .sub{display:none}
+  .grid2,.grid3,.grid4{grid-template-columns:1fr}
+  .hero h1{font-size:24px}
+  .chainrow{grid-template-columns:96px 1fr}
+}
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="logo">股票分析助手 · <b>技术实现方案</b></div>
+  <span class="badge v">v0.1</span>
+  <span class="badge d">草案 / 待批准</span>
+  <div class="spacer"></div>
+  <div class="tip">需求说「要什么」，这份文档说「怎么实现」</div>
+</div>
+
+<div class="wrap">
+<nav class="side" id="nav">
+  <div class="navtitle">目录</div>
+  <a href="#s0" class="on">0 · 怎么读这份方案</a>
+  <a href="#s1">1 · 设计原则与护栏</a>
+  <a href="#s2">2 · 系统架构（C1）</a>
+  <a href="#s3">3 · 数据与存储（C2）</a>
+  <a href="#s4">4 · 决策引擎（C3）</a>
+  <a href="#s5">5 · 参数框架（C4）</a>
+  <a href="#s6">6 · 输出层（C5）</a>
+  <a href="#s7">7 · 验证与回测（C6）</a>
+  <a href="#s8">8 · 待补项与实测</a>
+  <a href="#s9">9 · 代码库实读发现</a>
+</nav>
+
+<main>
+
+<!-- ============ 0 ============ -->
+<section id="s0">
+  <div class="hero">
+    <h1>把「怎么算、怎么存、怎么跑、怎么验」一次定下来</h1>
+    <p>需求 v2.4 把所有实现细节都显式推迟到 c 阶段。这份技术方案把那些「留到后面再说」的待补项，落到具体的模块边界、数据库表、接口契约、参数初值和实测前置——让你能看清这套东西到底怎么搭起来，再决定要不要批准进入编码。</p>
+    <div class="row">
+      <div class="stat"><div class="n">6 个</div><div class="l">实现模块 C1–C6</div></div>
+      <div class="stat"><div class="n">20+ 张</div><div class="l">新增/扩展数据表</div></div>
+      <div class="stat"><div class="n">8 步</div><div class="l">守卫链 S0→S6</div></div>
+      <div class="stat"><div class="n">3 档</div><div class="l">参数预设</div></div>
+      <div class="stat"><div class="n">7 段</div><div class="l">飞书推送结构</div></div>
+    </div>
+  </div>
+
+  <h2><span class="num">0</span>你现在处在哪一步</h2>
+  <p class="lead">整个项目分 a→b→c→d 四步走。a（需求）和 b（原型）已完成，这份文档是 <b>c（技术方案）</b>。</p>
+
+  <div class="figure">
+    <svg viewBox="0 0 920 150" role="img" aria-label="a b c d 四阶段进度">
+      <defs>
+        <marker id="ar" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto">
+          <path d="M0,0 L7,3 L0,6 Z" fill="#8791a0"/>
+        </marker>
+      </defs>
+      <!-- 4 boxes -->
+      <rect x="20" y="42" width="195" height="66" rx="11" fill="#edfbf0" stroke="#2f9e44"/>
+      <text x="117" y="68" text-anchor="middle" font-size="14" font-weight="700" fill="#1f6b31">a 需求</text>
+      <text x="117" y="89" text-anchor="middle" font-size="11.5" fill="#2f9e44">已完成 v2.4</text>
+      <rect x="245" y="42" width="195" height="66" rx="11" fill="#edfbf0" stroke="#2f9e44"/>
+      <text x="342" y="68" text-anchor="middle" font-size="14" font-weight="700" fill="#1f6b31">b 原型</text>
+      <text x="342" y="89" text-anchor="middle" font-size="11.5" fill="#2f9e44">已完成三视图</text>
+      <rect x="470" y="42" width="195" height="66" rx="11" fill="#eef2ff" stroke="#3b5bdb" stroke-width="2.4"/>
+      <text x="567" y="68" text-anchor="middle" font-size="14" font-weight="700" fill="#2b3c7a">c 技术方案</text>
+      <text x="567" y="89" text-anchor="middle" font-size="11.5" fill="#3b5bdb">← 你正在看</text>
+      <rect x="695" y="42" width="195" height="66" rx="11" fill="#f1f3f6" stroke="#c7ced8"/>
+      <text x="792" y="68" text-anchor="middle" font-size="14" font-weight="700" fill="#8791a0">d 编码</text>
+      <text x="792" y="89" text-anchor="middle" font-size="11.5" fill="#8791a0">未启动</text>
+      <!-- arrows -->
+      <line x1="215" y1="75" x2="243" y2="75" stroke="#8791a0" stroke-width="1.6" marker-end="url(#ar)"/>
+      <line x1="440" y1="75" x2="468" y2="75" stroke="#8791a0" stroke-width="1.6" marker-end="url(#ar)"/>
+      <line x1="665" y1="75" x2="693" y2="75" stroke="#8791a0" stroke-width="1.6" marker-end="url(#ar)"/>
+      <text x="460" y="24" text-anchor="middle" font-size="12.5" font-weight="700" fill="#c92a2a">⚠ 阻断点：需求 v2.4 需你先「批准」，才允许进入 d 编码</text>
+    </svg>
+    <div class="cap">图 0-1 · 四阶段进度：a、b 已完成，c 为本文档，d 待批准后启动</div>
+  </div>
+
+  <h3>这份方案覆盖的 6 个模块</h3>
+  <div class="grid3">
+    <div class="mini"><div class="ic" style="background:var(--blue-bg);color:var(--blue)">C1</div>
+      <h4>系统架构与载体</h4>
+      <p>新增独立模块放哪、和现有工程怎么隔离、每天几点跑、快照怎么保持一致。</p></div>
+    <div class="mini"><div class="ic" style="background:var(--down-bg);color:var(--down)">C2</div>
+      <h4>数据获取与存储</h4>
+      <p>四层存储（原始/派生/快照/用户输入）、不复权落库、周月线聚合、缺口检测。</p></div>
+    <div class="mini"><div class="ic" style="background:var(--warn-bg);color:var(--warn)">C3</div>
+      <h4>决策引擎实现</h4>
+      <p>守卫链 S0→S6、阶段判定、阶段门、风险 7 类、条件计划、战法转写。</p></div>
+    <div class="mini"><div class="ic" style="background:var(--purple-bg);color:var(--purple)">C4</div>
+      <h4>参数框架</h4>
+      <p>三档预设完整数值、单项覆盖、变更记录、param_hash 与 calc_version 分离。</p></div>
+    <div class="mini"><div class="ic" style="background:var(--blue-bg);color:var(--blue)">C5</div>
+      <h4>输出层</h4>
+      <p>Web 独立页面、飞书七段推送、LLM 文案层三处、飞书入站四项。</p></div>
+    <div class="mini"><div class="ic" style="background:var(--down-bg);color:var(--down)">C6</div>
+      <h4>验证与回测</h4>
+      <p>纸面回看两步法、回测引擎扩展条件计划模式、健康度指标。</p></div>
+  </div>
+
+  <div class="note"><b>一句话提醒</b>：这份文档的状态是 <b>「草案 / 技术方案初稿」</b>。它不构成实施授权——需求 v2.4 还没批准，所以现在还不能开始写代码。你过目认可后，批准需求，才会进入 d 阶段。</div>
+</section>
+
+<!-- ============ 1 ============ -->
+<section id="s1">
+  <h2><span class="num">1</span>设计原则与改动护栏</h2>
+  <p class="lead">编码时有 8 条原则不能违反、7 条护栏不能越。它们决定了「哪些能复用、哪些必须新建、哪些碰都不能碰」。</p>
+
+  <h3>8 条设计原则（DP-1 ~ DP-8）</h3>
+  <div class="grid2">
+    <div class="mini"><h4><span class="tag b">DP-1</span> 复用优先</h4><p>能用现有能力的，不另起一套；新增 ≠ 修改现有。避免重复造轮子，也避免动了不该动的地方。</p></div>
+    <div class="mini"><h4><span class="tag b">DP-2</span> 口径隔离</h4><p>本助手模块与主流程口径隔离，主流程不感知本助手存在。两边各跑各的，互不污染。</p></div>
+    <div class="mini"><h4><span class="tag b">DP-3</span> 单一真值</h4><p>盘前引擎每天只跑一次，WebUI / 通知 / 卡片 / 导出四处读同一份快照，禁止各自重算。</p></div>
+    <div class="mini"><h4><span class="tag b">DP-4</span> 决策归代码，措辞归 LLM</h4><p>LLM 只进文案层，不进评分 / advice / 风险 / 回测。数字和结论永远由代码算。</p></div>
+    <div class="mini"><h4><span class="tag b">DP-5</span> 可复现</h4><p>同 calc_version + 同快照 → 同结论；参数改了不追溯历史（快照只追加不改）。</p></div>
+    <div class="mini"><h4><span class="tag b">DP-6</span> 只收紧不放宽</h4><p>阶段门、风险信号都是事后收紧层，不改写评分逻辑。只会让动作更保守，不会更激进。</p></div>
+    <div class="mini"><h4><span class="tag b">DP-7</span> 降级优于编造</h4><p>数据不足时标注降级，不推测、不编造、不阻塞报告。宁可写「数据不足」也不硬凑。</p></div>
+    <div class="mini"><h4><span class="tag b">DP-8</span> 硬护栏不可越</h4><p>现有 11 条路由、页面组件、Shell、菜单、后端静态服务、主流程 Agent/Skill 都不得修改。</p></div>
+  </div>
+
+  <h3>改动护栏（红线）</h3>
+  <div class="card" style="padding:0;overflow:hidden">
+  <table>
+    <thead><tr><th style="width:16%">护栏</th><th style="width:42%">禁止做的事</th><th style="width:42%">允许的做法</th></tr></thead>
+    <tbody>
+      <tr><td><b>前端路由</b></td><td>修改现有 11 条路由、页面组件、<code>&lt;Shell&gt;</code>、菜单</td><td class="ok">App.tsx 新增 1 条路由 + 新增独立页面文件</td></tr>
+      <tr><td><b>后端静态服务</b></td><td>改 SPA 路由回退与静态服务逻辑</td><td class="ok">新增独立只读 API（不动现有 API）</td></tr>
+      <tr><td><b>主流程 Agent/Skill</b></td><td>改 <code>src/agent/</code>、<code>src/analyzer.py</code> 的决策与观点生成</td><td class="ok">本助手独立模块消费确定化规则；主流程原样保留</td></tr>
+      <tr><td><b>通知发送器</b></td><td>新增平行发送器、改既有渠道行为</td><td class="ok">新增 1 个 route_type，复用 routing/noise/capabilities</td></tr>
+      <tr><td><b>现有数据表</b></td><td>用派生结果覆盖 L1；改 qfq 前复权落库逻辑</td><td class="ok">扩展 stock_daily 加 adj_factor；新建 L3 快照表</td></tr>
+      <tr><td><b>配置读取链</b></td><td>破坏 <code>STOCK_LIST</code> 现有读取链</td><td class="ok">新增运行时持久化层，读取时合并配置 + 运行时</td></tr>
+      <tr><td><b>战法文件</b></td><td>删 <code>strategies/*.yaml</code>、改其 instructions</td><td class="ok">只转写判定条件为确定性规则，不加载 LLM 输出</td></tr>
+    </tbody>
+  </table>
+  </div>
+</section>
+
+<!-- ============ 2 ============ -->
+<section id="s2">
+  <h2><span class="num">2</span>系统架构与载体 <span class="tag b">C1</span></h2>
+  <p class="lead">本助手不改现有工程，而是在仓库里新建一个独立包 <code>src/assistant/</code>，和主流程 Agent 平级、互不依赖。整体分五层。</p>
+
+  <div class="figure">
+    <svg viewBox="0 0 920 470" role="img" aria-label="五层架构图">
+      <!-- 5 layers -->
+      <rect x="22" y="18" width="600" height="76" rx="11" fill="#eef2ff" stroke="#c7d4ff"/>
+      <text x="42" y="45" font-size="14.5" font-weight="800" fill="#2b3c7a">展示层</text>
+      <text x="42" y="68" font-size="12" fill="#556070">Web 独立页面 · 飞书推送 · 飞书入站</text>
+      <text x="42" y="85" font-size="11" fill="#8791a0">PC 与 H5 同 URL · 一套响应式</text>
+
+      <rect x="22" y="104" width="600" height="76" rx="11" fill="#f3efff" stroke="#d9cffc"/>
+      <text x="42" y="131" font-size="14.5" font-weight="800" fill="#4b2fa8">输出装配层</text>
+      <text x="42" y="154" font-size="12" fill="#556070">卡片 / 列表 / 详情渲染 · 飞书七段图标化 · LLM 文案层</text>
+      <text x="42" y="171" font-size="11" fill="#8791a0">读同一份 L3 快照 · 禁止重算</text>
+
+      <rect x="22" y="190" width="600" height="92" rx="11" fill="#fff6e8" stroke="#ffd9a8"/>
+      <text x="42" y="217" font-size="14.5" font-weight="800" fill="#8a5300">决策引擎层</text>
+      <text x="42" y="240" font-size="12" fill="#556070">守卫链 S0→S1→S2→S3→S4→S5→S5.5→S6</text>
+      <text x="42" y="258" font-size="11" fill="#8791a0">评分 · 阶段判定 · 阶段门 · 风险 · 条件计划</text>
+      <text x="42" y="274" font-size="11" fill="#8791a0">S5 产出候选 advice，S5.5 只收紧不放宽</text>
+
+      <rect x="22" y="292" width="600" height="92" rx="11" fill="#edfbf0" stroke="#c8eccf"/>
+      <text x="42" y="319" font-size="14.5" font-weight="800" fill="#1f6b31">数据与存储层</text>
+      <text x="42" y="342" font-size="12" fill="#556070">L1 原始不复权价 + adj_factor · L2 派生（内存）</text>
+      <text x="42" y="360" font-size="12" fill="#556070">L3 快照 append-only · L4 用户输入</text>
+      <text x="42" y="377" font-size="11" fill="#8791a0">取数：akshare → 公开接口 → 本地缓存</text>
+
+      <rect x="22" y="394" width="600" height="60" rx="11" fill="#f1f3f6" stroke="#d5dbe4"/>
+      <text x="42" y="420" font-size="14.5" font-weight="800" fill="#556070">调度与配置层</text>
+      <text x="42" y="441" font-size="12" fill="#556070">17:30 取数 → 18:00 生成 → 07:30 推送 · 三元组一致性</text>
+
+      <!-- right: reused -->
+      <rect x="642" y="18" width="256" height="436" rx="11" fill="#fafbfc" stroke="#c7ced8" stroke-dasharray="5 4"/>
+      <text x="770" y="44" text-anchor="middle" font-size="13" font-weight="800" fill="#556070">↑ 复用现有工程能力</text>
+      <text x="662" y="76" font-size="11.5" fill="#556070">src/llm/</text>
+      <text x="662" y="92" font-size="10.5" fill="#8791a0">文案层渠道 fallback</text>
+      <text x="662" y="122" font-size="11.5" fill="#556070">src/notification_*</text>
+      <text x="662" y="138" font-size="10.5" fill="#8791a0">推送路由 / 降噪 / 能力</text>
+      <text x="662" y="168" font-size="11.5" fill="#556070">src/core/trading_calendar.py</text>
+      <text x="662" y="184" font-size="10.5" fill="#8791a0">交易日历</text>
+      <text x="662" y="214" font-size="11.5" fill="#556070">src/core/backtest_engine.py</text>
+      <text x="662" y="230" font-size="10.5" fill="#8791a0">回测底座</text>
+      <text x="662" y="260" font-size="11.5" fill="#556070">apps/dsa-web</text>
+      <text x="662" y="276" font-size="10.5" fill="#8791a0">React Router + AuthProvider</text>
+      <text x="662" y="306" font-size="11.5" fill="#556070">bot/platforms/feishu_stream.py</text>
+      <text x="662" y="322" font-size="10.5" fill="#8791a0">飞书 Stream 长连接</text>
+      <text x="662" y="352" font-size="11.5" fill="#556070">src/services/screening/</text>
+      <text x="662" y="368" font-size="10.5" fill="#8791a0">选股引擎（下一阶段）</text>
+      <text x="662" y="400" font-size="11.5" fill="#c92a2a">⚠ 以上均不改动</text>
+      <text x="662" y="416" font-size="10.5" fill="#8791a0">只调用、只复用，不改行为</text>
+    </svg>
+    <div class="cap">图 2-1 · 五层架构：上层展示，下层计算与存储，右侧全部复用现有工程</div>
+  </div>
+
+  <h3>模块落点（新建在哪）</h3>
+  <div class="card" style="padding:0;overflow:hidden">
+  <table>
+    <thead><tr><th style="width:16%">子模块</th><th style="width:26%">路径</th><th style="width:32%">职责</th><th style="width:26%">复用</th></tr></thead>
+    <tbody>
+      <tr><td>取数与存储</td><td><code>src/assistant/data/</code></td><td>L1 取数/回补/补洞、L3 快照写入、L4 读写</td><td>akshare_fetcher（改不复权）、trading_calendar</td></tr>
+      <tr><td>决策引擎</td><td><code>src/assistant/engine/</code></td><td>守卫链、评分、阶段、阶段门、风险、条件计划</td><td>analysis_tools（只读取数底座）</td></tr>
+      <tr><td>参数框架</td><td><code>src/assistant/config/</code></td><td>三档预设、单项覆盖、变更记录、param_hash</td><td>src/config.py（只加键）</td></tr>
+      <tr><td>输出装配</td><td><code>src/assistant/render/</code></td><td>卡片/列表/详情、飞书七段、LLM 文案</td><td>src/llm/、SUMMARY_SYSTEM_PROMPT</td></tr>
+      <tr><td>Web API</td><td><code>api/v1/endpoints/assistant.py</code></td><td>只读快照 API + 参数配置 API</td><td>api/app.py（只加路由）</td></tr>
+      <tr><td>Web 前端</td><td><code>apps/dsa-web/src/pages/assistant/</code></td><td>Index / Detail / Settings 三个页面</td><td>App.tsx（+1 路由）、AuthProvider</td></tr>
+      <tr><td>飞书入站</td><td><code>src/assistant/inbound/</code></td><td>四项命令 dispatcher handler</td><td>feishu_stream、dispatcher</td></tr>
+      <tr><td>回测扩展</td><td><code>src/assistant/backtest/</code></td><td>条件计划回测模式</td><td>backtest_engine（扩展不改）</td></tr>
+    </tbody>
+  </table>
+  </div>
+
+  <h3>每天几点跑（调度时序）</h3>
+  <div class="figure">
+    <svg viewBox="0 0 920 230" role="img" aria-label="调度时序">
+      <line x1="50" y1="120" x2="880" y2="120" stroke="#c7ced8" stroke-width="2"/>
+      <!-- 5 nodes -->
+      <g>
+        <circle cx="110" cy="120" r="7" fill="#3b5bdb"/>
+        <text x="110" y="100" text-anchor="middle" font-size="12.5" font-weight="800" fill="#2b3c7a">T-1 17:30</text>
+        <text x="110" y="150" text-anchor="middle" font-size="11" fill="#556070">取数</text>
+        <text x="110" y="167" text-anchor="middle" font-size="10" fill="#8791a0">日线+因子+板块+公告</text>
+      </g>
+      <g>
+        <circle cx="285" cy="120" r="7" fill="#3b5bdb"/>
+        <text x="285" y="100" text-anchor="middle" font-size="12.5" font-weight="800" fill="#2b3c7a">T-1 18:00</text>
+        <text x="285" y="150" text-anchor="middle" font-size="11" fill="#556070">生成</text>
+        <text x="285" y="167" text-anchor="middle" font-size="10" fill="#8791a0">守卫链→快照→文案</text>
+      </g>
+      <g>
+        <circle cx="460" cy="120" r="7" fill="#e8820c"/>
+        <text x="460" y="100" text-anchor="middle" font-size="12.5" font-weight="800" fill="#8a5300">T 00:00</text>
+        <text x="460" y="150" text-anchor="middle" font-size="11" fill="#556070">参数生效</text>
+        <text x="460" y="167" text-anchor="middle" font-size="10" fill="#8791a0">写操作次日生效</text>
+      </g>
+      <g>
+        <circle cx="650" cy="120" r="7" fill="#2f9e44"/>
+        <text x="650" y="100" text-anchor="middle" font-size="12.5" font-weight="800" fill="#1f6b31">T 07:30</text>
+        <text x="650" y="150" text-anchor="middle" font-size="11" fill="#556070">可查 / 推送</text>
+        <text x="650" y="167" text-anchor="middle" font-size="10" fill="#8791a0">WebUI + 飞书</text>
+      </g>
+      <g>
+        <circle cx="820" cy="120" r="7" fill="#2f9e44"/>
+        <text x="820" y="100" text-anchor="middle" font-size="12.5" font-weight="800" fill="#1f6b31">T 08:00</text>
+        <text x="820" y="150" text-anchor="middle" font-size="11" fill="#556070">必须可见</text>
+        <text x="820" y="167" text-anchor="middle" font-size="10" fill="#8791a0">FR-9.2 硬要求</text>
+      </g>
+      <!-- bracket: 13h buffer -->
+      <line x1="285" y1="192" x2="650" y2="192" stroke="#8791a0" stroke-dasharray="4 3"/>
+      <text x="467" y="210" text-anchor="middle" font-size="10.5" fill="#8791a0">约 13 小时缓冲：LLM 超时也能降级，不误 8:00</text>
+    </svg>
+    <div class="cap">图 2-2 · 调度时序：取数 → 生成 → 参数生效 → 推送，非交易日整链路跳过</div>
+  </div>
+
+  <h3>三元组一致性：四处看到的必须是同一份</h3>
+  <div class="plain">所有共享对象都携带 <b>[data_date, snapshot_id, calc_version]</b>。任何位置渲染 advice / 涨跌幅 / 大盘 / 板块字段前，先校验三元组一致；不一致就显示「待同步」，<b>绝不显示旧值</b>。这保证网页、飞书、卡片、导出四处永远同源同版本。</div>
+</section>
+
+<!-- ============ 3 ============ -->
+<section id="s3">
+  <h2><span class="num">3</span>数据获取与存储 <span class="tag g">C2</span></h2>
+  <p class="lead">现状的存储只有一层、且是前复权落库、只取 30 天——不够用。方案改成四层存储，并把复权口径彻底拆开。</p>
+
+  <div class="figure">
+    <svg viewBox="0 0 920 400" role="img" aria-label="四层存储">
+      <!-- L1 -->
+      <rect x="22" y="20" width="876" height="82" rx="11" fill="#edfbf0" stroke="#c8eccf"/>
+      <rect x="22" y="20" width="8" height="82" rx="4" fill="#2f9e44"/>
+      <text x="46" y="47" font-size="14" font-weight="800" fill="#1f6b31">L1 原始行情</text>
+      <text x="46" y="69" font-size="12" fill="#556070">日线 + 周线 + 月线 OHLCV · <tspan font-weight="700">不复权原始价</tspan> + adj_factor · 交易日历 · 指数/板块</text>
+      <text x="46" y="88" font-size="11" fill="#8791a0">写入：每交易日盘后增量 / 首次回补 ≥3 年　保留：全量不删</text>
+      <!-- L2 -->
+      <rect x="22" y="112" width="876" height="70" rx="11" fill="#f3efff" stroke="#d9cffc"/>
+      <rect x="22" y="112" width="8" height="70" rx="4" fill="#7048e8"/>
+      <text x="46" y="138" font-size="14" font-weight="800" fill="#4b2fa8">L2 派生指标（不落库）</text>
+      <text x="46" y="160" font-size="12" fill="#556070">MA / 斜率 / 箱体 / 分位 / 阶段 / 评分 / 风险信号 → 生成时内存计算，随 L3 留存</text>
+      <text x="46" y="177" font-size="11" fill="#8791a0">硬约束：L2 不得回写 L1（避免「用自己算的数再算一遍」）</text>
+      <!-- L3 -->
+      <rect x="22" y="192" width="876" height="88" rx="11" fill="#eef2ff" stroke="#c7d4ff"/>
+      <rect x="22" y="192" width="8" height="88" rx="4" fill="#3b5bdb"/>
+      <text x="46" y="219" font-size="14" font-weight="800" fill="#2b3c7a">L3 决策快照（append-only）</text>
+      <text x="46" y="241" font-size="12" fill="#556070">snapshot · holding_conclusion · conditional_plan · risk_signals · market_snapshot · sector_snapshot · llm_text_cache</text>
+      <text x="46" y="259" font-size="11" fill="#8791a0">写入：每交易日生成后一次；同日重跑生成新 id，<tspan font-weight="700">不覆盖历史</tspan>　保留：≥250 交易日</text>
+      <text x="46" y="275" font-size="11" fill="#8791a0">带三元组 + param_hash，是「历史可复现、参数变更不追溯」的基础</text>
+      <!-- L4 -->
+      <rect x="22" y="290" width="876" height="88" rx="11" fill="#f1f3f6" stroke="#d5dbe4"/>
+      <rect x="22" y="290" width="8" height="88" rx="4" fill="#7a869a"/>
+      <text x="46" y="317" font-size="14" font-weight="800" fill="#556070">L4 用户输入</text>
+      <text x="46" y="339" font-size="12" fill="#556070">user_holding（持仓成本）· user_note（笔记）· watchlist_runtime（关注清单）· param_override（参数覆盖）</text>
+      <text x="46" y="357" font-size="11" fill="#8791a0">写入：用户操作 / 飞书确认　生效：次日盘前　特性：可删、可撤销、append-only 变更记录</text>
+      <text x="46" y="373" font-size="11" fill="#8791a0">读取关注清单 = STOCK_LIST 配置 ∪ watchlist_runtime 生效项，不破坏现有读取链</text>
+    </svg>
+    <div class="cap">图 3-1 · 四层存储：原始 / 派生 / 快照 / 用户输入，职责不混层</div>
+  </div>
+
+  <h3>复权口径：存什么 ≠ 算什么 ≠ 展示什么</h3>
+  <p class="lead">现状是「前复权落库」，每次除权都会重写历史，和「不复权展示」冲突，也会让回测断裂。方案把三件事拆开：</p>
+  <div class="card" style="padding:0;overflow:hidden">
+  <table>
+    <thead><tr><th style="width:18%">用途</th><th style="width:40%">口径</th><th style="width:42%">理由</th></tr></thead>
+    <tbody>
+      <tr><td><b>L1 存储</b></td><td class="ok">不复权原始价 + adj_factor</td><td>原始价是唯一事实，因子可重算任意复权序列；前复权落库会每次除权改写历史</td></tr>
+      <tr><td><b>页面展示 / 触发价</b></td><td class="ok">不复权</td><td>与券商盘面一致，用户可直接照抄设单</td></tr>
+      <tr><td><b>指标计算 / 回测</b></td><td class="ok">后复权派生（原始价 × 累计因子）</td><td>避免除权跳空被误判成「破位」；回测收益可含分红再投</td></tr>
+      <tr><td>除权日</td><td class="wait">展示层标注「不可直接比较」</td><td>与既有 P0-2 一致，给前收调整说明</td></tr>
+    </tbody>
+  </table>
+  </div>
+  <div class="note"><b>硬护栏</b>：若实测发现 adj_factor 免费源拿不到，退化为「本地按除权事件表推算因子」，<b>但绝不退回前复权落库</b>。</div>
+
+  <h3>缺口检测与补洞</h3>
+  <div class="grid3">
+    <div class="mini"><h4>≤ 3 日缺口</h4><p>自动补。正常的小中断，系统自己补齐，不影响生成。</p></div>
+    <div class="mini"><h4>&gt; 3 日缺口</h4><p>标 <code>stale</code>、阶段降 <b>S0</b>、不生成条件计划。宁可标数据不足，不硬凑。</p></div>
+    <div class="mini"><h4>取数失败</h4><p>保留上次数据、全链路标 stale、「数据非最新」。<b>不静默用旧数据冒充当日</b>。</p></div>
+  </div>
+</section>
+
+<!-- ============ 4 ============ -->
+<section id="s4">
+  <h2><span class="num">4</span>决策引擎实现 <span class="tag y">C3</span></h2>
+  <p class="lead">这是整套系统的核心。8 个守卫按固定顺序跑，每一步都留痕、可回溯。注意：S0–S6 是<b>守卫序号</b>，不是股价阶段（阶段码是 S1–S5），两套编码不要混。</p>
+
+  <h3>守卫链 S0 → S6</h3>
+  <div class="chain">
+    <div class="chainrow"><div class="node n-s0">S0 数据校验</div>
+      <div class="desc"><b>三元组、缺口检测、bars_used / gap_days</b><br>缺口 &gt;3 日或历史不足 → 阶段记 S0，不生成条件计划，仍出卡片（标「数据不足」）<span class="out">产出：data_quality_flag, bars_used, gap_days</span></div></div>
+    <div class="chainrow"><div class="node n-s1">S1 基本面</div>
+      <div class="desc"><b>财报渐进恶化 + 分红三件套（低权重）</b><br>事实性输入，有权重、可触发风险信号，<b>不做情绪打分</b><span class="out">产出：fundamental_facts</span></div></div>
+    <div class="chainrow"><div class="node n-s2">S2 技术面</div>
+      <div class="desc"><b>趋势三档 + 位置四类 + 关键价位三级（主导）</b><br>MA20 + 斜率 k=5 + θ=0.003 + ε=0.005；布林带仅辅助<span class="out">产出：trend, position_tag, key_levels[], tech_score</span></div></div>
+    <div class="chainrow"><div class="node n-s3">S3 估值</div>
+      <div class="desc"><b>PE/PB 历史分位（低权重辅助）</b><br>估值位置 ≠ 价格位置，分别存储与展示<span class="out">产出：valuation_pctile, valuation_tag</span></div></div>
+    <div class="chainrow"><div class="node n-s4">S4 风险</div>
+      <div class="desc"><b>7 类风险信号全覆盖 + 三级联动</b><br>大盘风险＝全局风险系数，最高只到警示级（不单独触发清仓）<span class="out">产出：risk_signals[], risk_level, global_risk_factor</span></div></div>
+    <div class="chainrow"><div class="node n-s5">S5 决策表</div>
+      <div class="desc"><b>评分权重 → 综合分 → 候选 advice</b><br>技术面显著高于其他维度之和；advice_margin 缓冲<span class="out">产出：candidate_advice, candidate_score</span></div></div>
+    <div class="chainrow"><div class="node n-s55">S5.5 阶段门</div>
+      <div class="desc"><b>校验候选是否 ∈ 当前阶段允许集合（只收紧）</b><br>冲突 → 改写 + 留痕 stage_gate_hit；不改风险等级、不改股数<span class="out">产出：final_advice, stage_gate_hit</span></div></div>
+    <div class="chainrow"><div class="node n-s6">S6 仓位+计划</div>
+      <div class="desc"><b>硬上限校验 + 动态建议 + 条件计划</b><br>单只20% / 总仓80% / 现金20% / T仓10%<span class="out">产出：position_advice, conditional_plan[]</span></div></div>
+  </div>
+
+  <div class="plain"><b>为什么阶段门放在 S5 之后？</b> 先让评分正常算出「候选加仓」，阶段门再校验「S3 下跌阶段不许加仓」，冲突就改写成「减仓」并留痕。这样回测时能看到「如果没有阶段门，这一天会建议加仓」——可审计、可归因。评分逻辑本身完全不感知阶段。</div>
+
+  <div class="figure">
+    <svg viewBox="0 0 920 250" role="img" aria-label="阶段门改写示意">
+      <defs>
+        <marker id="ar2" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="#8791a0"/></marker>
+      </defs>
+      <rect x="20" y="55" width="220" height="86" rx="11" fill="#f3efff" stroke="#d9cffc"/>
+      <text x="130" y="82" text-anchor="middle" font-size="12.5" font-weight="800" fill="#4b2fa8">S5 决策表候选</text>
+      <text x="130" y="106" text-anchor="middle" font-size="20" font-weight="800" fill="#7048e8">加仓</text>
+      <text x="130" y="128" text-anchor="middle" font-size="10.5" fill="#8791a0">评分 + 决策表正常算出</text>
+
+      <rect x="330" y="45" width="260" height="106" rx="11" fill="#fff6e8" stroke="#ffd9a8"/>
+      <text x="460" y="70" text-anchor="middle" font-size="12.5" font-weight="800" fill="#8a5300">S5.5 阶段门校验</text>
+      <text x="460" y="92" text-anchor="middle" font-size="11.5" fill="#556070">当前阶段：S3 下跌</text>
+      <text x="460" y="112" text-anchor="middle" font-size="11.5" fill="#556070">允许集合：{减仓, 清仓, 观望}</text>
+      <text x="460" y="134" text-anchor="middle" font-size="11.5" font-weight="700" fill="#c92a2a">加仓 ∉ 允许集合 → 冲突</text>
+
+      <rect x="680" y="55" width="220" height="86" rx="11" fill="#fff0f0" stroke="#ffc9c9"/>
+      <text x="790" y="82" text-anchor="middle" font-size="12.5" font-weight="800" fill="#a61e1e">改写 + 留痕</text>
+      <text x="790" y="106" text-anchor="middle" font-size="20" font-weight="800" fill="#e03131">减仓</text>
+      <text x="790" y="128" text-anchor="middle" font-size="10.5" fill="#8791a0">stage_gate_hit 记录</text>
+
+      <line x1="240" y1="98" x2="328" y2="98" stroke="#8791a0" stroke-width="1.8" marker-end="url(#ar2)"/>
+      <line x1="590" y1="98" x2="678" y2="98" stroke="#8791a0" stroke-width="1.8" marker-end="url(#ar2)"/>
+
+      <rect x="330" y="178" width="260" height="52" rx="8" fill="#f8f9fb" stroke="#e5e9ef"/>
+      <text x="460" y="198" text-anchor="middle" font-size="10.5" fill="#556070">stage_gate_hit = { stage:"S3",</text>
+      <text x="460" y="214" text-anchor="middle" font-size="10.5" fill="#556070">candidate:"加仓", final:"减仓", rule_id:"R-S3-no-buy" }</text>
+    </svg>
+    <div class="cap">图 4-1 · 阶段门「只收紧不放宽」：候选 → 校验 → 改写 → 留痕</div>
+  </div>
+
+  <h3>阶段判定六档（S0–S5）</h3>
+  <p class="lead">判定顺序：S0 数据校验 → S3 下跌 → S1 上升 → S2/S4/S5 兜底。连续 2 日防抖，避免天天变。</p>
+  <div class="stagegrid">
+    <div class="stage"><span class="sid" style="background:#7a869a">S0</span><h4>无法判定</h4><div class="p">数据缺口 &gt;3 日 / 历史不足 / 关键字段缺失</div><div class="ban">不可操作</div></div>
+    <div class="stage"><span class="sid" style="background:#3b5bdb">S1</span><h4>上升</h4><div class="p">站上 MA20 + 斜率 &gt; θ + 位置偏高</div><div class="ban" style="color:var(--down)">加仓 / 持有 / 减仓</div></div>
+    <div class="stage"><span class="sid" style="background:#7048e8">S2</span><h4>高位震荡</h4><div class="p">MA20 附近 + 斜率在 [−θ,θ] + 箱体有效 + 位置偏高</div><div class="ban" style="color:var(--down)">持有 / 箱体高抛低吸</div></div>
+    <div class="stage"><span class="sid" style="background:#e03131">S3</span><h4>下跌</h4><div class="p">跌破 MA20 + 斜率 &lt; −θ</div><div class="ban">减仓 / 清仓 / 观望 · 禁止买入</div></div>
+    <div class="stage"><span class="sid" style="background:#2f9e44">S4</span><h4>低位筑底</h4><div class="p">MA20 附近 + 斜率在 [−θ,θ] + 箱体有效 + 位置偏低</div><div class="ban" style="color:var(--down)">等待买点 / 试探仓 / 持有</div></div>
+    <div class="stage"><span class="sid" style="background:#e8820c">S5</span><h4>无结构</h4><div class="p">兜底：有数据但既无趋势又无有效箱体（窄幅无序、均线粘合）</div><div class="ban">持有 / 观望 · 不动</div></div>
+  </div>
+
+  <h3>风险信号 7 类</h3>
+  <div class="card" style="padding:0;overflow:hidden">
+  <table>
+    <thead><tr><th style="width:20%">类别</th><th style="width:52%">判定依据</th><th style="width:28%">级别</th></tr></thead>
+    <tbody>
+      <tr><td>大盘</td><td>M1 2×2 环境评级 + 宽度</td><td class="wait">最高警示级（不单独清仓）</td></tr>
+      <tr><td>板块与低估陷阱</td><td>估值分位低 + 趋势下行连续（SEC-2 价值陷阱）</td><td>观察 / 警示</td></tr>
+      <tr><td>基本面</td><td>营收/利润/ROE/现金流/审计意见连续 N 期恶化</td><td>观察 / 警示 / 严重</td></tr>
+      <tr><td>技术面</td><td>价格跌破趋势失效位</td><td>观察 / 警示 / 严重</td></tr>
+      <tr><td>分红估值</td><td>分红连续性中断 / 分位极值</td><td>观察</td></tr>
+      <tr><td>组合仓位</td><td>集中度 ≥25% 提示（不硬限）/ 超硬上限</td><td>观察 / 警示</td></tr>
+      <tr><td>数据质量</td><td>gap_days / stale / 缺失率 &gt;5%</td><td>观察</td></tr>
+    </tbody>
+  </table>
+  </div>
+  <div class="grid3" style="margin-top:14px">
+    <div class="mini"><h4 style="color:var(--blue)">观察</h4><p>仅提示 + 降置信度。不改动作。</p></div>
+    <div class="mini"><h4 style="color:var(--warn)">警示</h4><p>加减分 + <b>禁买入类动作</b>。</p></div>
+    <div class="mini"><h4 style="color:var(--up)">严重</h4><p>建议降级或触发 L1/L2、禁买入类意见。</p></div>
+  </div>
+  <div class="note" style="margin-top:14px"><b>风险不改写 advice 主档</b>（大盘风险最高只到警示级），但可限制加仓/新建仓/买入类意见、降置信度。风险信号统一写入 risk_signals[]，四处只读同一份。</div>
+</section>
+
+<!-- ============ 5 ============ -->
+<section id="s5">
+  <h2><span class="num">5</span>参数框架 <span class="tag p">C4</span></h2>
+  <p class="lead">你之前问过「严谨 vs 严格怎么取舍」——答案不是拍脑袋，而是选一档。三档预设给三种性格，结构完全一样，只是数值不同。回测基线固定用标准档。</p>
+
+  <div class="card" style="padding:0;overflow:hidden">
+  <table>
+    <thead><tr><th style="width:26%">维度</th><th style="width:22%">宽松</th><th style="width:24%">标准（默认）</th><th style="width:28%">严格</th></tr></thead>
+    <tbody>
+      <tr><td>档位切换缓冲 advice_margin</td><td>0.05</td><td><b>0.10</b></td><td>0.15</td></tr>
+      <tr><td>箱体宽度上限</td><td>15%</td><td><b>12%</b></td><td>10%</td></tr>
+      <tr><td>箱体触碰次数</td><td>2</td><td><b>2</b></td><td>3</td></tr>
+      <tr><td>阶段防抖天数</td><td>1</td><td><b>2</b></td><td>3</td></tr>
+      <tr><td>均线缓冲 ε</td><td>0.005</td><td><b>0.005</b></td><td>0.008</td></tr>
+      <tr><td>S4 试探仓</td><td>开（1/3）</td><td><b>开（1/3）</b></td><td class="wait">关</td></tr>
+      <tr><td>右侧确认放量倍数</td><td>1.2×</td><td><b>1.5×</b></td><td>1.8×</td></tr>
+      <tr><td>条件计划分支上限</td><td>5</td><td><b>4</b></td><td>3</td></tr>
+      <tr><td>建议翻转率上限</td><td>30%</td><td><b>25%</b></td><td>20%</td></tr>
+      <tr><td>阶段切换上限（次/年）</td><td>10</td><td><b>8</b></td><td>6</td></tr>
+    </tbody>
+  </table>
+  </div>
+  <div class="plain"><b>契约</b>：三档之间的相对关系（宽→严：拦得更多、动得更少）不可倒挂。最终数值以纸面回看 + 回测回写。严格档关闭试探仓——因为「没有右侧确认就不动手」本质是左侧行为，与严格档性格冲突。</div>
+
+  <h3>改参数怎么留痕（不搞版本号）</h3>
+  <div class="grid3">
+    <div class="mini"><h4>基线 + 单项覆盖</h4><p>当前值 = 三档基线之一 + 你单独改的项。页面显示「标准档 · 2 项自定义」。</p></div>
+    <div class="mini"><h4>次日生效</h4><p>参数改了不影响当天已出的结论；当天快照只追加不改，历史永远可复现。</p></div>
+    <div class="mini"><h4>append-only 记录</h4><p>每次变更记一条（可回滚，回滚也记一条）。不引入配置版本号，用 param_hash 随快照留痕。</p></div>
+  </div>
+  <div class="note"><b>param_hash 与 calc_version 分开</b>：param_hash 是「参数数值指纹」，calc_version 是「规则版本指纹」（战法启停、维度权重、判定结构、temperature）。两者都随快照留痕，保证同 calc_version + 同 param_hash + 同快照 → 同结论。</div>
+</section>
+
+<!-- ============ 6 ============ -->
+<section id="s6">
+  <h2><span class="num">6</span>输出层 <span class="tag b">C5</span></h2>
+  <p class="lead">三个出口：Web 独立页面、飞书推送、飞书入站。全部读同一份 L3 快照，不重算。</p>
+
+  <h3>Web 独立页面</h3>
+  <div class="grid2">
+    <div class="card">
+      <h4 style="margin:0 0 8px">路由与鉴权</h4>
+      <p class="small" style="margin:0">App.tsx 只新增 <b>1 条</b>路由，沿用 StandaloneRouteBoundary（和 /login 同构），不套 Shell。复用 AuthProvider，<b>不加免登录白名单</b>——因为页面含成本、股数、总资金等敏感数据。</p>
+    </div>
+    <div class="card">
+      <h4 style="margin:0 0 8px">三个页面</h4>
+      <p class="small" style="margin:0"><b>Index</b>：Tab A 大盘板块 + Tab B 个股列表 · <b>Detail</b>：详情页（以 code 为主键）· <b>Settings</b>：参数配置。一套响应式，PC 与 H5 同 URL。</p>
+    </div>
+  </div>
+  <div class="note">现有 11 条路由一条都不能占：<code>/</code> <code>/chat</code> <code>/portfolio</code> <code>/decision-signals</code> <code>/screening</code> <code>/data</code> <code>/backtest</code> <code>/alerts</code> <code>/usage</code> <code>/settings</code> <code>*</code>。新增路由前缀留编码时定。</div>
+
+  <h3>飞书推送：七段固定结构</h3>
+  <p class="lead">目标：手机上瞥一眼 3 秒内回答三件事——有没有事、要不要动、怎么动。</p>
+  <div class="feishu">
+    <div class="fh"><span>📊 飞书推送 · 完整版 ≤1,800 字</span><span style="font-weight:400;color:var(--ink2)">同一渲染函数 · 两档密度</span></div>
+    <div class="fb">
+      <div class="fseg"><div class="fi">📊</div><div class="ft"><b>① 头部</b> — 交易日 + 三元组 + 数据源<br><span class="num">data_date 2026-11-18 · snapshot s_abc · calc cv2.0.3</span></div></div>
+      <div class="fseg"><div class="fi">🧭</div><div class="ft"><b>② 一句话</b> — 大盘环境 + 自选动作计数<br>上证 ▲0.6% 环境偏暖 · 今日 2 只需处理</div></div>
+      <div class="fseg"><div class="fi">🔥</div><div class="ft"><b>③ 风险</b> — 按等级排序，同股只出现一次<br>🔴 严重 · <b>某某</b> · 跌破趋势失效位 · 禁买入</div></div>
+      <div class="fseg"><div class="fi">✅</div><div class="ft"><b>④ 待办</b> — 动作符号前置，带股数<br>➖ 减仓 · 某某 · 300 股</div></div>
+      <div class="fseg"><div class="fi">📍</div><div class="ft"><b>⑤ 阶段</b> — 阶段码 + 名称 + 置信度 + 打法<br>S3 下跌 · 置信中 · 禁止买入</div></div>
+      <div class="fseg"><div class="fi">📋</div><div class="ft"><b>⑥ 计划</b> — 每条三行：触发 / 动作股数 / 有效期<br><span class="num">跌破 9.37 → 清仓 500 股 → 当日有效</span>（数值行不加修饰，可照抄）</div></div>
+      <div class="fseg"><div class="fi">🔒</div><div class="ft"><b>⑦ 声明</b> — 静态计划不下单 + 关键字段不可删 + 免责</div></div>
+    </div>
+  </div>
+  <div class="grid3" style="margin-top:14px">
+    <div class="mini"><h4>图标固定语义</h4><p>风险 🔴🟠🔵⚪ · 动作 ➕⏳➖🔻⏸👀⛔ · 涨跌 ▲▼（不用红绿点，避免「红＝涨」与「红＝危险」冲突）</p></div>
+    <div class="mini"><h4>数值行不加修饰</h4><p>⑥ 段触发价/股数/金额行不加 emoji、不加加粗，保证整行可复制进券商条件单。</p></div>
+    <div class="mini"><h4>降级剥离 **</h4><p>卡片失败降级纯文本前必须剥离 <code>**</code>，否则会露出「**减仓**」。</p></div>
+  </div>
+
+  <h3>LLM 只进文案层（三处）</h3>
+  <div class="figure">
+    <svg viewBox="0 0 920 180" role="img" aria-label="LLM 分工">
+      <rect x="20" y="24" width="420" height="132" rx="11" fill="#edfbf0" stroke="#c8eccf"/>
+      <text x="230" y="52" text-anchor="middle" font-size="14" font-weight="800" fill="#1f6b31">代码（规则引擎）</text>
+      <text x="230" y="78" text-anchor="middle" font-size="12" fill="#556070">取数 · 指标 · 评分 · 守卫 · advice</text>
+      <text x="230" y="100" text-anchor="middle" font-size="12" fill="#556070">条件计划股数 · 风险定级</text>
+      <text x="230" y="128" text-anchor="middle" font-size="11" font-weight="700" fill="#1f6b31">可回测 · 可复现 · 唯一真值</text>
+      <rect x="480" y="24" width="420" height="132" rx="11" fill="#f3efff" stroke="#d9cffc"/>
+      <text x="690" y="52" text-anchor="middle" font-size="14" font-weight="800" fill="#4b2fa8">LLM（只做措辞）</text>
+      <text x="690" y="78" text-anchor="middle" font-size="12" fill="#556070">① 个股人话结论　② 飞书摘要</text>
+      <text x="690" y="100" text-anchor="middle" font-size="12" fill="#556070">③ 大盘与板块总结</text>
+      <text x="690" y="128" text-anchor="middle" font-size="11" font-weight="700" fill="#c92a2a">不改数字 · 不给新建议 · 失败降级</text>
+      <line x1="440" y1="90" x2="478" y2="90" stroke="#8791a0" stroke-width="1.6"/>
+      <text x="460" y="82" text-anchor="middle" font-size="9.5" fill="#8791a0">快照</text>
+    </svg>
+    <div class="cap">图 6-1 · 决策归代码、措辞归 LLM：LLM 只读已固化快照，输出只能是文字</div>
+  </div>
+</section>
+
+<!-- ============ 7 ============ -->
+<section id="s7">
+  <h2><span class="num">7</span>验证与回测 <span class="tag g">C6</span></h2>
+  <p class="lead">两件事分开做：纸面回看验证「同数据同结论」，回测验证「胜率」。两者都不是预测，只作验证记录。</p>
+
+  <div class="grid2">
+    <div class="card">
+      <h4 style="margin:0 0 6px">纸面回看两步法 <span class="tag b">不测胜率</span></h4>
+      <p class="small" style="margin:0 0 8px"><b>第一步</b>：1 只样例逐字段核对（输入 → 规则 → 中间结果 → 最终结论），每个数值回溯八字段。</p>
+      <p class="small" style="margin:0"><b>第二步</b>：10 只 × 5 日，检查跨标的、跨日的一致性。成功标准：无前后矛盾、S0 显式标因、S5 不落成假震荡。</p>
+    </div>
+    <div class="card">
+      <h4 style="margin:0 0 6px">回测引擎扩展 <span class="tag y">测胜率</span></h4>
+      <p class="small" style="margin:0 0 8px">现有引擎是后验评估，<b>不模拟条件单成交</b>。须扩展「条件计划回测模式」：价格触发、股数资金占用、T+1、部分成交/跳空、多分支组合、分红成本、未闭合仓位。</p>
+      <p class="small" style="margin:0">样本内外分离防过拟合；已闭合回合数不足只报计数不报胜率。</p>
+    </div>
+  </div>
+
+  <h3>回测健康度（标准档）</h3>
+  <div class="card" style="padding:0;overflow:hidden">
+  <table>
+    <thead><tr><th style="width:34%">指标</th><th style="width:22%">标准档</th><th style="width:22%">宽松</th><th style="width:22%">严格</th></tr></thead>
+    <tbody>
+      <tr><td>建议翻转率</td><td><b>≤ 25%</b></td><td>30%</td><td>20%</td></tr>
+      <tr><td>阶段切换（次/年）</td><td><b>≤ 8</b></td><td>10</td><td>6</td></tr>
+      <tr><td>动作分布</td><td>无单一动作占比异常</td><td>同</td><td>同</td></tr>
+      <tr><td>改写归因</td><td>stage_gate_hit 占比可解释</td><td>同</td><td>同</td></tr>
+      <tr><td>连续观望天数</td><td>无超长连续观望</td><td>同</td><td>同</td></tr>
+    </tbody>
+  </table>
+  </div>
+  <div class="plain"><b>强制分阶段统计</b>：回测结果按 S1–S5 分阶段统计胜率/盈亏比/回合数。S5（无结构）的回合数应显著低于其他阶段——如果 S5 回合数很高，说明判定出了问题。</div>
+</section>
+
+<!-- ============ 8 ============ -->
+<section id="s8">
+  <h2><span class="num">8</span>待补项与实测前置</h2>
+  <p class="lead">方案能落地的部分都落了，但有几件事必须先实测或由你提供，不能假设成立。</p>
+
+  <h3>需你提供</h3>
+  <div class="card" style="padding:0;overflow:hidden">
+  <table>
+    <thead><tr><th style="width:26%">项</th><th style="width:40%">用途</th><th style="width:34%">状态</th></tr></thead>
+    <tbody>
+      <tr><td>飞书 webhook 具体值</td><td>飞书推送</td><td class="wait">待提供（配置材料，非口径）</td></tr>
+      <tr><td>飞书 app bot 凭据</td><td>飞书入站（Stream）</td><td class="wait">待提供 / 部署时配置</td></tr>
+    </tbody>
+  </table>
+  </div>
+
+  <h3>编码启动前须实测（M5–M17）</h3>
+  <div class="card" style="padding:0;overflow:hidden">
+  <table>
+    <thead><tr><th style="width:10%">实测</th><th style="width:38%">决定什么</th><th style="width:52%">不可得时降级</th></tr></thead>
+    <tbody>
+      <tr><td>M5</td><td>板块代码入参 → code→板块映射</td><td>R5 降级</td></tr>
+      <tr><td>M6</td><td>行业字段口径 → 映射链路</td><td>严禁用于映射</td></tr>
+      <tr><td>M7</td><td>板块家数字段 → R5 内部结构</td><td>R5 降级「未取得」</td></tr>
+      <tr><td>M9</td><td>分红/估值接口 → §5.8 能否落地</td><td>标注缺失、降置信度</td></tr>
+      <tr><td>M10</td><td>长周期序列 → 长周期分位</td><td>阶段记 S0</td></tr>
+      <tr><td>M11</td><td>风险历史序列 → 连续判定</td><td>信号标「数据不足」</td></tr>
+      <tr><td>M12</td><td>财报渐进恶化 → 基本面风险</td><td>信号标「数据不足」</td></tr>
+      <tr><td>M13</td><td>Stream + emoji 三端渲染</td><td>入站关闭 / emoji 回退纯文本</td></tr>
+      <tr><td>M14</td><td>LLM 渠道可用性 → 能否 8:00 前产出</td><td>降级规则模板</td></tr>
+      <tr><td>M15</td><td>周/月线 + adj_factor 免费源</td><td>日线聚合 + 事件表推算</td></tr>
+      <tr><td>M16</td><td>公告接口字段完整性</td><td>只显示标题 + 来源</td></tr>
+      <tr><td>M17</td><td>3 年回补耗时 → 7:30 产出是否来得及</td><td>分批回补 + 回补期 S0</td></tr>
+    </tbody>
+  </table>
+  </div>
+
+  <h3>编码后跑纸面回看再回写</h3>
+  <div class="plain">趋势/位置阈值、阶段判定阈值（含宽松/严格两档）、风险连续天数/分位/跌幅/等级边界、条件计划档位比例、维度权重表、三档最终数值——这些都要在编码后用纸面回看确定，再回写 <code>calc_version</code>。方案里给的是初值。</div>
+</section>
+
+<!-- ============ 9 ============ -->
+<section id="s9">
+  <h2><span class="num">9</span>代码库实读发现</h2>
+  <p class="lead">写完方案后，对现有代码库做了一次全量探查。下面 8 条是<b>会影响实现</b>的关键发现——它们不是设计，是事实。</p>
+  <div class="card" style="padding:0;overflow:hidden">
+  <table>
+    <thead><tr><th style="width:6%">#</th><th style="width:58%">发现</th><th style="width:36%">影响</th></tr></thead>
+    <tbody>
+      <tr><td><b>1</b></td><td><b>8 张规划表全部不存在</b>：holding_conclusion / conditional_plan / risk_signals / market_snapshot / sector_snapshot / market_regime / rs_t / sector_strength</td><td class="wait">全部需新建</td></tr>
+      <tr><td><b>2</b></td><td>实存 <b>28 张表</b>（需求记 38 张，以实读为准）</td><td>§3.2 已修正</td></tr>
+      <tr><td><b>3</b></td><td><b>source_tag / calc_version 不存在</b>，只有 backtest_engine_version="v1"</td><td>需新建或复用</td></tr>
+      <tr><td><b>4</b></td><td>复权：akshare_fetcher 全部 <code>adjust="qfq"</code>，无独立 adj_factor</td><td>确认需改 + 新建</td></tr>
+      <tr><td><b>5</b></td><td>通知 <b>13 个渠道</b>（非 15+）；route_type 三类 report/alert/system_error</td><td>数字修正</td></tr>
+      <tr><td><b>6</b></td><td>回测 win_rate_pct <b>分母排除 neutral</b>；<code>_MIN_CALIBRATION_SAMPLES=30</code> 在 memory.py L32</td><td>条件计划回测须自定口径</td></tr>
+      <tr><td><b>7</b></td><td>LLM fallback <b>闭集只能到 litellm</b>；无独立成本($)预算机制</td><td>成本上限需新建</td></tr>
+      <tr><td><b>8</b></td><td>条件计划仅 <code>watch_conditions</code> 雏形；风险 <code>risk_flags</code> 未持久化；前端无 ScreenPage</td><td>确认需新建 + 以实读为准</td></tr>
+    </tbody>
+  </table>
+  </div>
+  <div class="okbox"><b>这 8 条已写进方案附录 A.0</b>，并据此修正了 §3.2 表数、§6.1 路由列表、§7.2 回测口径。所有文件路径与接口签名，编码启动前还要再逐条复核一次（库可能已演进）。</div>
+</section>
+
+<div class="foot">
+  <b>股票分析助手 · 技术实现方案 v0.1</b>　|　状态：草案 / 技术方案初稿　|　创建：2026-11-19<br>
+  本 HTML 是 <code>docs/technical-design/stock-analysis-assistant-technical-design-v0.1.md</code> 的可视化解读版，与 Markdown 版逐条对应；口径冲突以需求 v2.4 为准。<br>
+  本方案不构成实施授权：需求 v2.4 未批准前，不进入 d 阶段编码。
+</div>
+
+</main>
+</div>
+
+<script>
+(function(){
+  var links = Array.prototype.slice.call(document.querySelectorAll('nav.side a[href^="#"]'));
+  var secs = links.map(function(a){ return document.getElementById(a.getAttribute('href').slice(1)); }).filter(Boolean);
+  function onScroll(){
+    var y = window.scrollY + 110, idx = 0;
+    for(var i=0;i<secs.length;i++){ if(secs[i].offsetTop <= y) idx = i; }
+    links.forEach(function(a,i){ a.classList.toggle('on', i===idx); });
+  }
+  window.addEventListener('scroll', onScroll, {passive:true});
+  window.addEventListener('resize', onScroll);
+  onScroll();
+})();
+</script>
+</body>
+</html>
