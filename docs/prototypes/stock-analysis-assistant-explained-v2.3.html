@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>股票分析助手 · 需求白话解读 v2.2</title>
+<title>股票分析助手 · 需求白话解读 v2.3</title>
 <style>
 :root{
   --bg:#f6f7f9; --card:#ffffff; --ink:#20252f; --ink2:#556070; --ink3:#8791a0;
@@ -172,13 +172,14 @@ svg{display:block;width:100%;height:auto;max-width:100%}
   .grid2,.grid3{grid-template-columns:1fr}
   .hero h1{font-size:24px}
 }
+@media (max-width:1080px){.fsm-grid{grid-template-columns:1fr !important}}
 </style>
 </head>
 <body>
 
 <div class="topbar">
   <div class="logo">股票分析助手 · <b>需求白话解读</b></div>
-  <span class="badge v">v2.2</span>
+  <span class="badge v">v2.3</span>
   <span class="badge d">草案 / 待批准</span>
   <div class="spacer"></div>
   <div class="tip">这份文档的作用是：帮你确认「需求写得对不对、是不是我想要的」</div>
@@ -199,6 +200,7 @@ svg{display:block;width:100%;height:auto;max-width:100%}
   <a href="#s3e" class="sub">3.5 条件计划</a>
   <a href="#s3f" class="sub">3.6 消息：只推送不判断</a>
   <a href="#s3g" class="sub">3.7 参数三档</a>
+  <a href="#s3h" class="sub">3.8 飞书消息长什么样</a>
   <a href="#s4">4 · 页面长什么样</a>
   <a href="#s5">5 · 策略与页面对照</a>
   <a href="#s6">6 · 待你确认</a>
@@ -749,6 +751,91 @@ svg{display:block;width:100%;height:auto;max-width:100%}
   <div class="plain"><b>为什么不做「配置版本 v1/v2」</b>：版本号会让人误以为「改了配置 = 换了系统」，还会诱导频繁升版。这里只要回答一个问题——「这条建议当时用的是哪套参数」——所以每份快照存一个<b>参数指纹</b>（`param_hash`）就够了：改一次值指纹就变，永远能对上号，也不用维护版本表。</div>
 
   <div class="note"><b>还有一个反向校验</b>：四层关卡都只收不放，理论上可能把系统收成「永远观望」。所以回测里加了五个健康度指标——动作分布、改写占比、<b>建议翻转率 ≤25%</b>、<b>阶段切换 ≤8 次/年</b>、连续观望天数。任何一项越界，说明规则过严，要回去调阈值或换档，而不是偷偷放水。</div>
+  <!-- 3.8 飞书消息 -->
+  <h3 id="s3h">3.8 飞书消息长什么样（v2.3 新增）</h3>
+  <p class="lead">你反馈「文字太多、不好看」。改法不是把内容删掉，而是<b>让它能被一眼扫完</b>：固定七段、每段一个图标、每个动作一个符号、关键数字单独一行方便照抄。下面是改版后你会在手机里收到的样子。</p>
+
+  <div class="fsm-grid" style="display:grid;grid-template-columns:minmax(0,1fr) 292px;gap:16px;margin-top:14px;align-items:start">
+    <div style="background:var(--card);border:1px solid var(--line);border-radius:14px;overflow:hidden;box-shadow:var(--shadow)">
+      <div style="display:flex;gap:8px;align-items:center;padding:9px 14px;border-bottom:1px solid var(--line);background:#f8fafc;font-size:12.5px;color:var(--ink2)">
+        <span style="width:18px;height:18px;border-radius:5px;background:linear-gradient(135deg,#3370ff,#00b0ff);color:#fff;font-size:11px;display:grid;place-items:center;font-weight:700">股</span>
+        <b>股票智能分析报告</b>
+        <span style="margin-left:auto;font-size:11px;color:var(--ink3)">飞书 · 卡片消息</span>
+      </div>
+      <div style="padding:14px 16px 16px;font-size:13px;line-height:1.95;white-space:pre-wrap;color:#1f2a3a">📊 <b>盘前助手 · 2026-11-11</b>
+🗓 基准 2026-11-10 收盘 ｜ 快照 snap-20261111-0730 ｜ 版本 cv2.0.3 ｜ 数据源 D1
+
+🧭 <b>一句话</b>
+上证 3,286.42　▲0.62%　环境「中性」→ 等确认、不追高
+自选 11 只：➖减/清 2　➕加/建 2　⏸持有 3　👀观望 1　⛔状态位 3
+
+🔥 <b>今日风险 · 4 只（8 条信号）</b>
+🔴 严重｜<b>大秦铁路 601006</b>
+   依据：SEC-2 价值陷阱（PE 分位 8% ≤ 25%，价格连跌 5 日…）
+   影响：建议降级为减仓
+🔴 严重｜<b>中国神华 601088</b>
+   依据：TEC-2 跌破趋势失效位（39.12 &lt; 39.30，连续 2 日）
+   影响：L1 先减 500 股，保留分红底仓
+🟠 警示｜<b>长江电力 600900</b>
+   依据：TEC-1 转弱但未破位（27.86 &gt; 26.80）
+   影响：主档「持有」不变，不加仓
+
+✅ <b>今日待办 · 6 只</b>
+➖ 601088 中国神华　减仓 500 股（含风险处置）
+➕ 600036 招商银行　加仓 700 股
+⏸ 600900 长江电力　持有
+⛔ 000895 双汇发展　停牌，不可操作
+
+📍 <b>阶段 · 招商银行 600036</b>
+S1 上升趋势（置信度 高）
+打法：趋势跟随 + 回踩加仓（不追高）
+➕ 允许：回踩买入 / 持有 / 止盈后减仓
+⛔ 禁止：箱体上沿逆势高抛 / 左侧猜顶
+
+📋 <b>条件计划 · 招商银行 600036（S1 模板）</b>
+1、上行突破｜价格 ≥ 39.20 元
+   买入 700 股 ≈ 27,440 元 · 占总资金 5.5%
+   有效期 11-11 当日 · 失效 收盘未触发 / 次日快照重建
+2、回踩不破｜价格 ≤ 38.30 元
+   买入 700 股 ≈ 26,810 元 · 占总资金 5.4%
+   有效期 11-11 当日 · 失效 收盘未触发 / 次日快照重建
+
+⚠️ <b>组合校验</b>
+   3 条买入分支全触发 = 80,743 元 / 16.1%；叠加当前 12.8% → 28.9% &gt; 20% 上限
+   → 同时执行会超限，请自行取舍（系统不代为决定）
+
+💬 <b>消息 · 只推送、不判断</b>
+📌 招商银行：第十一届董事会第 8 次会议决议公告
+   2026-11-10 18:32 · 上交所　｜　是否影响由你判断，系统不改建议
+
+━━━━━━━━━━━━━━
+🔒 盘前静态计划，需本人在券商端自行设单；工具不下单、不盯盘、开盘后不更新
+ℹ️ 触发条件 / 股数 / 风险等级 / 数据日期为关键字段，压缩时不得删减
+⚠️ 仅供研究参考，不构成投资建议，不承诺收益</div>
+    </div>
+
+    <div>
+      <div class="plain"><b>三条规矩，为了不帮倒忙</b>：<br>
+      ① <b>图标不替代文字</b>——每个符号后面必须跟中文，客户端不显示 emoji 时语义不丢；<br>
+      ② <b>该照抄的行保持干净</b>——触发价、股数、金额、有效期所在行不加符号，整行可直接复制进券商 App；<br>
+      ③ <b>涨跌不用红绿点</b>——A 股「红＝涨」和「红＝危险」会打架，纯文本又没法靠字色区分，所以价格用 ▲▼，颜色只留给风险等级。</div>
+      <div class="note" style="margin-top:10px">同一只股票的多条风险<b>合并成一条</b>（取最高等级），否则大秦铁路会在推送里出现两次，手机上一屏就满了。</div>
+    </div>
+  </div>
+
+  <div class="card" style="padding:0;overflow:hidden;margin-top:14px">
+  <table>
+    <thead><tr><th style="width:16%">用途</th><th style="width:40%">符号</th><th>为什么要这么定</th></tr></thead>
+    <tbody>
+      <tr><td><b>风险等级</b></td><td>🔴 严重 · 🟠 警示 · 🔵 观察 · ⚪ 无</td><td>颜色只给风险，避免「红色既代表涨又代表危险」</td></tr>
+      <tr><td><b>动作</b></td><td>➕ 买/加 · ⏳ 等待 · ➖ 减 · 🔻 清 · ⏸ 持有 · 👀 观望 · ⛔ 不可操作</td><td>一个动作只配一个符号，看符号就知道要不要动手</td></tr>
+      <tr><td><b>涨跌</b></td><td>▲ +0.62% / ▼ −0.71%</td><td>纯文本里靠箭头区分方向，不依赖字色</td></tr>
+      <tr><td><b>段落</b></td><td>📊 头部 · 🧭 结论 · 🔥 风险 · ✅ 待办 · 📍 阶段 · 📋 计划 · 💬 消息 · 🔒 声明</td><td>七段顺序固定，每天翻到同一个位置就能找到同一件事</td></tr>
+    </tbody>
+  </table>
+  </div>
+
+  <div class="note"><b>还有一档「精简版」</b>：七段标题保留，风险压成一行、计划只留能直接设单的分支，大约 1,000 字；完整版约 1,500 字。两档由<b>同一个函数</b>产出，只是取舍不同，<b>不会各算一遍结论</b>——否则又会出现「飞书说减仓、页面说持有」。另外，卡片发送失败降级成纯文本时，会先把加粗标记 <code>**</code> 剥掉，避免手机上看到一堆星号。</div>
 </section>
 
 <!-- ============ 4 页面 ============ -->
@@ -828,7 +915,7 @@ svg{display:block;width:100%;height:auto;max-width:100%}
   <div class="note" style="margin-top:18px"><b>一个提醒</b>：年化 10–20% 是你自述的目标，需求明确把它限定为"组合层回看对照"，不会出现在任何操作建议里，也不会变成收益承诺。回测结果只作为验证记录，不承诺未来收益。另外，<b>消息推送与参数配置都不会改变当天的结论</b>——一个只告知、一个只调下一次的算法，这是本版刻意划的两条线。</div>
 
   <div class="foot">
-    本解读文档由需求规格 <b>v2.2</b> 生成，用于帮助需求方核对口径，不替代正式需求文档。<br>
+    本解读文档由需求规格 <b>v2.3</b> 生成，用于帮助需求方核对口径，不替代正式需求文档。<br>
     文中所有数字（价格、股数、指数）均为示意用的模拟数据，不代表真实行情。<br>
     以上内容由 AI 基于公开信息整理生成，仅供参考，<b>不构成投资建议或个股推荐</b>。投资有风险，决策需谨慎。
   </div>

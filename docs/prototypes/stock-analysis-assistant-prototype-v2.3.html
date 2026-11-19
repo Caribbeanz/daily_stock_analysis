@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>股票分析助手 · 交互原型 v2.2（模拟数据）</title>
+<title>股票分析助手 · 交互原型 v2.3（模拟数据）</title>
 <style>
 :root{
   --bg:#f3f6fa; --surface:#fff; --surface2:#f8fafc; --border:#e3e8f0; --border2:#eef1f6;
@@ -286,6 +286,21 @@ body.show-spec [data-spec]{outline:1px dashed #c7d2e2}
 .modal .mb{padding:14px 16px;overflow-y:auto;font-size:12.5px;line-height:1.8;color:var(--text2)}
 .modal .mf{padding:10px 16px;border-top:1px solid var(--border);display:flex;gap:8px;justify-content:flex-end}
 .feishu-text{background:#f6f8fb;border:1px solid var(--border);border-radius:9px;padding:12px 14px;font:12px/1.85 "SFMono-Regular",Consolas,"Microsoft YaHei",monospace;white-space:pre-wrap;color:#25334a}
+.fs-bar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:0 0 9px}
+.fs-seg{display:inline-flex;gap:3px;background:#eef1f6;border-radius:8px;padding:3px}
+.fs-seg button{border:0;background:transparent;font:inherit;font-size:12px;padding:5px 13px;border-radius:6px;color:#5a6577;cursor:pointer}
+.fs-seg button.on{background:#fff;color:#1f2a3a;font-weight:700;box-shadow:0 1px 3px rgba(20,30,50,.14)}
+.fs-meta{font-size:11.5px;color:#8791a0}
+.fs-card{background:#fff;border:1px solid var(--border);border-radius:12px;overflow:hidden;box-shadow:0 8px 22px rgba(20,30,50,.08)}
+.fs-head{display:flex;align-items:center;gap:8px;padding:9px 13px;background:#f7f9fc;border-bottom:1px solid var(--border);font-size:12.5px;color:#2c3a4f}
+.fs-logo{width:18px;height:18px;border-radius:5px;background:linear-gradient(135deg,#3370ff,#00b0ff);color:#fff;font-size:11px;display:grid;place-items:center;font-weight:700}
+.fs-tag{margin-left:auto;font-size:11px;color:#8791a0}
+.fs-body{padding:13px 15px 15px;font:13px/1.85 "PingFang SC","Microsoft YaHei",sans-serif,"Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji";white-space:pre-wrap;word-break:break-word;color:#1f2a3a}
+.fs-body b{color:#0f1a2b}
+.fs-raw{margin-top:10px}
+.fs-raw summary{cursor:pointer;font-size:11.5px;color:#5a6577}
+.fs-raw pre{background:#f6f8fb;border:1px solid var(--border);border-radius:9px;padding:11px 13px;font:11.5px/1.75 Consolas,"Microsoft YaHei",monospace;white-space:pre-wrap;color:#25334a;max-height:240px;overflow:auto;margin:7px 0 0}
+.fs-legend{margin-top:11px;font-size:11.5px;line-height:1.9;color:#5a6577;background:#f8fafc;border:1px dashed var(--border);border-radius:9px;padding:9px 11px}
 .toast{position:fixed;left:50%;bottom:28px;transform:translateX(-50%);background:#1d2736;color:#fff;padding:9px 16px;border-radius:8px;font-size:12.5px;z-index:200;box-shadow:0 8px 26px rgba(0,0,0,.24);opacity:0;pointer-events:none;transition:opacity .2s}
 .toast.on{opacity:1}
 .foot{background:#fff;border-top:1px solid var(--border);padding:11px 18px;font-size:11px;color:var(--text3);line-height:1.7}
@@ -334,7 +349,7 @@ body.show-spec [data-spec]{outline:1px dashed #c7d2e2}
 </head>
 <body>
 <div class="proto-bar">
-  <span class="brand">交互原型 v2.2</span>
+  <span class="brand">交互原型 v2.3</span>
   <span class="fake">模拟数据 · 非真实行情</span>
   <span class="hint">需求对照：§6 三视图展示契约 / §5.14 阶段定位与策略匹配 / §5.10 风险 / §5.11 条件计划 / §5.13 LLM 文案层</span>
   <div class="seg" id="deviceSeg">
@@ -374,9 +389,9 @@ body.show-spec [data-spec]{outline:1px dashed #c7d2e2}
 
 <script>
 /* ============================================================
-   股票分析助手 v2.2 · 交互原型
+   股票分析助手 v2.3 · 交互原型
    全部数据为模拟数据，仅用于验证信息架构 / 展示契约 / 交互。
-   数据严格遵循 docs/requirements/...v2.2.md 的字段与口径。
+   数据严格遵循 docs/requirements/...v2.3.md 的字段与口径。
    ============================================================ */
 const SNAP = {
   data_date:'2026-11-10', decision_time:'2026-11-11 07:30', render_time:'2026-11-11 08:02',
@@ -438,7 +453,7 @@ const SNAP = {
   todo_codes:['601088','601006','600900','600036','510300','000895']
 };
 
-/* ---------- 阶段定位（§5.14）：六阶段定义（v2.2 含 S5 无结构）+ 每只标的的阶段证据 ---------- */
+/* ---------- 阶段定位（§5.14）：六阶段定义（v2.2 含 S5 无结构；v2.3 仅改推送呈现层）+ 每只标的的阶段证据 ---------- */
 const STAGE_DEF={
  S1:{name:'上升趋势',tag:'趋势段',play:'趋势跟随 + 回踩加仓（不追高）',
   allow:'回踩买入 / 持有 / 移动止盈后的减仓 / 正 T（底仓不动）',
@@ -947,36 +962,126 @@ function openModal(title,body,footer){
  $('#modalRoot').innerHTML='<div class="modal-mask" data-act="modal-close"><div class="modal" data-stop="1"><div class="mh">'+title+'<button class="x" data-act="modal-close">×</button></div><div class="mb">'+body+'</div><div class="mf">'+(footer||'<button class="btn" data-act="modal-close">关闭</button>')+'</div></div></div>';
 }
 function closeModal(){$('#modalRoot').innerHTML='';}
-function feishuText(){
- const h=getH('600036'), plan=plansFor(h), buys=plan.branches.filter(b=>b.action==='买入');
+/* ---------- 飞书推送文本（§3.5.3.1：七段结构 + 图标语义，完整 / 精简两档） ---------- */
+const FS_ACT={'买入':'➕','加仓':'➕','试探建仓':'➕','等待买点':'⏳','等待卖点':'⏳','减仓':'➖','清仓':'🔻','持有':'⏸','观望':'👀','不操作':'⏸','不可操作':'⛔','待同步':'⛔','无数据':'⛔'};
+const FS_LV={severe:'🔴 严重',warn:'🟠 警示',observe:'🔵 观察',none:'⚪ 无'};
+const FS_RANK={severe:0,warn:1,observe:2,none:3};
+const FS_CNT={'减/清':'➖','加/建':'➕','持有':'⏸','观望':'👀','状态位':'⛔'};
+const FS_EVENTS=[{lv:'A',code:'600036',name:'招商银行',title:'第十一届董事会第 8 次会议决议公告',time:'2026-11-10 18:32',src:'上交所'}];
+function fsSign(pct){ if(pct===null||pct===undefined) return '—'; return (pct>0?'▲':pct<0?'▼':'—')+Math.abs(pct).toFixed(2)+'%'; }
+function fsShort(t){ return String(t||'').split('；')[0].replace(/。$/,''); }
+function fsClip(t,n){ t=String(t||''); if(t.length<=n) return t; const cut=t.slice(0,n); const p=Math.max(cut.lastIndexOf('，'),cut.lastIndexOf('、')); return (p>n*0.5?cut.slice(0,p):cut)+'…'; }
+function fsBrief(t,n){ const a=String(t||'').split(' / '); return a.slice(0,n||2).join(' / ')+(a.length>(n||2)?'…':''); }
+function fsRender(t){ return H(t).replace(/\*\*(.+?)\*\*/g,'<b>$1</b>'); }
+function feishuText(mode){
+ mode=mode||'full';
+ const full=mode!=='brief';
+ const h=getH('600036'), plan=plansFor(h), st=stageOf('600036'), sd=STAGE_DEF[st.id];
+ const setB=plan.branches.filter(b=>b.settable&&b.action!=='不操作');
+ const holdB=plan.branches.filter(b=>!b.settable||b.action==='不操作');
+ const buys=plan.branches.filter(b=>b.action==='买入'||b.action==='试探建仓');
  const sum=buys.reduce((a,b)=>a+b.amount,0), sumPct=+(sum/SNAP.total_capital*100).toFixed(1), after=+(12.8+sumPct).toFixed(1);
- return [
-  '【盘前助手 · '+SNAP.next_trade_date+'】行情基准 '+SNAP.data_date+' 收盘 | '+SNAP.snapshot_id+' | '+SNAP.calc_version+' | 来源 '+SNAP.source_tag,
-  '',
-  '■ 摘要（AI 生成，以结构化字段为准）',
-  '上证指数 3,286.42 / +0.62%，环境「中性」，节奏以等确认为主。自选 11 只：减/清 2、加/建 2、持有 3、观望 1、状态位 3。',
-  '',
-  '■ 阶段定位（示例：招商银行 600036）',
-  stageOf('600036').id+' '+STAGE_DEF[stageOf('600036').id].name+'（置信度 '+stageOf('600036').conf+'）→ '+STAGE_DEF[stageOf('600036').id].play+'；禁止：'+STAGE_DEF[stageOf('600036').id].deny,
-  '',
-  '■ 今日风险 4 条（按等级）',
-  '严重 · 中国神华 601088｜TEC-2 跌破趋势失效位，进入 L1 先减后清｜'+SNAP.data_date+'｜影响建议：是',
-  '严重 · 大秦铁路 601006｜SEC-2 价值陷阱：估值低但持续下行，禁止买入类意见｜'+SNAP.data_date+'｜影响建议：是',
-  '警示 · 长江电力 600900｜TEC-1 转弱但未破位，禁止买入类动作｜'+SNAP.data_date+'｜影响建议：是',
-  '观察 · 招商银行 600036｜DQ-2 使用缓存，仅注记｜'+SNAP.data_date+'｜影响建议：否',
-  '',
-  '■ 今日需处理 6 只',
-  '601088 减仓 / 601006 减仓 / 600900 持有(警示) / 600036 加仓 / 510300 等待买点 / 000895 停牌不可操作',
-  '',
-  '■ 条件计划（示例：招商银行 600036 · 加仓 · 阶段 '+stageOf('600036').id+' 模板）',
-  ...buys.slice(0,2).map(b=>branchText(h,b).replace(/\n/g,'\n  ')),
-  '',
-  '■ 组合校验：'+buys.length+' 条买入分支全触发合计 '+sum.toLocaleString()+' 元 / '+sumPct+'%，叠加当前单只 12.8% 后 '+after+'% > 单只 20%，同时执行会超出上限，请自行取舍。仅供参考，系统不代为决定。',
-  '',
-  '以上为盘前静态条件计划，由本人在券商端自行设置条件单；工具不自动下单、不监控盘中、开盘后不更新。',
-  '触发条件、股数、风险等级、数据日期为关键字段，渠道压缩时不得删减。完整内容见 WebUI 页面。',
-  '免责声明：以上由 AI 基于公开信息整理生成（本原型为模拟数据），仅供参考，不构成投资建议或收益承诺。'
- ].join('\n');
+ /* 风险按标的归并：同一只股票只出现一次，取最高等级 */
+ const byCode={};
+ SNAP.holdings.forEach(x=>{ if(x.state!=='有效') return; riskRowsFor(x).forEach(r=>{ if(r.level==='none') return;
+  const k=x.code; if(!byCode[k]) byCode[k]={code:k,name:x.name,level:r.level,items:[]}; byCode[k].items.push(r);
+  if(FS_RANK[r.level]<FS_RANK[byCode[k].level]) byCode[k].level=r.level;
+ });});
+ const risks=Object.values(byCode).sort((a,b)=>FS_RANK[a.level]-FS_RANK[b.level]||a.code.localeCompare(b.code));
+ const sigCount=risks.reduce((a,r)=>a+r.items.length,0), top=risks.slice(0,3);
+ const L=[];
+ /* ① 头部 */
+ L.push('📊 **盘前助手 · '+SNAP.next_trade_date+'**');
+ L.push('🗓 基准 '+SNAP.data_date+' 收盘 ｜ 快照 '+SNAP.snapshot_id+' ｜ 版本 '+SNAP.calc_version+' ｜ 数据源 '+SNAP.source_tag);
+ /* ② 一句话 */
+ L.push('');
+ L.push('🧭 **一句话**');
+ L.push('上证 '+SNAP.market.main.close+'　'+fsSign(SNAP.market.main.pct)+'　环境「'+SNAP.market.regime.label+'」→ '+SNAP.market.regime.tempo);
+ L.push('自选 '+SNAP.market.total+' 只：'+Object.keys(SNAP.market.counts).map(k=>(FS_CNT[k]||'•')+k+' '+SNAP.market.counts[k]).join('　'));
+ /* ③ 风险 */
+ L.push('');
+ L.push('🔥 **今日风险 · '+risks.length+' 只（'+sigCount+' 条信号）**');
+ if(!risks.length){ L.push('⚪ 今日无风险信号，按操作意见与条件计划执行'); }
+ top.forEach(r=>{
+  const main=r.items.find(i=>i.level===r.level)||r.items[0];
+  if(full){
+   L.push(FS_LV[r.level]+'｜**'+r.name+' '+r.code+'**');
+   L.push('   依据：'+main.cat+'（'+fsClip(fsShort(main.basis),42)+'）');
+   L.push('   影响：'+fsShort(main.action));
+  }else{
+   L.push(FS_LV[r.level]+'｜'+r.name+' '+r.code+'｜'+fsShort(main.action));
+  }
+ });
+ if(risks.length>top.length){ L.push('⚪ 另有 '+(risks.length-top.length)+' 只观察级，见 WebUI 第 ⑨ 区块'); }
+ /* ④ 待办 */
+ L.push('');
+ L.push('✅ **今日待办 · '+SNAP.todo_codes.length+' 只**');
+ SNAP.todo_codes.forEach(c=>{
+  const x=getH(c), ic=FS_ACT[x.advice]||'•';
+  let tail='';
+  if(x.state!=='有效'){ tail=(x.state==='不可操作'?'停牌，不可操作':'三元组不一致，今日不出计划'); }
+  else{
+   const p=plansFor(x);
+   const b=p.branches.find(b=>b.action===x.advice&&b.shares>0)||p.branches.find(b=>b.shares>0);
+   tail=x.advice+((b&&b.shares)?(' '+b.shares+' '+(b.unit||'股')):'')+(x.risk==='severe'&&x.advice!=='清仓'?'（含风险处置）':'');
+  }
+  L.push(ic+' '+c+' '+x.name+'　'+tail);
+ });
+ /* ⑤ 阶段 */
+ L.push('');
+ L.push('📍 **阶段 · '+h.name+' '+h.code+'**');
+ if(full){
+  L.push(st.id+' '+sd.name+'（置信度 '+st.conf+'）');
+  L.push('打法：'+sd.play);
+  L.push('➕ 允许：'+sd.allow);
+  L.push('⛔ 禁止：'+sd.deny);
+  L.push('🔔 切换：'+sd.next);
+ }else{
+  L.push(st.id+' '+sd.name+'（置信度 '+st.conf+'）｜'+fsShort(sd.play));
+  L.push('⛔ 禁止：'+sd.deny);
+ }
+ /* ⑥ 条件计划 */
+ L.push('');
+ L.push('📋 **条件计划 · '+h.name+' '+h.code+'（'+st.id+' 模板）**');
+ if(!setB.length){ L.push('⚪ 本阶段无可直接设单的分支，仅观察'); }
+ setB.forEach((b,i)=>{
+  if(full){
+   L.push((i+1)+'、'+b.scenario+'｜'+b.trigger);
+   L.push('   '+b.action+(b.shares?(' '+b.shares+' '+b.unit+' ≈ '+b.amount.toLocaleString()+' 元 · 占总资金 '+b.pct+'%'):''));
+   L.push('   有效期 '+SNAP.next_trade_date.slice(5)+' 当日 · 失效 '+fsBrief(b.invalidate,2));
+  }else{
+   L.push((i+1)+'、'+b.trigger+' → '+b.action+(b.shares?(' '+b.shares+' '+b.unit):'')+(b.amount?(' ≈ '+b.amount.toLocaleString()+' 元'):'')+'（'+SNAP.next_trade_date.slice(5)+' 有效）');
+  }
+ });
+ if(full&&holdB.length){ L.push('   另 '+holdB.length+' 条情景不操作（'+holdB.map(b=>b.scenario).join(' / ')+'），不设单，详见 WebUI'); }
+ /* 组合校验 */
+ L.push('');
+ L.push('⚠️ **组合校验**');
+ if(full){
+  L.push('   '+buys.length+' 条买入分支全触发 = '+sum.toLocaleString()+' 元 / 总资金 '+sumPct+'%；叠加当前单只 12.8% → '+after+'%'+(after>20?' > 20% 上限':' ≤ 20% 上限'));
+  L.push('   → '+(after>20?'同时执行会超限，请自行取舍（系统不代为决定）':'全部分支同时执行仍在硬上限内'));
+ }else{
+  L.push('   '+buys.length+' 条全触发 = '+sum.toLocaleString()+' 元，叠加后单只 '+after+'%'+(after>20?' > 20% 上限，请自行取舍':' ≤ 20% 上限'));
+ }
+ /* 消息 */
+ L.push('');
+ L.push('💬 **消息 · 只推送、不判断**');
+ const evs=FS_EVENTS.filter(e=>e.lv==='A').slice(0,full?3:1);
+ if(evs.length){ evs.forEach(e=>{
+  if(full){
+   L.push('📌 '+e.name+'：'+e.title);
+   L.push('   '+e.time+' · '+e.src+'　｜　是否影响由你判断，系统不改建议、不改计划');
+  }else{
+   L.push('📌 '+e.name+'：'+e.title+'（'+e.time.slice(5)+'）');
+  }
+ }); } else { L.push('⚪ 今日消息未取得'); }
+ /* ⑦ 声明 */
+ L.push('');
+ L.push('━━━━━━━━━━━━━━');
+ L.push('🔒 盘前静态计划，需本人在券商端自行设单；工具不下单、不盯盘、开盘后不更新');
+ L.push('ℹ️ 触发条件 / 股数 / 风险等级 / 数据日期为关键字段，渠道压缩时不得删减');
+ L.push('⚠️ 仅供研究参考，不构成投资建议，不承诺收益');
+ return L.join('\n');
 }
 
 /* ---------- 交互（事件委托） ---------- */
@@ -1085,15 +1190,23 @@ document.addEventListener('click',e=>{
   return;
  }
  if(act==='config-preview'){toast('试算：阶段切换 1 只（601985 S2→S5）、计划分支 -2；未保存、未落快照');return;}
- if(act==='feishu'){
-  const txt=feishuText();
-  openModal('入口二 · 飞书推送预览（文本，不做链接）','<div class="notice blue" style="margin-bottom:10px">复用现有 notification_routing / notification_noise / notification_capabilities / feishu_sender；与 WebUI 同源同版本、只读不重算。摘要为附加段，<b>不得删减</b>触发条件、股数、风险等级、数据日期。</div><div class="feishu-text" id="feishuText">'+H(txt)+'</div>',
+ if(act==='feishu'||act==='fs-mode'){
+  const mode=(act==='fs-mode')?(el.dataset.mode||'full'):(state.fsMode||'full');
+  state.fsMode=mode;
+  const txt=feishuText(mode), full=mode!=='brief';
+  const body='<div class="notice blue" style="margin-bottom:10px">复用 notification_routing / notification_noise / notification_capabilities / feishu_sender；与 WebUI 同源同版本、只读不重算。<b>主路径发 interactive 卡片</b>（正文 lark_md，支持加粗与 emoji），失败降级纯文本时<b>先剥离 <code>**</code></b>。摘要为附加段，触发条件、股数、风险等级、数据日期不得删减。</div>'+
+   '<div class="fs-bar"><span class="fs-seg"><button data-act="fs-mode" data-mode="full" class="'+(full?'on':'')+'">完整版</button><button data-act="fs-mode" data-mode="brief" class="'+(full?'':'on')+'">精简版</button></span>'+
+   '<span class="fs-meta">'+txt.length+' 字符 · 约 '+Math.ceil(txt.length/38)+' 行 · '+(full?'默认档（含依据与全部可设单分支）':'渠道限长时启用（关键字段不减）')+'</span></div>'+
+   '<div class="fs-card"><div class="fs-head"><span class="fs-logo">股</span><b>股票智能分析报告</b><span class="fs-tag">飞书 · 卡片消息</span></div><div class="fs-body">'+fsRender(txt)+'</div></div>'+
+   '<details class="fs-raw"><summary>查看纯文本（降级 text 时用，已剥离 <code>**</code>）</summary><pre>'+H(txt.replace(/\*\*/g,''))+'</pre></details>'+
+   '<div class="fs-legend"><b>图标语义（固定，不随场景换）</b>：🔴 严重 · 🟠 警示 · 🔵 观察 · ⚪ 无 ｜ ➕ 买入/加仓 · ⏳ 等待 · ➖ 减仓 · 🔻 清仓 · ⏸ 持有 · 👀 观望 · ⛔ 不可操作 ｜ ▲▼ 涨跌（不用红绿点，避免与风险色冲突）</div>';
+  openModal('入口二 · 飞书推送预览（v2.3 · 图标分层）',body,
    '<button class="btn" data-act="copy-feishu">复制推送文本</button><button class="btn primary" data-act="modal-close">关闭</button>');
   return;
  }
  if(act==='copy-branch'||act==='copy-all'||act==='copy-feishu'){
   let txt='';
-  if(act==='copy-feishu')txt=feishuText();
+  if(act==='copy-feishu')txt=feishuText(state.fsMode||'full').replace(/\*\*/g,'');
   else{const h=getH(el.dataset.code||state.code),p=plansFor(h);
    txt=act==='copy-branch'?branchText(h,p.branches.find(b=>b.id===el.dataset.id)):
     ['【'+h.name+' '+h.code+' · 盘前条件计划 · '+SNAP.data_date+' 收盘基准】','当日意见：'+h.advice,'',...p.branches.map(b=>branchText(h,b)),'',comboCheck(h,p.branches).replace(/<[^>]+>/g,'').replace(/&gt;/g,'>').replace(/&lt;/g,'<'),'','以上为盘前静态条件计划，由本人在券商端自行设置条件单；工具不自动下单、不监控盘中、开盘后不更新。'].join('\n');
