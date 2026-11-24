@@ -44,6 +44,14 @@ NOTIFICATION_ROUTE_CONFIGS: Dict[str, Dict[str, str]] = {
         "config_attr": "notification_system_error_channels",
         "description": "Routes future system error notifications.",
     },
+    "assistant_daily": {
+        "env_key": "NOTIFICATION_ASSISTANT_CHANNELS",
+        "config_attr": "notification_assistant_channels",
+        "description": (
+            "Routes stock-analysis-assistant daily brief notifications. "
+            "Empty keeps the legacy behavior and uses every configured channel."
+        ),
+    },
 }
 
 

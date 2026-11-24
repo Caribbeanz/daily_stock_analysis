@@ -31,6 +31,7 @@ DEFAULT_NOTIFICATION_SEVERITY_BY_ROUTE = {
     "report": "info",
     "alert": "warning",
     "system_error": "error",
+    "assistant_daily": "info",
 }
 P4_NOISE_ENV_KEYS: Tuple[str, ...] = (
     "NOTIFICATION_DEDUP_TTL_SECONDS",
@@ -215,9 +216,16 @@ def evaluate_notification_noise(
     severity: Optional[str] = None,
     dedup_key: Optional[str] = None,
     cooldown_key: Optional[str] = None,
+    allow_repeat: bool = False,
     now: Optional[datetime] = None,
 ) -> NotificationNoiseDecision:
     """Evaluate whether static notification channels should be sent.
+
+    ``allow_repeat=True`` marks an intentional re-delivery of the *same* content
+    (multi-slot delivery of one daily snapshot): dedup and cooldown are both
+    repeat-suppression rules, so they are skipped; quiet hours and the minimum
+    severity still apply, because those are about *when* and *how loud*, not
+    about repetition.
 
     This function is fail-open: invalid runtime state or unexpected exceptions
     produce an allow decision and a warning log rather than blocking notification.
@@ -230,6 +238,7 @@ def evaluate_notification_noise(
             severity=severity,
             dedup_key=dedup_key,
             cooldown_key=cooldown_key,
+            allow_repeat=allow_repeat,
             now=now,
         )
     except Exception as exc:  # pragma: no cover - defensive behavior is tested via monkeypatch.
@@ -251,6 +260,7 @@ def _evaluate_notification_noise(
     severity: Optional[str],
     dedup_key: Optional[str],
     cooldown_key: Optional[str],
+    allow_repeat: bool,
     now: Optional[datetime],
 ) -> NotificationNoiseDecision:
     route = str(route_type or "default").strip().lower() or "default"
@@ -303,7 +313,9 @@ def _evaluate_notification_noise(
     )
     with _state_lock:
         _cleanup_expired(now_ts)
-        if dedup_ttl > 0 and _dedup_expires_at.get(dedup_state_key, 0) > now_ts:
+        # allow_repeat：同一份内容的「有意重复投递」只跳过重复抑制（去重/冷却），
+        # 静默时段与最低级别已在上面判过、照旧生效。
+        if not allow_repeat and dedup_ttl > 0 and _dedup_expires_at.get(dedup_state_key, 0) > now_ts:
             return NotificationNoiseDecision(
                 should_send=False,
                 reason_code="dedup",
@@ -313,7 +325,7 @@ def _evaluate_notification_noise(
                 **decision_base,
             )
         dedup_inflight = _dedup_inflight_until.get(dedup_state_key)
-        if dedup_ttl > 0 and dedup_inflight and dedup_inflight[0] > now_ts:
+        if not allow_repeat and dedup_ttl > 0 and dedup_inflight and dedup_inflight[0] > now_ts:
             return NotificationNoiseDecision(
                 should_send=False,
                 reason_code="dedup_inflight",
@@ -322,7 +334,7 @@ def _evaluate_notification_noise(
                 cooldown_key=cooldown_state_key,
                 **decision_base,
             )
-        if cooldown > 0 and _cooldown_expires_at.get(cooldown_state_key, 0) > now_ts:
+        if not allow_repeat and cooldown > 0 and _cooldown_expires_at.get(cooldown_state_key, 0) > now_ts:
             return NotificationNoiseDecision(
                 should_send=False,
                 reason_code="cooldown",
@@ -332,7 +344,7 @@ def _evaluate_notification_noise(
                 **decision_base,
             )
         cooldown_inflight = _cooldown_inflight_until.get(cooldown_state_key)
-        if cooldown > 0 and cooldown_inflight and cooldown_inflight[0] > now_ts:
+        if not allow_repeat and cooldown > 0 and cooldown_inflight and cooldown_inflight[0] > now_ts:
             return NotificationNoiseDecision(
                 should_send=False,
                 reason_code="cooldown_inflight",
@@ -343,8 +355,8 @@ def _evaluate_notification_noise(
             )
 
         reservation_until = now_ts + _INFLIGHT_RESERVATION_SECONDS
-        dedup_reserved = dedup_ttl > 0
-        cooldown_reserved = cooldown > 0
+        dedup_reserved = dedup_ttl > 0 and not allow_repeat
+        cooldown_reserved = cooldown > 0 and not allow_repeat
         reservation_token = uuid.uuid4().hex if dedup_reserved or cooldown_reserved else None
         if dedup_reserved:
             _dedup_inflight_until[dedup_state_key] = (reservation_until, reservation_token)

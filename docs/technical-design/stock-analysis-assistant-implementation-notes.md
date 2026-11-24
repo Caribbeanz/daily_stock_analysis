@@ -17,10 +17,10 @@
 | C5 飞书渲染 | 🟡 七段图标化文本 + 两档密度 + T 日复盘已完成；卡片/Web 页面/LLM 文案未做 | `src/assistant/render/` |
 | C3 决策引擎 | ✅ 守卫链 / 阶段 / 阶段门 / 评分 / 风险 / 条件计划 | `src/assistant/engine/` |
 | C4 参数框架 | ✅ 三档预设 + 单项覆盖 + param_hash + 变更记录 | `src/assistant/config/` |
-| C5 发送接线 | ⬜ 未开始（飞书发送器 / `route_type` / `dedupe_key` / 卡片） | — |
+| C5 发送接线 | ✅ 新增 `route_type=assistant_daily` + 去重键＝`snapshot_id` + 纯文本降级 | `src/assistant/notify.py` |
 | C6 验证回测 | ⬜ 未开始（纸面回看 / 条件计划回测） | — |
 
-**没有做的部分**：快照 API、Web 页面与卡片渲染、飞书入站、LLM 文案层、大盘指数取数（② 段现写「数据缺失」）、回测扩展、战法启停清单接入 `calc_version`、adj_factor 正式来源（M15 兜底路径已实现但未启用）、股票名称来源（现用代码兜底）。
+**没有做的部分**：快照 API、Web 页面与卡片渲染、飞书入站、LLM 文案层、大盘指数取数（② 段现写「数据缺失」）、调度 tick 挂到 `main.py`、回测扩展、战法启停清单接入 `calc_version`、adj_factor 正式来源（M15 兜底路径已实现但未启用）、股票名称来源（现用代码兜底）。
 
 ---
 
@@ -48,6 +48,7 @@ src/assistant/
 │   ├── review.py           T 日复盘（T-1 计划对照 T 日行情，只读）
 │   └── feishu.py           七段图标化渲染（两档密度 + 超长按序降级）
 ├── pipeline.py             装配链：ensure_snapshot / payload / generate（幂等）
+├── notify.py               发送接线：payload → 既有通知链（route_type / 去重键 / 纯文本降级）
 ├── data/
 │   ├── models.py          21 张 assistant_ 表（L1 / L3 / L4 + 投递台账 + 防抖状态）
 │   └── storage.py         L1 幂等写入、周月线聚合、L3 append-only、L4 变更重放、投递台账
@@ -102,6 +103,9 @@ src/assistant/
 | §3.5.3.1 硬约束 7（B48） | `render/feishu.py::fit_feishu` | 完整 1,800 / 精简 1,100；降级顺序＝删风险依据→删阶段证据→删不可设单分支→限分支条数 |
 | B48 两档同源 | `render/feishu.py` | 同一函数 + `RenderOptions` 开关；两档触发价/股数逐字一致（测试锁定） |
 | §3.5.3.1 ① 复盘子行（R23） | `render/review.py` | T-1 计划对照 T 日高低价判触发；跳空单独标；缺行情记「无法判定」不猜 |
+| §6.3 复用通知链（不新增平行发送器） | `notify.py` + `notification_routing.py` | 新增 1 个 `route_type`；发送仍由 `NotificationService`/`feishu_sender` 完成 |
+| §2.3 多时点同源 vs 降噪去重 | `notification_noise.py::allow_repeat` + `notify.py` | `dedupe_key=snapshot_id` + `allow_repeat`：有意重复不被内容去重吞掉，静默时段仍生效 |
+| §3.5.3.1 硬约束 5（降级剥离 `**`） | `notify.py` + `feishu_sender` 的 `fallback_content` | 卡片失败转 `msg_type=text` 时改发剥离版，不把加粗标记露给用户 |
 
 ---
 
@@ -247,6 +251,29 @@ src/assistant/
 - 判断依据：硬上限是硬约束，宁可少列分支也不发超长消息；且真正照抄场景在 WebUI 与
   完整版里都有全量分支。
 
+### D-18 为「同源重复投递」与「纯文本降级」对共享通知链做了两处增量改动
+
+- 两件事都发生在 `src/notification*` 内部、助手层拿不到钩子：① 多时点同源投递不能被
+  `notification_noise` 的内容去重静默吞掉（方案 §2.3）；② 飞书卡片失败降级
+  `msg_type=text` 时须先剥离 `**`（硬约束 5）。
+- 处理方式：两处都是**默认关闭的可选参数**，既有三条路由不传即完全走原逻辑
+  （`allow_repeat=False` / `fallback_content=None`）：
+  1. `notification_noise.evaluate_notification_noise(..., allow_repeat=False)`：为真时跳过
+     **去重与冷却**（两者都是「抑制重复」规则），静默时段与最低级别照旧——
+     那是「什么时候发、多大声音」，不是「要不要重复」。`NotificationService` 的
+     `evaluate_noise_control / send_with_results / send` 逐层透传。
+  2. `send_with_results / send(..., fallback_content=None)` →
+     `feishu_sender.send_to_feishu(..., fallback_content=...)`，仅作用于
+     `msg_type=text` 降级分支；助手层传入 `strip_markdown(正文)`。
+- 为什么不写一个平行发送器：方案 §1.2 明确「不新增平行发送器、不改既有渠道行为」。
+  平行发送器意味着路由、降噪、能力画像、分片、关键词签名全都要重写一遍，以后改飞书
+  发送逻辑必然分叉。
+- 已核对影响面：`flake8` 在五个共享文件上的告警数与改动前**逐文件相同**
+  （`config.py` 37 / `notification.py` 5 / `feishu_sender.py` 2，其余 0），未引入新问题；
+  助手侧新增 15 项测试，既有通知测试断言未改。
+- 未覆盖：飞书的**分片**（超长分批）路径不传 `fallback_content`——助手正文上限 1,800 字
+  ≈5KB，远低于单条消息上限，实际进不到分片分支。
+
 ## 5. 验证
 
 ```bash
@@ -267,7 +294,8 @@ print(TradingDayGate().decide(datetime(2026,11,24,20,0)).as_dict())"
 python scripts/assistant_fetch_smoke.py --codes 600000 000001 --years 3
 ```
 
-当前结果：**278 passed**，`flake8` 无告警。
+当前结果：**293 passed**，`flake8` 无告警（`src/assistant`、`tests/assistant`；共享通知链的
+历史告警数与改动前逐文件相同，见 D-18）。
 
 **2026-11-24 联网实测（akshare 1.19.5）**：
 
@@ -331,6 +359,8 @@ python scripts/assistant_fetch_smoke.py --codes 600000 000001 --years 3
 - 装配：同日同参数复用快照、换参数生成新快照、增量取数不截断历史、降级来源如实标注、全标的不可用则抛错不产出、防抖状态跨进程可用
 - 渲染：七段顺序固定、① 必带复盘子行、风险同股归并取最高、计划数值行无 emoji/加粗、两档触发价与股数逐字一致、精简版只留可设单分支、超长按序降级不超限、纯文本剥离 `**`
 - 复盘：触发/未触发/跳空/无法判定四类判定、缺行情不猜、无 T-1 快照明确说明
+- 发送接线：参数翻译（路由/去重键＝`snapshot_id`/`allow_repeat`）、正文为空不发、服务失败如实返回失败、
+  两个时点各投一次、同时点二次判 `duplicate`、非交易日提醒按日去重、`allow_repeat` 仍受静默时段与最低级别约束
 
 > 未跑：仓库全量测试需要 `fastapi/anyio/httpx` 等完整依赖，本次环境未安装；改动未触及这些模块。
 

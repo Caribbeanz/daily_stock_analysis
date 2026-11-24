@@ -222,7 +222,7 @@ class FeishuSender:
     # App Bot send helpers
     # ------------------------------------------------------------------
 
-    def _send_via_app_bot(self, content: str) -> bool:
+    def _send_via_app_bot(self, content: str, *, fallback_content: Optional[str] = None) -> bool:
         """Send message through the Feishu App Bot, chunking if necessary."""
         if not self._feishu_chat_id:
             logger.warning("FEISHU_CHAT_ID 未配置，跳过 App Bot 推送")
@@ -241,7 +241,10 @@ class FeishuSender:
             )
             return self._app_send_chunked(client, formatted)
 
-        return self._app_send_once(client, formatted)
+        fallback_formatted = (
+            format_feishu_markdown(fallback_content) if fallback_content else None
+        )
+        return self._app_send_once(client, formatted, fallback_content=fallback_formatted)
 
     def _app_send_chunked(self, client: Any, content: str) -> bool:
         """Chunk and send long content through App Bot."""
@@ -263,12 +266,17 @@ class FeishuSender:
                 time.sleep(1)
         return success
 
-    def _app_send_once(self, client: Any, content: str) -> bool:
+    def _app_send_once(
+        self, client: Any, content: str, *, fallback_content: Optional[str] = None
+    ) -> bool:
         """Single-shot send via App Bot with card-first / text-fallback.
 
         Content received here has already been through ``format_feishu_markdown``
         which converts all Markdown constructs to ``lark_md``-compatible format.
-        The interactive card uses ``tag: lark_md`` for rendering.
+        The interactive card uses ``tag: lark_md`` for rendering. ``fallback_content``
+        is the pre-flattened variant used when the card is rejected and the message
+        degrades to ``msg_type=text`` (callers that render ``**bold**`` pass the
+        stripped version here so the fallback does not leak markup).
         """
         card_payload = json.dumps(self._build_card_body(content), ensure_ascii=False)
 
@@ -276,7 +284,7 @@ class FeishuSender:
             return True
 
         # Fallback to plain text.
-        text_payload = json.dumps({"text": content}, ensure_ascii=False)
+        text_payload = json.dumps({"text": fallback_content or content}, ensure_ascii=False)
         return self._app_send_raw(client, "text", text_payload)
 
     def _app_send_raw(self, client: Any, msg_type: str, content_json: str) -> bool:
@@ -358,7 +366,13 @@ class FeishuSender:
     # Public API
     # ------------------------------------------------------------------
 
-    def send_to_feishu(self, content: str, *, timeout_seconds: Optional[float] = None) -> bool:
+    def send_to_feishu(
+        self,
+        content: str,
+        *,
+        timeout_seconds: Optional[float] = None,
+        fallback_content: Optional[str] = None,
+    ) -> bool:
         """
         Push a message to Feishu.
 
@@ -366,6 +380,9 @@ class FeishuSender:
           1. **Webhook** – when ``feishu_webhook_url`` is configured.
           2. **App Bot** – when ``feishu_app_id`` + ``feishu_app_secret``
              + ``feishu_chat_id`` are all configured and webhook is absent.
+
+        ``fallback_content`` optionally supplies the plain-text variant used when
+        the interactive card is rejected and the message degrades to ``msg_type=text``.
 
         Returns:
             Whether the send succeeded.
@@ -375,8 +392,12 @@ class FeishuSender:
             return False
         sanitized_content = strip_hidden_markdown_metadata(content).strip()
         if self._feishu_url:
-            return self._send_via_webhook(sanitized_content, timeout_seconds=timeout_seconds)
-        return self._send_via_app_bot(sanitized_content)
+            return self._send_via_webhook(
+                sanitized_content,
+                timeout_seconds=timeout_seconds,
+                fallback_content=fallback_content,
+            )
+        return self._send_via_app_bot(sanitized_content, fallback_content=fallback_content)
 
     def send_feishu_file(self, file_path: str) -> bool:
         """
@@ -536,7 +557,13 @@ class FeishuSender:
     # Webhook path (legacy, unchanged)
     # ------------------------------------------------------------------
 
-    def _send_via_webhook(self, content: str, *, timeout_seconds: Optional[float] = None) -> bool:
+    def _send_via_webhook(
+        self,
+        content: str,
+        *,
+        timeout_seconds: Optional[float] = None,
+        fallback_content: Optional[str] = None,
+    ) -> bool:
         """Legacy webhook send path."""
         formatted_content = format_feishu_markdown(content)
 
@@ -562,7 +589,14 @@ class FeishuSender:
             return self._send_feishu_chunked(formatted_content, effective_max_bytes)
 
         try:
-            return self._send_feishu_message(formatted_content, timeout_seconds=timeout_seconds)
+            fallback_formatted = (
+                format_feishu_markdown(fallback_content) if fallback_content else None
+            )
+            return self._send_feishu_message(
+                formatted_content,
+                timeout_seconds=timeout_seconds,
+                fallback_content=fallback_formatted,
+            )
         except Exception as e:
             logger.error("发送飞书消息失败: %s", e)
             return False
@@ -590,8 +624,19 @@ class FeishuSender:
                 time.sleep(1)
         return success_count == total_chunks
 
-    def _send_feishu_message(self, content: str, *, timeout_seconds: Optional[float] = None) -> bool:
-        """Send a single Feishu webhook message (interactive card, fallback text)."""
+    def _send_feishu_message(
+        self,
+        content: str,
+        *,
+        timeout_seconds: Optional[float] = None,
+        fallback_content: Optional[str] = None,
+    ) -> bool:
+        """Send a single Feishu webhook message (interactive card, fallback text).
+
+        ``fallback_content`` is used only for the ``msg_type=text`` degradation —
+        callers that render Markdown bold pass a pre-stripped variant so the
+        plain-text fallback does not show literal ``**``.
+        """
         prepared_content = self._apply_keyword_prefix(content)
         security_fields = self._build_security_fields()
 
@@ -639,6 +684,10 @@ class FeishuSender:
 
         text_payload = {
             "msg_type": "text",
-            "content": {"text": prepared_content},
+            "content": {
+                "text": self._apply_keyword_prefix(fallback_content)
+                if fallback_content
+                else prepared_content
+            },
         }
         return _post_payload(text_payload)

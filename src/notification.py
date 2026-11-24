@@ -633,6 +633,7 @@ class NotificationService(
         severity: Optional[str] = None,
         dedup_key: Optional[str] = None,
         cooldown_key: Optional[str] = None,
+        allow_repeat: bool = False,
     ) -> NotificationNoiseDecision:
         """Evaluate static-channel notification noise controls."""
         return evaluate_notification_noise(
@@ -642,6 +643,7 @@ class NotificationService(
             severity=severity,
             dedup_key=dedup_key,
             cooldown_key=cooldown_key,
+            allow_repeat=allow_repeat,
         )
 
     @staticmethod
@@ -2584,6 +2586,7 @@ class NotificationService(
         email_stock_codes: Optional[List[str]],
         email_send_to_all: bool,
         route_type: Optional[str] = None,
+        fallback_content: Optional[str] = None,
     ) -> bool:
         use_image = self._should_use_image_for_channel(channel, image_bytes)
         sanitized_content = strip_hidden_markdown_metadata(content).strip()
@@ -2598,7 +2601,12 @@ class NotificationService(
                     sanitized_content, filename=f"report_{date_str}.md"
                 )
                 return self.send_feishu_file(filepath)
-            return self.send_to_feishu(sanitized_content)
+            sanitized_fallback = (
+                strip_hidden_markdown_metadata(fallback_content).strip()
+                if fallback_content
+                else None
+            )
+            return self.send_to_feishu(sanitized_content, fallback_content=sanitized_fallback)
         if channel == NotificationChannel.DINGTALK:
             return self.send_to_dingtalk(sanitized_content)
         if channel == NotificationChannel.TELEGRAM:
@@ -2652,6 +2660,8 @@ class NotificationService(
         dedup_key: Optional[str] = None,
         cooldown_key: Optional[str] = None,
         structured_payload: Optional[Dict[str, Any]] = None,
+        allow_repeat: bool = False,
+        fallback_content: Optional[str] = None,
     ) -> NotificationDispatchResult:
         """
         Send a notification and return per-channel diagnostics.
@@ -2673,6 +2683,9 @@ class NotificationService(
             dedup_key: 可选稳定去重 key；未设置时使用内容 hash
             cooldown_key: 可选冷却 key；未设置时使用路由/级别默认 key
             structured_payload: 可选的个股或市场结构化结果，仅用于图片模板精确填充
+            allow_repeat: 同一内容的有意重复投递（多时点同源）——跳过去重与冷却，
+                静默时段与最低级别仍生效
+            fallback_content: 飞书卡片降级为纯文本时使用的变体（已剥离 Markdown 标记）
 
         Returns:
             Structured dispatch diagnostics.
@@ -2744,6 +2757,7 @@ class NotificationService(
             severity=severity,
             dedup_key=dedup_key,
             cooldown_key=cooldown_key,
+            allow_repeat=allow_repeat,
         )
         if not noise_decision.should_send:
             logger.info(noise_decision.message)
@@ -2808,6 +2822,7 @@ class NotificationService(
                     email_stock_codes=email_stock_codes,
                     email_send_to_all=email_send_to_all,
                     route_type=route_type,
+                    fallback_content=fallback_content,
                 )
                 latency_ms = int((time.monotonic() - started_at) * 1000)
 
@@ -2870,6 +2885,8 @@ class NotificationService(
         dedup_key: Optional[str] = None,
         cooldown_key: Optional[str] = None,
         structured_payload: Optional[Dict[str, Any]] = None,
+        allow_repeat: bool = False,
+        fallback_content: Optional[str] = None,
     ) -> bool:
         """
         统一发送接口 - 向所有已配置的渠道发送。
@@ -2886,6 +2903,8 @@ class NotificationService(
             dedup_key=dedup_key,
             cooldown_key=cooldown_key,
             structured_payload=structured_payload,
+            allow_repeat=allow_repeat,
+            fallback_content=fallback_content,
         )
         return bool(result.success)
 
