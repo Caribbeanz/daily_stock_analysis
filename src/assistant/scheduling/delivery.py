@@ -40,15 +40,26 @@ __all__ = [
 
 @dataclass(frozen=True)
 class DeliveryPayload:
-    """一次投递的内容。``data_date`` 是**数据截止日**（T-1 收盘口径见需求 §5）。"""
+    """一次投递的内容。
+
+    两个日期必须分清（混用会让台账跨日串号）：
+
+    - ``data_date``：**快照所属交易日**（生成日 T）。台账按它分组判断「当日已投递哪份快照」。
+    - ``bar_date``：**数据截止日**（通常是 T 收盘；取数不全时可能更早），只在正文标注用。
+    """
 
     data_date: date
     snapshot_id: str
     calc_version: str
     param_hash: str
     text: str
-    #: 数据不是当日新取的（缓存兜底 / 早于取数时点复用旧快照）
+    #: 数据为降级结果（缓存兜底等），正文需如实标注
     stale: bool = False
+    bar_date: date | None = None
+
+    @property
+    def effective_bar_date(self) -> date:
+        return self.bar_date or self.data_date
 
     def same_source_as(self, other: DeliveryPayload) -> bool:
         """同源判定：快照与规则版本必须完全一致（正文也须逐字相同）。"""
@@ -57,6 +68,7 @@ class DeliveryPayload:
             and self.snapshot_id == other.snapshot_id
             and self.calc_version == other.calc_version
             and self.param_hash == other.param_hash
+            and self.effective_bar_date == other.effective_bar_date
             and self.text == other.text
         )
 

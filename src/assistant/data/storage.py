@@ -34,6 +34,7 @@ from src.assistant.data.models import (
     ParamOverrideRow,
     RiskSignalRow,
     Snapshot,
+    StageStateRow,
     StockDailyRaw,
     StockMonthly,
     StockWeekly,
@@ -241,25 +242,61 @@ class AssistantStore:
     # L3 快照（append-only）
     # ------------------------------------------------------------------
     def write_snapshot(self, result: GuardChainResult, *, preset: str = "standard", notes: str = "") -> str:
-        """写入一份快照及其子行；``snapshot_id`` 已存在则抛 :class:`AppendOnlyViolation`。"""
-        snapshot_id = f"{result.data_date:%Y%m%d}-{uuid.uuid4().hex[:12]}"
+        """写入**单标的**快照（兼容入口，等价 ``create_snapshot`` + ``write_conclusion``）。"""
+        snapshot_id = self.create_snapshot(
+            data_date=result.data_date,
+            calc_version=result.calc_version,
+            param_hash=result.param_hash,
+            preset=preset,
+            generated_at=result.generated_at,
+            bars_used=result.data_quality.bars_used,
+            gap_days=result.data_quality.gap_days,
+            source_tag="D3" if result.conclusion.degraded else "D1",
+            notes=notes,
+            bar_date=result.data_date,
+        )
+        self.write_conclusion(snapshot_id, result)
+        return snapshot_id
+
+    def create_snapshot(
+        self,
+        *,
+        data_date: date,
+        calc_version: str,
+        param_hash: str,
+        preset: str,
+        generated_at: datetime,
+        bars_used: int,
+        gap_days: int,
+        source_tag: str,
+        notes: str = "",
+        bar_date: date | None = None,
+    ) -> str:
+        """只建快照主行，返回新的 ``snapshot_id``（append-only，同日重跑即新 id）。"""
+        snapshot_id = f"{data_date:%Y%m%d}-{uuid.uuid4().hex[:12]}"
         with self.session() as sess:
             if sess.get(Snapshot, snapshot_id) is not None:  # pragma: no cover - uuid 碰撞
                 raise AppendOnlyViolation(f"快照已存在：{snapshot_id}")
             sess.add(
                 Snapshot(
                     snapshot_id=snapshot_id,
-                    data_date=result.data_date,
-                    calc_version=result.calc_version,
-                    param_hash=result.param_hash,
+                    data_date=data_date,
+                    bar_date=bar_date or data_date,
+                    calc_version=calc_version,
+                    param_hash=param_hash,
                     param_preset=preset,
-                    generated_at=result.generated_at,
-                    bars_used=result.data_quality.bars_used,
-                    gap_days=result.data_quality.gap_days,
-                    source_tag="D3" if result.conclusion.degraded else "D1",
+                    generated_at=generated_at,
+                    bars_used=bars_used,
+                    gap_days=gap_days,
+                    source_tag=source_tag,
                     notes=notes or None,
                 )
             )
+        return snapshot_id
+
+    def write_conclusion(self, snapshot_id: str, result: GuardChainResult) -> None:
+        """把一只标的的结论 + 条件计划 + 风险信号挂到已存在的快照上。"""
+        with self.session() as sess:
             c = result.conclusion
             sess.add(
                 HoldingConclusionRow(
@@ -324,7 +361,153 @@ class AssistantStore:
                         degraded=risk.degraded,
                     )
                 )
+
+    def write_day_snapshot(
+        self,
+        results: Sequence[GuardChainResult],
+        *,
+        preset: str = "standard",
+        notes: str = "",
+        generated_at: datetime | None = None,
+        source_tag: str | None = None,
+        data_date: date | None = None,
+    ) -> str:
+        """**一天一份**快照：多只标的的结论写进同一个 ``snapshot_id``。
+
+        需求 §4.6 的「快照」是当日整体，不是「一只标的一份」。快照级字段取最差口径：
+        最少 ``bars_used``、最大 ``gap_days``、任一降级即 ``D3``，避免个别标的数据不全
+        被快照级数字掩盖。
+        """
+        items = list(results)
+        if not items:
+            raise ValueError("write_day_snapshot 需要至少一只标的的结论")
+        first = items[0]
+        for item in items:
+            if item.param_hash != first.param_hash or item.calc_version != first.calc_version:
+                raise AppendOnlyViolation(
+                    "同一天快照内 param_hash / calc_version 必须一致："
+                    f"{item.code} 为 {item.param_hash}/{item.calc_version}，"
+                    f"基准为 {first.param_hash}/{first.calc_version}"
+                )
+            if item.data_date != first.data_date:
+                raise AppendOnlyViolation(
+                    f"同一天快照内 data_date 必须一致：{item.code} 为 {item.data_date}，基准为 {first.data_date}"
+                )
+        snapshot_id = self.create_snapshot(
+            # data_date = 快照所属交易日（调用方给的生成日）；bar_date = 数据截止日
+            data_date=data_date or first.data_date,
+            bar_date=first.data_date,
+            calc_version=first.calc_version,
+            param_hash=first.param_hash,
+            preset=preset,
+            generated_at=generated_at or first.generated_at,
+            bars_used=min(item.data_quality.bars_used for item in items),
+            gap_days=max(item.data_quality.gap_days for item in items),
+            source_tag=source_tag
+            or ("D3" if any(item.conclusion.degraded for item in items) else "D1"),
+            notes=notes,
+        )
+        for item in items:
+            self.write_conclusion(snapshot_id, item)
         return snapshot_id
+
+    def find_snapshot(
+        self,
+        data_date: date,
+        *,
+        param_hash: str | None = None,
+        calc_version: str | None = None,
+    ) -> dict | None:
+        """按日 + 规则指纹找快照（幂等生成用：同参数同日不重复算）。"""
+        with self.session() as sess:
+            stmt = select(Snapshot).where(Snapshot.data_date == data_date)
+            if param_hash is not None:
+                stmt = stmt.where(Snapshot.param_hash == param_hash)
+            if calc_version is not None:
+                stmt = stmt.where(Snapshot.calc_version == calc_version)
+            row = sess.execute(stmt.order_by(Snapshot.generated_at.desc()).limit(1)).scalars().first()
+            return None if row is None else _snapshot_row(row)
+
+    def snapshot_content(self, snapshot_id: str) -> dict | None:
+        """读回一份快照的全部子行，供渲染与校验（**投递文本一律从库里回读后再渲染**）。"""
+        with self.session() as sess:
+            snap = sess.get(Snapshot, snapshot_id)
+            if snap is None:
+                return None
+            conclusions = sess.execute(
+                select(HoldingConclusionRow).where(HoldingConclusionRow.snapshot_id == snapshot_id)
+                .order_by(HoldingConclusionRow.code.asc())
+            ).scalars().all()
+            plans = sess.execute(
+                select(ConditionalPlanRow).where(ConditionalPlanRow.snapshot_id == snapshot_id)
+                .order_by(ConditionalPlanRow.code.asc(), ConditionalPlanRow.branch_id.asc())
+            ).scalars().all()
+            risks = sess.execute(
+                select(RiskSignalRow).where(RiskSignalRow.snapshot_id == snapshot_id)
+                .order_by(RiskSignalRow.code.asc(), RiskSignalRow.risk_id.asc())
+            ).scalars().all()
+        return {
+            "snapshot_id": snap.snapshot_id,
+            "data_date": snap.data_date.isoformat(),
+            "bar_date": (snap.bar_date or snap.data_date).isoformat(),
+            "calc_version": snap.calc_version,
+            "param_hash": snap.param_hash,
+            "param_preset": snap.param_preset,
+            "generated_at": snap.generated_at.isoformat(),
+            "bars_used": snap.bars_used,
+            "gap_days": snap.gap_days,
+            "source_tag": snap.source_tag,
+            "conclusions": [_conclusion_row(row) for row in conclusions],
+            "plans": [_plan_row(row) for row in plans],
+            "risks": [_risk_row(row) for row in risks],
+        }
+
+    # ------------------------------------------------------------------
+    # 跨日阶段防抖状态（需求 §5.14.2「连续 N 日」）
+    # ------------------------------------------------------------------
+    def load_stage_state(self, code: str) -> dict | None:
+        with self.session() as sess:
+            row = sess.get(StageStateRow, code)
+            if row is None:
+                return None
+            return {
+                "stage": row.stage,
+                "pending_stage": row.pending_stage,
+                "pending_days": row.pending_days,
+                "as_of": None if row.as_of is None else row.as_of.isoformat(),
+            }
+
+    def save_stage_state(
+        self,
+        code: str,
+        *,
+        stage: str | None,
+        pending_stage: str | None,
+        pending_days: int,
+        as_of: date | None,
+        now: datetime | None = None,
+    ) -> None:
+        """写入/更新防抖状态（这是**状态**不是审计，允许覆盖；历史由快照侧留痕）。"""
+        stamp = now or datetime.now()
+        with self.session() as sess:
+            row = sess.get(StageStateRow, code)
+            if row is None:
+                sess.add(
+                    StageStateRow(
+                        code=code,
+                        stage=stage,
+                        pending_stage=pending_stage,
+                        pending_days=pending_days,
+                        as_of=as_of,
+                        updated_at=stamp,
+                    )
+                )
+            else:
+                row.stage = stage
+                row.pending_stage = pending_stage
+                row.pending_days = pending_days
+                row.as_of = as_of
+                row.updated_at = stamp
 
     def snapshot_exists(self, snapshot_id: str) -> bool:
         with self.session() as sess:
@@ -596,6 +779,82 @@ class AssistantStore:
             }
             for row in rows
         ]
+
+
+def _snapshot_row(row) -> dict:
+    return {
+        "snapshot_id": row.snapshot_id,
+        "data_date": row.data_date.isoformat(),
+        "bar_date": (row.bar_date or row.data_date).isoformat(),
+        "calc_version": row.calc_version,
+        "param_hash": row.param_hash,
+        "param_preset": row.param_preset,
+        "generated_at": row.generated_at.isoformat(),
+        "bars_used": row.bars_used,
+        "gap_days": row.gap_days,
+        "source_tag": row.source_tag,
+    }
+
+
+def _conclusion_row(row) -> dict:
+    return {
+        "code": row.code,
+        "name": row.name,
+        "advice": row.advice,
+        "advice_display": row.advice_display,
+        "advice_state": row.advice_state,
+        "stage": row.stage,
+        "stage_confidence": row.stage_confidence,
+        "stage_gate_hit": json.loads(row.stage_gate_hit) if row.stage_gate_hit else None,
+        "trend": row.trend,
+        "position_tag": row.position_tag,
+        "score": row.score,
+        "is_holding": row.is_holding,
+        "est_level": row.est_level,
+        "div_yield": row.div_yield,
+        "pnl_pct": row.pnl_pct,
+        "risk_level": row.risk_level,
+        "human_text": row.human_text,
+        "degraded": row.degraded,
+    }
+
+
+def _plan_row(row) -> dict:
+    return {
+        "code": row.code,
+        "branch_id": row.branch_id,
+        "scenario": row.scenario,
+        "trigger_type": row.trigger_type,
+        "trigger_price": row.trigger_price,
+        "pct_change": row.pct_change,
+        "action": row.action,
+        "shares": row.shares,
+        "est_amount": row.est_amount,
+        "pct_of_total": row.pct_of_total,
+        "valid_days": row.valid_days,
+        "settable": row.settable,
+        "notes": row.notes,
+        "technical_basis": row.technical_basis,
+        "position_check": json.loads(row.position_check) if row.position_check else {},
+        "is_probe": row.is_probe,
+    }
+
+
+def _risk_row(row) -> dict:
+    return {
+        "code": row.code,
+        "risk_id": row.risk_id,
+        "risk_code": row.risk_code,
+        "category": row.category,
+        "level": row.level,
+        "trigger_basis": row.trigger_basis,
+        "data_date": None if row.data_date is None else row.data_date.isoformat(),
+        "affects_advice": row.affects_advice,
+        "action": row.action,
+        "human_text": row.human_text,
+        "source_tag": row.source_tag,
+        "degraded": row.degraded,
+    }
 
 
 def _decode(raw: str) -> object:

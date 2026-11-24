@@ -13,12 +13,13 @@
 | C1 架构骨架 | ✅ 建立独立包 | `src/assistant/`（与 `src/agent/` 平级、零依赖） |
 | C2 数据与存储 | ✅ 取数层 + 存储层 + 投递台账 | `src/assistant/data/` |
 | C2 调度与门控 | ✅ 时点解析 / 交易日 fail-closed / 多时点同源投递 / 节拍编排 | `src/assistant/scheduling/` |
+| C2 装配链 | ✅ 取数 → 守卫链 → 当日快照 → 渲染 的端到端编排（幂等） | `src/assistant/pipeline.py` |
 | C3 决策引擎 | ✅ 守卫链 / 阶段 / 阶段门 / 评分 / 风险 / 条件计划 | `src/assistant/engine/` |
 | C4 参数框架 | ✅ 三档预设 + 单项覆盖 + param_hash + 变更记录 | `src/assistant/config/` |
 | C5 输出层 | ⬜ 未开始（Web 页面 / 飞书七段 / LLM 文案） | — |
 | C6 验证回测 | ⬜ 未开始（纸面回看 / 条件计划回测） | — |
 
-**没有做的部分**：装配 pipeline（取数 → 守卫链 → 落库 → 渲染的端到端编排）、快照 API、Web 页面、飞书推送与入站、LLM 文案层、回测扩展、adj_factor 正式来源（M15 兜底路径已实现但未启用）。
+**没有做的部分**：快照 API、Web 页面、飞书七段渲染与入站、LLM 文案层、回测扩展、战法启停清单接入 `calc_version`、adj_factor 正式来源（M15 兜底路径已实现但未启用）、股票名称来源（现用代码兜底）。
 
 ---
 
@@ -40,8 +41,10 @@ src/assistant/
 │   ├── risk.py            风险 7 类 / 三级联动 / 同类合并
 │   ├── plan.py            条件计划（阶段模板 + 同向过滤 + 股数 + 硬上限）
 │   └── guard_chain.py     守卫链 S0→S6 主入口（留痕 GuardTrace）
+├── versioning.py           calc_version 指纹（规则集 + 参数 + 分数带）
+├── pipeline.py             装配链：ensure_snapshot / payload / generate（幂等）
 ├── data/
-│   ├── models.py          20 张 assistant_ 表（L1 / L3 / L4 + 投递台账）
+│   ├── models.py          21 张 assistant_ 表（L1 / L3 / L4 + 投递台账 + 防抖状态）
 │   └── storage.py         L1 幂等写入、周月线聚合、L3 append-only、L4 变更重放、投递台账
 └── scheduling/
     ├── cron.py            5 字段 cron 解析与匹配（自实现，零依赖）
@@ -83,6 +86,10 @@ src/assistant/
 | FR-8.7 ④ 时区归一 | `scheduling/gate.py::now` | naive 按配置时区补全，aware 转本地；已测 UTC 20:00 → 次日 04:00 |
 | B50 ③ 重启不重投 | `data/storage.py`（`assistant_delivery_log`） | 台账持久化，进程重启后仍能判 `duplicate` |
 | §2.3 取数后才生成且才推送 | `scheduling/runner.py` | `now < fetch_time` 不生成当日快照；**早于取数的时点一律不投递**（仅 20:00 推送） |
+| §2.5 三元组 `calc_version` | `versioning.py` | 规则集版本 + `param_hash` + 决策表分数带；`temperature` 不入版本（只改措辞） |
+| B50 ③ 当日快照只生成一次 | `pipeline.py::ensure_snapshot` | 按「快照日 T + param_hash + calc_version」查已有快照直接复用 |
+| §5.14.2 连续 N 日防抖 | `data/models.py::StageStateRow` + `pipeline.py` | 防抖状态落库，跨进程/跨日可用（否则每天都是「首次判定」） |
+| §4.6.2 来源如实标注 | `pipeline.py::_worst_tag` | 主源失败降级到 D2 时必须标 D2；快照级取最差 |
 
 ---
 
@@ -178,6 +185,30 @@ src/assistant/
   属跨模块改动；调度层已可在不改动主流程的前提下独立验证。
 - 待装配阶段一并落地：加字段 + 注册表条目 + 设置面板，一次改完再回归主流程。
 
+### D-12 资金类输入暂由环境变量注入，尚未进 L4 表（**待 Web 配置页**）
+
+- 需求 §5.6：总资金是「用户填写的固定金额」，现金同理。本增量用
+  `ASSISTANT_TOTAL_CAPITAL` / `ASSISTANT_CASH_AVAILABLE` 注入，**缺总资金直接报错**，
+  不给默认值（给个假总资金会算出看似合理的错股数）。
+- 现金缺省时按 `总资金 − 持仓市值` 推算，并在组合视图里如实使用。
+- 待办：配置页落地后改存 L4 表（`assistant_portfolio_setting`），env 仅作初始值。
+
+### D-13 `assistant_snapshot` 增加 `bar_date` 列（**本地开发库需重建**）
+
+- 起因：真实数据跑出两个 bug——① 快照按 `GuardChainResult.data_date`（=最后一根 K 线）
+  落库，收盘数据未出那天快照被记到前一交易日，同日第二次调用就新建一份，幂等失效；
+  ② 投递台账按 `data_date` 分组，跨日会串号。
+- 修法：`data_date` 明确为**快照日（请求日 T）**，新增 `bar_date` 记**数据截止日**；
+  幂等键、台账、同源校验一律用 `data_date`，正文标注用 `bar_date`。
+- 影响：`assistant_snapshot` 表结构变更。`create_all` 不会给已存在的表加列，
+  **本地已有的 `data/stock_analysis.db` 或冒烟库需删表重建**（d 阶段无生产数据，可接受）。
+
+### D-14 股票名称暂用代码兜底
+
+- 取数层返回的行情不含名称列（新浪/东财日线都没有），`StockView.name` 现取
+  `self.names.get(code, code)`，即默认显示代码。
+- 待办：由关注清单/持仓录入时带上名称，或接一次名称接口后缓存；不影响任何计算。
+
 ## 5. 验证
 
 ```bash
@@ -198,7 +229,7 @@ print(TradingDayGate().decide(datetime(2026,11,24,20,0)).as_dict())"
 python scripts/assistant_fetch_smoke.py --codes 600000 000001 --years 3
 ```
 
-当前结果：**227 passed**，`flake8` 无告警。
+当前结果：**254 passed**，`flake8` 无告警。
 
 **2026-11-24 联网实测（akshare 1.19.5）**：
 
@@ -218,6 +249,18 @@ python scripts/assistant_fetch_smoke.py --codes 600000 000001 --years 3
 | 2026-11-26 20:00（周四） | 交易日 ✅ |
 | 2026-11-28 20:00（周六） | 非交易日 |
 | 2026-10-01 20:00（国庆） | 非交易日 ✅（能识别节假日，不是简单按周末过滤） |
+
+**2026-11-24 装配链真实联网（akshare 1.19.5，两只标的 + 一只持仓）**：
+
+| 项 | 结果 |
+| --- | --- |
+| 取数 | 东财 `push2his` `ProxyError` → 新浪 D2；`600000` 747 根、`000001` 747 根，`gap=0`，数据截止 **2026-11-24 收盘** |
+| 快照 | `20261124-xxxx`，`bars_used=747`，`source=D2`（如实标降级，不再冒充 D1） |
+| 幂等 | 同一天第二次 `ensure_snapshot` → `created=False`，`snapshot_id` 不变 |
+| 同源 | 两次 `payload` 的 `same_source=True`，正文逐字相同 |
+| 持仓区分 | `600000`（持 1000 股 @8.50）→ 建议「加仓」；`000001`（未持仓）→「等待买点」 |
+| 防抖状态 | 两只均写入 `assistant_stage_state`，`as_of=2026-11-24` |
+| 三日连续（11-20/23/24） | 快照日与请求日一致；11-23 因当日 K 线未出 `gap=1` 但阶段稳定 S1；11-24 拿到新数据后评分由 90 → 82，阶段仍 S1 |
 
 **端到端演练（临时 SQLite，模拟一天 7 次触发 + 跨日 + 进程重启）**：
 
@@ -241,6 +284,7 @@ python scripts/assistant_fetch_smoke.py --codes 600000 000001 --years 3
 - 门控：交易日 / 非交易日 / `None` / 抛异常 四种输入、`skip` 与 `notify_skip`、UTC 跨日换算
 - 投递：同日只生成一次、两时点同源、跨快照 `BLOCKED`、发送失败可重试、重启后台账仍防重
 - 节拍：取数前不生成、早于取数的时点不投递、错过的时点补投、非交易日 `notify_skip` 同日只提醒一次
+- 装配：同日同参数复用快照、换参数生成新快照、增量取数不截断历史、降级来源如实标注、全标的不可用则抛错不产出、防抖状态跨进程可用
 
 > 未跑：仓库全量测试需要 `fastapi/anyio/httpx` 等完整依赖，本次环境未安装；改动未触及这些模块。
 
@@ -248,10 +292,10 @@ python scripts/assistant_fetch_smoke.py --codes 600000 000001 --years 3
 
 ## 6. 下一步（建议顺序）
 
-1. **装配**（`pipeline.py`）：取数 → 守卫链 → 快照落库 → 渲染 的端到端编排；同时把
-   `generate()` 做成幂等（同日已有 L3 快照则复用，不再重建），补齐 `load_existing()`
-2. **配置落地**：五个 `ASSISTANT_*` 键进 `src/config.py` + `config_registry` + 设置面板（D-11）
-3. **输出层**（`render/`）：飞书七段图标化 + 卡片渲染（两档密度）
-4. **API + Web**（`api/v1/endpoints/assistant.py` + `pages/assistant/`）
+1. **输出层**（`render/`）：需求 §3.5.3.1 飞书七段图标化 + 卡片两档密度，替换
+   `pipeline.render_summary` 占位实现；LLM 文案层（只改措辞、不改数值）
+2. **配置落地**：五个 `ASSISTANT_*` + 资金键进 `src/config.py` / `config_registry` / 设置面板（D-11、D-12）
+3. **API + Web**（`api/v1/endpoints/assistant.py` + `pages/assistant/`）
+4. **战法启停清单**接入 `calc_version`（§5.12）
 5. **回测扩展**（`backtest/plan_backtest.py`）+ 纸面回看
 6. `adj_factor` 正式来源（M15）：现已有「同源 qfq/raw 比值推算」函数但默认不启用，待定是否作为长期路径

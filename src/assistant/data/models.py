@@ -193,7 +193,11 @@ class Snapshot(AssistantBase):
     __tablename__ = "assistant_snapshot"
 
     snapshot_id = Column(String(40), primary_key=True)
+    #: 快照所属交易日（生成日 T）——幂等键与台账分组都用它
     data_date = Column(Date, nullable=False)
+    #: 数据截止日（T 收盘；取数不全时可能更早）。与 data_date 分开存，否则
+    #: 「收盘数据未出」那天快照会被记到前一交易日，幂等判断跨日失效。
+    bar_date = Column(Date, nullable=True)
     calc_version = Column(String(32), nullable=False)
     param_hash = Column(String(64), nullable=False)
     param_preset = Column(String(16), nullable=False, default="standard")
@@ -445,3 +449,20 @@ class DeliveryLogRow(AssistantBase):
     error = Column(Text, nullable=True)
 
     __table_args__ = (Index("idx_assistant_delivery_date", "data_date", "status"),)
+
+
+class StageStateRow(AssistantBase):
+    """跨日阶段防抖状态（需求 §5.14.2「连续 N 日」）。
+
+    必须落库：状态只在内存里的话，进程每天重启都算「首次判定 → 直接确认」，
+    连续 2 日防抖等于不存在——基线回测里「阶段切换 27.63 次/年」的越界就是这么来的。
+    """
+
+    __tablename__ = "assistant_stage_state"
+
+    code = Column(String(16), primary_key=True)
+    stage = Column(String(4), nullable=True)          # 已确认阶段
+    pending_stage = Column(String(4), nullable=True)  # 待确认阶段
+    pending_days = Column(Integer, nullable=False, default=0)
+    as_of = Column(Date, nullable=True)               # 该状态对应的交易日
+    updated_at = Column(DateTime, nullable=False)
