@@ -1,71 +1,124 @@
 {
-  "generated_at": "2026-11-24T19:42:20+08:00",
+  "generated_at": "2026-11-24T21:55:00+08:00",
+  "env": {
+    "python": "3.13.14",
+    "akshare": "1.19.5",
+    "tushare": "1.4.29",
+    "pandas": "3.1.1",
+    "代理环境变量": "已设置",
+    "网络超时": "15s"
+  },
+  "network_probes": [
+    "- 东财 push2（实时行情，M5/M6/M7 依赖）：ProxyError HTTPSConnectionPool(host='push2.eastmoney.com', port=443): Max retries exceeded with url: ",
+    "- 东财 17.push2（板块列表分片）：ProxyError HTTPSConnectionPool(host='17.push2.eastmoney.com', port=443): Max retries exceeded with ur",
+    "- 东财 push2his（历史 K 线，M10/M17 依赖）：ProxyError HTTPSConnectionPool(host='push2his.eastmoney.com', port=443): Max retries exceeded with ur",
+    "- 东财 datacenter-web（数据中心）：HTTP 200，359 字节",
+    "- 东财 emweb F10（公司概况，M6 备源）：HTTP 200，4610 字节",
+    "- 腾讯行情（实时备源）：HTTP 200，528 字节",
+    "- 新浪行情（实时备源）：HTTP 200，280 字节"
+  ],
   "results": [
     {
       "id": "M5",
       "name": "M5 stock_board_industry_cons_em 板块代码入参",
-      "status": "BLOCKED",
-      "summary": "取板块列表失败",
-      "evidence": [],
-      "caveat": "",
-      "elapsed_ms": 8912,
-      "error": "ProxyError: HTTPSConnectionPool(host='17.push2.eastmoney.com', port=443): Max retries exceeded with url: /api/qt/clist/get?pn=1&pz=100&po=1&np=1&ut=bd1d9ddb04089700cf9c27f6f7426281&fltt=2&invt=2&fid=f3&fs=m%3A90+t%3A2+f%3A%2150&fields=f1%2Cf2%2Cf3%2Cf4%2Cf5%2Cf6%2Cf7%2Cf8%2Cf9%2Cf10%2Cf12%2Cf13%2Cf14%2Cf15%2Cf1"
+      "status": "PARTIAL",
+      "summary": "东财 cons 接口本机不可达；同花顺等价路径仅接受板块名称、拒绝代码入参",
+      "evidence": [
+        "东财 stock_board_industry_name_em -> ERR ProxyError: HTTPSConnectionPool(host='17.push2.eastmoney.com', port=443): Max retries exceeded with url: /api/qt/clist/get?pn=1&pz=100&po=1&",
+        "同花顺 stock_board_industry_name_ths -> shape=(90, 2) cols=['name', 'code']",
+        "同花顺板块代码格式=881121（半导体），非东财 BK 前缀",
+        "同花顺 index_ths 用代码(881121)入参 -> ERR KeyError: '881121'",
+        "同花顺 index_ths 用名称(半导体)入参 -> OK shape=(215, 7)"
+      ],
+      "caveat": "实测结论：code→板块映射无法靠行业字段兜底（见 M6 三套分类互不命中），需维护显式映射表或走同源板块成分接口；代码库现用板块名（src/services/screening/industry.py:227-229）与实测一致",
+      "elapsed_ms": 5514,
+      "error": ""
     },
     {
       "id": "M6",
       "name": "M6 stock_individual_info_em 行业字段口径",
-      "status": "BLOCKED",
-      "summary": "接口调用失败",
-      "evidence": [],
-      "caveat": "",
-      "elapsed_ms": 679,
-      "error": "ProxyError: HTTPSConnectionPool(host='push2.eastmoney.com', port=443): Max retries exceeded with url: /api/qt/stock/get?fltt=2&invt=2&fields=f120%2Cf121%2Cf122%2Cf174%2Cf175%2Cf59%2Cf163%2Cf43%2Cf57%2Cf58%2Cf169%2Cf170%2Cf46%2Cf44%2Cf51%2Cf168%2Cf47%2Cf164%2Cf116%2Cf60%2Cf45%2Cf52%2Cf50%2Cf48%2Cf167%2Cf117%2Cf7"
+      "status": "PARTIAL",
+      "summary": "东财 push2 个股接口本机不可达；F10 线路实测存在 ≥2 套分类（EM2016 三级、INDUSTRYCSRC1 证监会），且均与板块名不互认",
+      "evidence": [
+        "东财 stock_individual_info_em -> ERR ProxyError: HTTPSConnectionPool(host='push2.eastmoney.com', port=443): Max retries exceeded with url: /api/qt/stock/get?fltt=2&invt=2&fields",
+        "F10 600000 EM2016='金融-银行-股份制与城商行' INDUSTRYCSRC1='金融业-货币金融服务'",
+        "F10 000001 EM2016='金融-银行-股份制与城商行' INDUSTRYCSRC1='金融业-货币金融服务'",
+        "F10 300750 EM2016='电气设备-电源设备-储能设备' INDUSTRYCSRC1='制造业-电气机械和器材制造业'",
+        "F10 002594 EM2016='交运设备-汽车-乘用车' INDUSTRYCSRC1='制造业-汽车制造业'",
+        "巨潮 600000 所属行业='货币金融服务'",
+        "巨潮 000001 所属行业='货币金融服务'",
+        "同花顺板块名 90 个，用于口径比对",
+        "东财 EM2016 末级 vs 同花顺板块名：命中 0/4（[]）",
+        "巨潮所属行业 vs 同花顺板块名：命中 0/2"
+      ],
+      "caveat": "实证：行业字段与板块名是不同分类体系，逐字比对 0 命中，严禁用行业字段兜底 code→板块映射（印证需求 R5）",
+      "elapsed_ms": 1440,
+      "error": ""
     },
     {
       "id": "M7",
       "name": "M7 stock_board_industry_name_em 涨跌家数/领涨股字段",
-      "status": "BLOCKED",
-      "summary": "接口调用失败",
-      "evidence": [],
-      "caveat": "",
-      "elapsed_ms": 6795,
-      "error": "ProxyError: HTTPSConnectionPool(host='17.push2.eastmoney.com', port=443): Max retries exceeded with url: /api/qt/clist/get?pn=1&pz=100&po=1&np=1&ut=bd1d9ddb04089700cf9c27f6f7426281&fltt=2&invt=2&fid=f3&fs=m%3A90+t%3A2+f%3A%2150&fields=f1%2Cf2%2Cf3%2Cf4%2Cf5%2Cf6%2Cf7%2Cf8%2Cf9%2Cf10%2Cf12%2Cf13%2Cf14%2Cf15%2Cf1"
+      "status": "PASS",
+      "summary": "东财接口本机不可达；同花顺字段命中 4/4（缺失=[]）",
+      "evidence": [
+        "东财 stock_board_industry_name_em -> ERR ProxyError: HTTPSConnectionPool(host='17.push2.eastmoney.com', port=443): Max retries exceeded with url: /api/qt/clist/get?pn=1&pz=100&po=1&",
+        "同花顺 stock_board_industry_summary_ths -> shape=(90, 12)",
+        "同花顺 cols=['序号', '板块', '涨跌幅', '总成交量', '总成交额', '净流入', '上涨家数', '下跌家数', '均价', '领涨股', '领涨股-最新价', '领涨股-涨跌幅']",
+        "字段映射命中=['上涨家数', '下跌家数', '领涨股', '领涨股涨跌幅'] 缺失=[]",
+        "样例：能源金属 涨跌家数 8/6 领涨股='腾远钴业'",
+        "同花顺 info_ths 含涨跌家数='8/6' 涨幅排名='1/90'"
+      ],
+      "caveat": "字段可得但需换源 + 字段名映射（东财『领涨股票』→同花顺『领涨股』）；换源后须同步改 data_provider/akshare_fetcher.py:2218-2223 的取列逻辑",
+      "elapsed_ms": 5205,
+      "error": ""
     },
     {
       "id": "M9",
       "name": "M9 股息率/分红记录/PE-PB 分位接口",
-      "status": "PARTIAL",
-      "summary": "2/3 个接口可用；股息率为自算值（data_provider/base.py:4481），非接口直出",
+      "status": "PASS",
+      "summary": "分红接口 2/2 可用；PE/PB 分位可用接口=['stock_zh_valuation_baidu', 'stock_value_em']",
       "evidence": [
         "分红明细 stock_fhps_detail_em -> shape=(26, 19) cols=['报告期', '业绩披露日期', '送转股份-送转总比例', '送转股份-送股比例', '送转股份-转股比例', '现金分红-现金分红比例', '现金分红-现金分红比例描述', '现金分红-股息率', '每股收益', '每股净资产', '每股公积金', '每股未分配利润', '净利润同比增长', '总股本']",
         "历史分红 stock_history_dividend_detail -> shape=(26, 8) cols=['公告日期', '送股', '转增', '派息', '进度', '除权除息日', '股权登记日', '红股上市日']",
-        "PE/PB 分位 stock_a_indicator_lg -> ERR AttributeError: module 'akshare' has no attribute 'stock_a_indicator_lg'"
+        "PE/PB stock_a_indicator_lg -> 接口不存在",
+        "PE/PB stock_zh_valuation_baidu -> shape=(914, 2) cols=['date', 'value']",
+        "PE/PB stock_zh_valuation_baidu 历史行数 914，可自算历史分位",
+        "PE/PB stock_value_em -> shape=(2157, 13) cols=['数据日期', '当日收盘价', '当日涨跌幅', '总市值', '流通市值', '总股本', '流通股本', 'PE(TTM)', 'PE(静)', '市净率', 'PEG值', '市现率']",
+        "PE/PB stock_value_em 历史行数 2157，可自算历史分位"
       ],
-      "caveat": "代码库零调用 stock_a_indicator_lg / stock_zh_valuation；PE-PB 分位接口若不可用，§5.8 相应项标注缺失、降置信度",
-      "elapsed_ms": 1335,
+      "caveat": "股息率在代码库为自算值（data_provider/base.py:4481），非接口直出；代码库零调用 PE/PB 分位接口。若分位不可得，§5.8 相应项须标注缺失并降置信度",
+      "elapsed_ms": 1682,
       "error": ""
     },
     {
       "id": "M10",
       "name": "M10 3-5 年长周期序列与复权口径",
-      "status": "BLOCKED",
-      "summary": "长周期取数失败",
-      "evidence": [],
-      "caveat": "",
-      "elapsed_ms": 1523,
-      "error": "ProxyError: HTTPSConnectionPool(host='push2his.eastmoney.com', port=443): Max retries exceeded with url: /api/qt/stock/kline/get?fields1=f1%2Cf2%2Cf3%2Cf4%2Cf5%2Cf6&fields2=f51%2Cf52%2Cf53%2Cf54%2Cf55%2Cf56%2Cf57%2Cf58%2Cf59%2Cf60%2Cf61%2Cf116&ut=7eea3edcaed734bea9cbfc24409ed989&klt=101&fqt=1&secid=1.600000&beg"
+      "status": "PASS",
+      "summary": "免费源可取 4 年日线 968 行（前复权 qfq）",
+      "evidence": [
+        "主源 stock_zh_a_hist 失败：ProxyError: HTTPSConnectionPool(host='push2his.eastmoney.com', port=443): Max retries exceeded with url: /api/qt/stock/k",
+        "来源=新浪 stock_zh_a_daily",
+        "4 年 qfq 日线 shape=(968, 9) cols=['date', 'open', 'high', 'low', 'close', 'volume', 'amount', 'outstanding_share', 'turnover']",
+        "行数=968（约 970 交易日量级）"
+      ],
+      "caveat": "代码库默认窗口 DAILY_LOOKBACK_DAYS=120（src/services/screening/config.py:230）；长周期位置分位需另建取数；qfq 非真实复权因子",
+      "elapsed_ms": 7442,
+      "error": ""
     },
     {
       "id": "M11",
       "name": "M11 风险判定历史序列可得性与存储",
       "status": "PARTIAL",
-      "summary": "风险判定专用表在代码中不存在；指数历史可取自免费源但需新建存储与聚合",
+      "summary": "风险判定专用表在代码中不存在；指数历史实测可取（长序列），需新建存储与聚合表",
       "evidence": [
         "规划表命中=[] 缺失=['market_regime', 'rs_t', 'sector_strength', 'market_snapshot', 'sector_snapshot']",
-        "上证指数历史 -> ERR ProxyError: HTTPSConnectionPool(host='push2his.eastmoney.com', port=443): Max retries exceeded with url: /api/qt/stock/k"
+        "东财指数接口失败（尝试 3 次）：ProxyError: HTTPSConnectionPool(host='push2his.eastmoney.com', port=443): Max retries exceeded with ",
+        "新浪指数历史 -> shape=(8770, 6) cols=['date', 'open', 'high', 'low', 'close', 'volume']（尝试 1 次）",
+        "指数序列首日=1990-12-19 末日=2026-11-24 收盘=3548.37",
+        "结论：风险判定所需的指数历史长序列可从免费源取得，瓶颈在存储与聚合表（非取数）"
       ],
       "caveat": "同名 market_regime 在 src/agent/skills/base.py:76 是策略路由标签，非风险判定历史序列，勿混淆",
-      "elapsed_ms": 420,
+      "elapsed_ms": 8962,
       "error": ""
     },
     {
@@ -79,7 +132,7 @@
         "业绩报告 stock_yjyg_em -> shape=(598, 11) cols=['序号', '股票代码', '股票简称', '预测指标', '业绩变动', '预测数值', '业绩变动幅度', '业绩变动原因', '预告类型', '上年同期值', '公告日期']"
       ],
       "caveat": "审计意见全库零命中；连续期判定需 d 阶段实现，不可由单次财报快照推断",
-      "elapsed_ms": 8108,
+      "elapsed_ms": 4232,
       "error": ""
     },
     {
@@ -88,7 +141,7 @@
       "status": "MANUAL",
       "summary": "配置链与 SDK 代码齐备；真实 Stream 收发与 emoji/lark_md 三端渲染需凭据 + 人工验证",
       "evidence": [
-        "lark_oapi 安装=False",
+        "lark_oapi 安装=True",
         "src/config.py: feishu_stream_enabled = True",
         "main.py: start_feishu_stream_background = True",
         "bot/platforms/feishu_stream.py: P2ImMessageReceiveV1 = True",
@@ -96,7 +149,7 @@
         "凭据环境变量是否设置={\"FEISHU_APP_ID\": false, \"FEISHU_APP_SECRET\": false, \"FEISHU_STREAM_ENABLED\": false}"
       ],
       "caveat": "本脚本不探测/不记录密钥；三端渲染一致性（手机/桌面/网页）必须人工截图比对，不可用本地 HTML 模拟替代",
-      "elapsed_ms": 4,
+      "elapsed_ms": 1,
       "error": ""
     },
     {
@@ -111,30 +164,36 @@
         "src/config.py: litellm_fallback_models = True"
       ],
       "caveat": "专用『降级规则模板』在代码中未找到（仅有通用 template_fallback）；d 阶段须补实现并验证超时是否及时",
-      "elapsed_ms": 2,
+      "elapsed_ms": 0,
       "error": ""
     },
     {
       "id": "M15",
       "name": "M15 周/月线与 adj_factor 可得性",
       "status": "PARTIAL",
-      "summary": "adj_factor 有接口调用但无落库字段；周/月线无本地聚合表；免费源可提供周线",
+      "summary": "adj_factor 仅内存计算、无落库字段；周/月线无本地表；直取周/月线受限，但日线聚合周/月线可行（根数与末值自检通过）",
       "evidence": [
         "stock_daily 含 adj_factor = False",
         "周/月线表 = []",
         "pro.adj_factor 调用存在 = True",
         "adj_factor 列在内存计算后丢弃 = True",
-        "周线 period=weekly -> ERR ProxyError: HTTPSConnectionPool(host='push2his.eastmoney.com', port=443): Max retries exceeded with url: /api/qt/stock/k"
+        "周线 period=weekly -> ERR ProxyError: HTTPSConnectionPool(host='push2his.eastmoney.com', port=443): Max retries exceeded with url: /api/qt/stock/k（尝试 3 次）",
+        "周线字段 = n/a",
+        "月线 period=monthly -> ERR ProxyError: HTTPSConnectionPool(host='push2his.eastmoney.com', port=443): Max retries exceeded with url: /api/qt/stock/k（尝试 3 次）",
+        "新浪日线（聚合原料）-> shape=(725, 9)（尝试 1 次）",
+        "日线聚合周线 -> 155 根（3 年应约 156 根）",
+        "日线聚合月线 -> 37 根（3 年应约 36 根）",
+        "聚合口径自检：末根周线 close=10.69 与末根日线 close=10.69 一致"
       ],
-      "caveat": "不可退回前复权落库；不可得时按 §4.6.4 退化为除权事件表推算因子",
-      "elapsed_ms": 1469,
+      "caveat": "不可退回前复权落库；不可得时按 §4.6.4 退化为除权事件表推算因子；周/月线建议在 L2 层由 L1 日线聚合（不额外落库），避免依赖东财周/月线接口",
+      "elapsed_ms": 11799,
       "error": ""
     },
     {
       "id": "M16",
       "name": "M16 公告接口字段完整性与日返回量",
       "status": "PARTIAL",
-      "summary": "字段命中 3/4；单标的 7 日 ( 条",
+      "summary": "字段命中 3/4；单标的 7 日 2 条；缺 ['公告编号']",
       "evidence": [
         "7 日窗口 shape=(2, 5) cols=['代码', '简称', '公告标题', '公告时间', '公告链接']",
         "标题: ['公告标题']",
@@ -142,19 +201,27 @@
         "原文链接: ['公告链接']",
         "日期: ['公告时间']"
       ],
-      "caveat": "代码库现只取标题 + 日期（src/services/screening/candidate_context.py:229-248）；缺字段则 §5.15 降级为『只显示标题 + 来源，无链接』",
-      "elapsed_ms": 1726,
+      "caveat": "实测缺失字段=['公告编号']；代码库现只取标题 + 日期（src/services/screening/candidate_context.py:229-248）；缺字段则 §5.15 降级为『只显示标题 + 来源，无链接』",
+      "elapsed_ms": 562,
       "error": ""
     },
     {
       "id": "M17",
       "name": "M17 3 年首次回补耗时/增量更新",
-      "status": "BLOCKED",
-      "summary": "3 年回补取数失败",
-      "evidence": [],
-      "caveat": "",
-      "elapsed_ms": 623,
-      "error": "ProxyError: HTTPSConnectionPool(host='push2his.eastmoney.com', port=443): Max retries exceeded with url: /api/qt/stock/kline/get?fields1=f1%2Cf2%2Cf3%2Cf4%2Cf5%2Cf6&fields2=f51%2Cf52%2Cf53%2Cf54%2Cf55%2Cf56%2Cf57%2Cf58%2Cf59%2Cf60%2Cf61%2Cf116&ut=7eea3edcaed734bea9cbfc24409ed989&klt=101&fqt=1&secid=1.600000&beg"
+      "status": "PASS",
+      "summary": "5/5 只可取 3 年日线，均值 913ms/只",
+      "evidence": [
+        "主源 stock_zh_a_hist 熔断（600000 失败后不再尝试）：ProxyError: HTTPSConnectionPool(host='push2his.eastmoney.com', port=443): Max retries exceeded with ",
+        "600000 3 年 qfq 725 行，耗时 2579ms",
+        "000001 3 年 qfq 725 行，耗时 490ms",
+        "600519 3 年 qfq 725 行，耗时 498ms",
+        "300750 3 年 qfq 725 行，耗时 591ms",
+        "601318 3 年 qfq 725 行，耗时 411ms",
+        "来源=新浪 stock_zh_a_daily；样本 5 只，串行总耗时 4569ms，均值 913ms/只"
+      ],
+      "caveat": "本地 stock_daily 0 行；首次回补逻辑在代码中不存在，仅有超时/并发保护（daily.py:367-374, screening_service.py:2803）；超限须改分批回补 + 回补期 S0。外推不含限频退避与失败重试，实际耗时会更高",
+      "elapsed_ms": 4590,
+      "error": ""
     },
     {
       "id": "M18",
@@ -164,14 +231,14 @@
       "evidence": [
         "croniter 安装=True；requirements.txt 含 croniter/apscheduler=False",
         "0 20 * * 1-5 -> 2026-11-24 20:00:00",
-        "*/15 9-18 * * 1-5 -> 2026-11-24 11:45:00",
+        "*/15 9-18 * * 1-5 -> 2026-11-24 14:00:00",
         "2026-11-24 交易日: is_market_open=True ctx.is_trading_day=True",
         "2026-11-28 周六: is_market_open=False ctx.is_trading_day=False",
         "2026-10-01 国庆: is_market_open=False ctx.is_trading_day=False",
         "未知市场: is_market_open=True ctx.is_trading_day=None"
       ],
       "caveat": "门控须判 is_trading_day is True 才推；None/False 一律零产出 + 告警。通知去重对同源多时点须用独立去重键，否则同一文本会被吞",
-      "elapsed_ms": 573,
+      "elapsed_ms": 98,
       "error": ""
     }
   ]

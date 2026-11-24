@@ -20,6 +20,7 @@
 | 查看「股票分析助手」可交互原型 | [原型 v2.6（PC / H5 · 六阶段 / 试探仓 / 参数弹层含推送时点配置 / 飞书样张）](prototypes/stock-analysis-assistant-prototype-v2.6.html) | [需求规格 v2.6](requirements/stock-analysis-assistant-requirements-v2.6.md) |
 | 看不懂需求文档？读白话图解版 | [需求白话解读 v2.6（流程图 / 架构图 / 决策引擎 / 存储 / 参数 / 飞书排版 / 推送时点可配）](prototypes/stock-analysis-assistant-explained-v2.6.html) | [需求规格 v2.6](requirements/stock-analysis-assistant-requirements-v2.6.md) |
 | 查看「股票分析助手」技术实现方案 | [技术方案 v0.3（正式 · 已认可：架构 / 存储表 / 决策引擎 / 参数 / 输出层 / 回测 / 时点配置与交易日门控）](technical-design/stock-analysis-assistant-technical-design-v0.3.md) | [需求规格 v2.6](requirements/stock-analysis-assistant-requirements-v2.6.md) |
+| 查看「股票分析助手」编码进展与实现偏差 | [实现说明（d 阶段增量 1：引擎内核 / 参数 / 存储 + 待确认项）](technical-design/stock-analysis-assistant-implementation-notes.md) | [技术方案 v0.3](technical-design/stock-analysis-assistant-technical-design-v0.3.md) |
 | 想直观理解技术方案？看可视化版 | [技术方案可视化 v0.3（五层架构 / 四层存储 / 守卫链 / 阶段门 / 飞书七段 / 门控时序）](technical-design/stock-analysis-assistant-technical-design-v0.3.html) | [技术方案 Markdown 版](technical-design/stock-analysis-assistant-technical-design-v0.3.md) |
 
 ## 快速开始
