@@ -11,13 +11,13 @@
 | 模块 | 状态 | 落点 |
 | --- | --- | --- |
 | C1 架构骨架 | ✅ 建立独立包 | `src/assistant/`（与 `src/agent/` 平级、零依赖） |
-| C2 数据与存储 | 🟡 存储层完成，取数层未做 | `src/assistant/data/` |
+| C2 数据与存储 | ✅ 取数层 + 存储层完成 | `src/assistant/data/` |
 | C3 决策引擎 | ✅ 守卫链 / 阶段 / 阶段门 / 评分 / 风险 / 条件计划 | `src/assistant/engine/` |
 | C4 参数框架 | ✅ 三档预设 + 单项覆盖 + param_hash + 变更记录 | `src/assistant/config/` |
 | C5 输出层 | ⬜ 未开始（Web 页面 / 飞书七段 / LLM 文案） | — |
 | C6 验证回测 | ⬜ 未开始（纸面回看 / 条件计划回测） | — |
 
-**没有做的部分**：真实取数（akshare 封装）、调度与交易日门控、快照 API、Web 页面、飞书推送与入站、LLM 文案层、回测扩展。
+**没有做的部分**：调度与交易日门控、快照 API、Web 页面、飞书推送与入站、LLM 文案层、回测扩展、adj_factor 正式来源（M15 兜底路径已实现但未启用）。
 
 ---
 
@@ -64,6 +64,9 @@ src/assistant/
 | §5.16 三档参数 | `config/presets.py` | 档位方向校验（严格档不得更宽松） |
 | §5.16.4 覆盖与变更 | `config/overrides.py` + `data/storage.py` | param_hash、append-only、回滚也记一条、值类型不丢失 |
 | §4.6 存储分层 | `data/models.py` | L1 幂等、L2 不落库、L3 append-only、L4 下次快照生效 |
+| §4.6.4 不复权落库 | `data/fetcher.py` | 三源一律 `adjust=""`；空响应按失败降级，不落前复权 |
+| §7.2 取数失败降级 | `data/fetcher.py` | 连续 3 次失败熔断该源 300s；全源失败回落缓存标 D3 |
+| §4.6.3 首次回补 ≥3 年 | `data/fetcher.py::backfill` | 批量回补 + 落库 + 周月线重建 + 幂等跳过 |
 
 ---
 
@@ -112,19 +115,38 @@ src/assistant/
 | `stage_theta` / `stage_epsilon` | 0.003 / 0.005 | 需求已给初值，仍待回看确认 |
 | 四个权重 | 8 / 6 / 4 / 4 分 | 需求只给「技术面主导」约束 |
 
+### D-7 取数层新增「指数代码必须带市场前缀」硬校验（实测发现并修复）
+
+- 联网验证时发现真实 bug：`sh000001`（上证指数 3548 点）经个股代码归一化被转成 `sz000001`（平安银行 12 元），**静默取到另一只标的**。
+- 修复：新增 `to_index_symbol()`，只接受带市场的写法（`sh000001` / `000001.SH` / `000001sh`），裸 `000001` 直接抛错，不做「猜市场」；`ReferenceFetcher.fetch_index` 入口即校验。
+- 已加回归测试（含「必须按 sh 前缀请求」的断言）。
+
 ---
 
 ## 5. 验证
 
 ```bash
-# 引擎与存储单测（不需要完整项目依赖，独立 confcutdir 避免加载 tests/conftest.py）
+# 引擎 / 取数 / 存储单测（不需要完整项目依赖，独立 confcutdir 避免加载 tests/conftest.py）
 python -m pytest tests/assistant --confcutdir=tests/assistant -q
 
 # 风格
-python -m flake8 src/assistant tests/assistant
+python -m flake8 src/assistant tests/assistant scripts/assistant_fetch_smoke.py
+
+# 真实联网冒烟（不进入 pytest 默认套件，需装 akshare）
+python scripts/assistant_fetch_smoke.py --codes 600000 000001 --years 3
 ```
 
-当前结果：**109 passed**，`flake8` 无告警。
+当前结果：**141 passed**，`flake8` 无告警。
+
+**2026-11-24 联网实测（akshare 1.19.5）**：
+
+| 项 | 结果 |
+| --- | --- |
+| 东财 `push2his` | `ProxyError`（当前网络下不可用）→ 触发降级 |
+| 新浪日线 | **D2 成功**，`600000` / `000001` 各 725 行，覆盖 2023-11-27 ~ 2026-11-24，0.0 丢弃行，约 2.1–2.9s/只 |
+| 熔断 | 东财 2 次失败已计数（阈值 3 未触发），符合「连续 3 次才排除」 |
+| 指数（新浪） | 81 行，`sh000001` 收盘 **3548.37**（修 bug 前后对比：12.3 → 3548.37） |
+| 板块（同花顺） | 90 个板块，涨跌幅/涨跌家数/领涨股齐全，名称→代码映射命中（如 `881267` 能源金属 +2.23%，8/6 家，领涨腾远钴业） |
 
 测试覆盖的重点契约（均为可回归断言，不是快照）：
 
@@ -141,8 +163,9 @@ python -m flake8 src/assistant tests/assistant
 
 ## 6. 下一步（建议顺序）
 
-1. **取数层**（`data/fetcher.py`）：不复权日线 + 多源降级（东财 `push2` → 同花顺/腾讯/新浪）+ `source_tag`，接 M15–M17 实测结论
-2. **调度与门控**（`scheduling/`）：`HH:MM` / cron 解析、交易日 fail-closed、多时点同源
+1. **调度与门控**（`scheduling/`）：`HH:MM` / cron 解析、交易日 fail-closed、多时点同源投递、非交易日开关
+2. **装配**（`pipeline.py`）：取数 → 守卫链 → 快照落库 → 渲染 的端到端编排
 3. **输出层**（`render/`）：飞书七段图标化 + 卡片渲染（两档密度）
 4. **API + Web**（`api/v1/endpoints/assistant.py` + `pages/assistant/`）
 5. **回测扩展**（`backtest/plan_backtest.py`）+ 纸面回看
+6. `adj_factor` 正式来源（M15）：现已有「同源 qfq/raw 比值推算」函数但默认不启用，待定是否作为长期路径
