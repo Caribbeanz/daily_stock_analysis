@@ -30,6 +30,7 @@ a{color:var(--blue);text-decoration:none}
   padding:3px 10px;border-radius:99px;border:1px solid var(--line);background:var(--gray-bg);color:var(--ink2)}
 .badge.v{background:var(--blue-bg);border-color:#d9e2ff;color:var(--blue)}
 .badge.d{background:var(--warn-bg);border-color:#ffe1b8;color:var(--warn)}
+.badge.ok{background:#edfbf0;border-color:#b2e5c0;color:#2f9e44}
 .topbar .spacer{flex:1}
 .topbar .tip{font-size:12.5px;color:var(--ink2)}
 
@@ -167,7 +168,7 @@ svg{display:block;width:100%;height:auto;max-width:100%}
 <div class="topbar">
   <div class="logo">股票分析助手 · <b>技术实现方案</b></div>
   <span class="badge v">v0.3</span>
-  <span class="badge d">草案 / 待批准</span>
+  <span class="badge ok">正式 / 已认可</span>
   <div class="spacer"></div>
   <div class="tip">需求说「要什么」，这份文档说「怎么实现」</div>
 </div>
@@ -225,14 +226,14 @@ svg{display:block;width:100%;height:auto;max-width:100%}
       <text x="567" y="89" text-anchor="middle" font-size="11.5" fill="#3b5bdb">← 你正在看</text>
       <rect x="695" y="42" width="195" height="66" rx="11" fill="#f1f3f6" stroke="#c7ced8"/>
       <text x="792" y="68" text-anchor="middle" font-size="14" font-weight="700" fill="#8791a0">d 编码</text>
-      <text x="792" y="89" text-anchor="middle" font-size="11.5" fill="#8791a0">未启动</text>
+      <text x="792" y="89" text-anchor="middle" font-size="11.5" fill="#8791a0">已解锁</text>
       <!-- arrows -->
       <line x1="215" y1="75" x2="243" y2="75" stroke="#8791a0" stroke-width="1.6" marker-end="url(#ar)"/>
       <line x1="440" y1="75" x2="468" y2="75" stroke="#8791a0" stroke-width="1.6" marker-end="url(#ar)"/>
       <line x1="665" y1="75" x2="693" y2="75" stroke="#8791a0" stroke-width="1.6" marker-end="url(#ar)"/>
-      <text x="460" y="24" text-anchor="middle" font-size="12.5" font-weight="700" fill="#c92a2a">⚠ 阻断点：需求 v2.6 需你先「批准」，才允许进入 d 编码</text>
+      <text x="460" y="24" text-anchor="middle" font-size="12.5" font-weight="700" fill="#2f9e44">✓ P0 已解除：需求 v2.6 已批准、本方案已认可（2026-11-24）</text>
     </svg>
-    <div class="cap">图 0-1 · 四阶段进度：a、b 已完成，c 为本文档，d 待批准后启动</div>
+    <div class="cap">图 0-1 · 四阶段进度：a、b 已完成，c 已认可转正式，d 口径已解锁（开工待用户下达范围）</div>
   </div>
 
   <h3>这份方案覆盖的 6 个模块</h3>
@@ -257,7 +258,7 @@ svg{display:block;width:100%;height:auto;max-width:100%}
       <p>纸面回看两步法、回测引擎扩展条件计划模式、健康度指标。</p></div>
   </div>
 
-  <div class="note"><b>一句话提醒</b>：这份文档的状态是 <b>「草案 / 技术方案初稿」</b>。它不构成实施授权——需求 v2.6 还没批准，所以现在还不能开始写代码。你过目认可后，批准需求，才会进入 d 阶段。</div>
+  <div class="note"><b>一句话提醒</b>：这份文档的状态是 <b>「正式技术方案（已认可）」</b>。2026-11-24 你已批准需求 v2.6 并认可本方案，d 阶段在口径层已解锁；但批准不等于立即开工——实际编码启动仍需你下达实施范围与任务，并补齐 P1 的 12 项实测。</div>
 </section>
 
 <!-- ============ 1 ============ -->
@@ -757,9 +758,9 @@ svg{display:block;width:100%;height:auto;max-width:100%}
 </section>
 
 <div class="foot">
-  <b>股票分析助手 · 技术实现方案 v0.3</b>　|　状态：草案 / 技术方案初稿　|　创建：2026-11-19　|　v0.2/v0.3：2026-11-24<br>
+  <b>股票分析助手 · 技术实现方案 v0.3</b>　|　状态：正式 / 已认可（2026-11-24）　|　创建：2026-11-19　|　v0.2/v0.3：2026-11-24<br>
   本 HTML 是 <code>docs/technical-design/stock-analysis-assistant-technical-design-v0.3.md</code> 的可视化解读版，与 Markdown 版逐条对应；口径冲突以需求 v2.6 为准。<br>
-  本方案不构成实施授权：需求 v2.6 未批准前，不进入 d 阶段编码。
+  需求 v2.6 已于 2026-11-24 获用户批准、本方案已转正式；d 阶段口径解锁，实际开工待用户下达实施范围。
 </div>
 
 </main>

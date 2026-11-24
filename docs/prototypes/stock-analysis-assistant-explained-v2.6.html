@@ -30,6 +30,7 @@ a{color:var(--blue);text-decoration:none}
   padding:3px 10px;border-radius:99px;border:1px solid var(--line);background:var(--gray-bg);color:var(--ink2)}
 .badge.v{background:var(--blue-bg);border-color:#d9e2ff;color:var(--blue)}
 .badge.d{background:var(--warn-bg);border-color:#ffe1b8;color:var(--warn)}
+.badge.ok{background:#edfbf0;border-color:#b2e5c0;color:#2f9e44}
 .topbar .spacer{flex:1}
 .topbar .tip{font-size:12.5px;color:var(--ink2)}
 
@@ -180,7 +181,7 @@ svg{display:block;width:100%;height:auto;max-width:100%}
 <div class="topbar">
   <div class="logo">股票分析助手 · <b>需求白话解读</b></div>
   <span class="badge v">v2.6</span>
-  <span class="badge d">草案 / 待批准</span>
+  <span class="badge ok">已批准</span>
   <div class="spacer"></div>
   <div class="tip">这份文档的作用是：帮你确认「需求写得对不对、是不是我想要的」</div>
 </div>
@@ -906,7 +907,7 @@ S1 上升趋势（置信度 高）
   <div class="grid3">
     <div class="mini" style="border-color:#d9e2ff"><div class="ic" style="background:var(--blue-bg);color:var(--blue)">A</div>
       <h4>整体批准</h4>
-      <p>文档目前是<b>草案 / 待批准</b>。你确认这份需求就是你要的，才会进入原型固化 → 技术方案 → 编码。在此之前不会动工。</p></div>
+      <p>你已在 2026-11-24 说「批准和认可方案」：需求 v2.6 已批准、技术方案 v0.3 已认可转正式，原型与技术方案都已完成。下一步是编码实施——但它需要你再明确一次实施范围与任务，不是批准即自动开工。</p></div>
     <div class="mini" style="border-color:#ffe1b8"><div class="ic" style="background:var(--warn-bg);color:var(--warn)">B</div>
       <h4>三档的数值要靠回看定</h4>
       <p>箱体 12% / 触碰 2 次 / 连续 2 日只是<b>标准档初值</b>。宽松与严格两套数值还没定，要用「1 只票逐字段看 → 10 只票 × 5 天」的纸面回看 + 三档对照回测定。三档之间的「宽→严 = 动作更少」这条关系已经锁死，不会倒挂。</p></div>
