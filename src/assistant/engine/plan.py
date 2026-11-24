@@ -271,7 +271,10 @@ def _build_branch(
         est_amount=round(amount, 2),
         pct_of_total=pct,
         valid_days=valid_days,
-        settable=trigger_type.writable,
+        # 「可设条件单」= 有价格可挂 **且** 有单可下：NO_OP/观望/持有只是提示，
+        # 让用户去券商挂一个「什么都不做」的条件单没有意义（也不该出现在精简版里）
+        settable=trigger_type.writable
+        and spec.action not in (Action.NO_OP, Action.WATCH, Action.HOLD),
         notes="；".join(notes),
         position_check=check,
         technical_basis=f"触发价来源：{spec.price_ref}" + (f"（容差 {spec.buffer:.2%}）" if spec.buffer else ""),

@@ -31,6 +31,8 @@ from src.assistant.domain import (
 from src.assistant.engine.guard_chain import GuardChainInput, run_guard_chain
 from src.assistant.engine.stage import StageDebounceState
 from src.assistant.enums import Preset, SourceTag, Stage
+from src.assistant.render.feishu import MarketLine, fit_feishu
+from src.assistant.render.review import PlanReview, build_plan_review
 from src.assistant.scheduling.delivery import DeliveryPayload
 from src.assistant.versioning import RuleFingerprint
 
@@ -127,10 +129,9 @@ class SnapshotOutcome:
 
 
 def render_summary(content: Mapping[str, Any]) -> str:
-    """默认渲染：紧凑纯文本摘要。
+    """调试用紧凑摘要（**不是投递文本**，投递走 :func:`fit_feishu` 的七段渲染）。
 
-    **占位实现**——需求 §3.5.3.1 的飞书七段图标化渲染在输出层落地后替换本函数。
-    这里只保证「同一份 content 渲染出同一段文本」，供同源校验与端到端联调使用。
+    保留它的原因：排障时一眼看完三元组与每只标的的关键字段，比读七段快。
     """
 
     rows = content.get("conclusions") or []
@@ -162,7 +163,9 @@ class AssistantPipeline:
     fetcher: Any = None  # DailyFetcher；为 None 时只用 L1 已有数据（离线/测试）
     params: ParamSet | None = None
     names: Mapping[str, str] = field(default_factory=dict)
-    render: Callable[[Mapping[str, Any]], str] = render_summary
+    #: 渲染函数，签名须为 ``render(content, *, review=None, market=None) -> str``
+    #: （默认七段图标化；测试可注入简化实现，但必须接受这两个关键字）
+    render: Callable[..., str] = fit_feishu
     trading_days: Optional[Callable[[date, date], Sequence[date] | None]] = None
     clock: Callable[[], datetime] = field(default=lambda: datetime.now())
     _trading_cache: dict[date, Optional[tuple[date, ...]]] = field(default_factory=dict, repr=False)
@@ -243,9 +246,25 @@ class AssistantPipeline:
             snapshot_id=outcome.snapshot_id,
             calc_version=content["calc_version"],
             param_hash=content["param_hash"],
-            text=self.render(content),
+            text=self.render(content, review=self.review(day), market=self.market_line(day)),
             stale=content["source_tag"] == "D3" or content["gap_days"] > 3,
         )
+
+    def review(self, day: date) -> PlanReview:
+        """T 日复盘：拿 T-1 快照的条件计划对照 T 日行情（只读回看）。"""
+        previous = self.store.previous_snapshot(day)
+        if previous is None:
+            return build_plan_review(None, {})
+        content = self.store.snapshot_content(previous["snapshot_id"])
+        if content is None:  # pragma: no cover - previous_snapshot 命中必有子行
+            return build_plan_review(None, {})
+        codes = {row["code"] for row in content.get("plans") or []}
+        bars = {code: self.store.load_bars(code) for code in codes}
+        return build_plan_review(content, bars)
+
+    def market_line(self, day: date) -> MarketLine:
+        """② 段的大盘一句。**暂未接指数取数**，如实返回「缺失」而不编造（见 D-16）。"""
+        return MarketLine(available=False)
 
     #: 调度层直接把它当 ``generate`` 传进去
     generate = payload

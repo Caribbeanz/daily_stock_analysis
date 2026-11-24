@@ -104,6 +104,20 @@ ADVICE_VALUES: tuple[Action, ...] = (
 
 #: 买入类动作（含试探建仓以外的建仓/加仓）——S3 一律禁止
 BUY_SIDE: frozenset[Action] = frozenset({Action.BUY, Action.ADD, Action.WAIT_BUY})
+
+#: 动作的展示顺序（渲染「允许/禁止」与列表排序用；``NO_OP`` 是内部态，不对外展示）
+ACTION_ORDER: tuple[Action, ...] = (
+    Action.BUY,
+    Action.ADD,
+    Action.PROBE,
+    Action.HOLD,
+    Action.TRIM,
+    Action.CLEAR,
+    Action.WAIT_BUY,
+    Action.WAIT_SELL,
+    Action.WATCH,
+    Action.UNAVAILABLE,
+)
 #: 卖出类动作
 SELL_SIDE: frozenset[Action] = frozenset({Action.TRIM, Action.CLEAR, Action.WAIT_SELL})
 

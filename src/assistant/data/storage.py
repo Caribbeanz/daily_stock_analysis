@@ -428,6 +428,17 @@ class AssistantStore:
             row = sess.execute(stmt.order_by(Snapshot.generated_at.desc()).limit(1)).scalars().first()
             return None if row is None else _snapshot_row(row)
 
+    def previous_snapshot(self, before: date) -> dict | None:
+        """``before`` 之前最近的一份快照（T 日复盘要对照 T-1 的 `snapshot_id`）。"""
+        with self.session() as sess:
+            row = sess.execute(
+                select(Snapshot)
+                .where(Snapshot.data_date < before)
+                .order_by(Snapshot.data_date.desc(), Snapshot.generated_at.desc())
+                .limit(1)
+            ).scalars().first()
+            return None if row is None else _snapshot_row(row)
+
     def snapshot_content(self, snapshot_id: str) -> dict | None:
         """读回一份快照的全部子行，供渲染与校验（**投递文本一律从库里回读后再渲染**）。"""
         with self.session() as sess:

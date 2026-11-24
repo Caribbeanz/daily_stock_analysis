@@ -14,12 +14,13 @@
 | C2 数据与存储 | ✅ 取数层 + 存储层 + 投递台账 | `src/assistant/data/` |
 | C2 调度与门控 | ✅ 时点解析 / 交易日 fail-closed / 多时点同源投递 / 节拍编排 | `src/assistant/scheduling/` |
 | C2 装配链 | ✅ 取数 → 守卫链 → 当日快照 → 渲染 的端到端编排（幂等） | `src/assistant/pipeline.py` |
+| C5 飞书渲染 | 🟡 七段图标化文本 + 两档密度 + T 日复盘已完成；卡片/Web 页面/LLM 文案未做 | `src/assistant/render/` |
 | C3 决策引擎 | ✅ 守卫链 / 阶段 / 阶段门 / 评分 / 风险 / 条件计划 | `src/assistant/engine/` |
 | C4 参数框架 | ✅ 三档预设 + 单项覆盖 + param_hash + 变更记录 | `src/assistant/config/` |
-| C5 输出层 | ⬜ 未开始（Web 页面 / 飞书七段 / LLM 文案） | — |
+| C5 发送接线 | ⬜ 未开始（飞书发送器 / `route_type` / `dedupe_key` / 卡片） | — |
 | C6 验证回测 | ⬜ 未开始（纸面回看 / 条件计划回测） | — |
 
-**没有做的部分**：快照 API、Web 页面、飞书七段渲染与入站、LLM 文案层、回测扩展、战法启停清单接入 `calc_version`、adj_factor 正式来源（M15 兜底路径已实现但未启用）、股票名称来源（现用代码兜底）。
+**没有做的部分**：快照 API、Web 页面与卡片渲染、飞书入站、LLM 文案层、大盘指数取数（② 段现写「数据缺失」）、回测扩展、战法启停清单接入 `calc_version`、adj_factor 正式来源（M15 兜底路径已实现但未启用）、股票名称来源（现用代码兜底）。
 
 ---
 
@@ -42,6 +43,10 @@ src/assistant/
 │   ├── plan.py            条件计划（阶段模板 + 同向过滤 + 股数 + 硬上限）
 │   └── guard_chain.py     守卫链 S0→S6 主入口（留痕 GuardTrace）
 ├── versioning.py           calc_version 指纹（规则集 + 参数 + 分数带）
+├── render/
+│   ├── icons.py            图标语义表（固定映射，三处共用）+ 纯文本剥离
+│   ├── review.py           T 日复盘（T-1 计划对照 T 日行情，只读）
+│   └── feishu.py           七段图标化渲染（两档密度 + 超长按序降级）
 ├── pipeline.py             装配链：ensure_snapshot / payload / generate（幂等）
 ├── data/
 │   ├── models.py          21 张 assistant_ 表（L1 / L3 / L4 + 投递台账 + 防抖状态）
@@ -90,6 +95,13 @@ src/assistant/
 | B50 ③ 当日快照只生成一次 | `pipeline.py::ensure_snapshot` | 按「快照日 T + param_hash + calc_version」查已有快照直接复用 |
 | §5.14.2 连续 N 日防抖 | `data/models.py::StageStateRow` + `pipeline.py` | 防抖状态落库，跨进程/跨日可用（否则每天都是「首次判定」） |
 | §4.6.2 来源如实标注 | `pipeline.py::_worst_tag` | 主源失败降级到 D2 时必须标 D2；快照级取最差 |
+| §3.5.3.1 七段结构 | `render/feishu.py` | 段序固定可整段省略不可换序；① 必带复盘子行；③ 同股只出现一次取最高等级 |
+| §3.5.3.1 图标语义（B47） | `render/icons.py` | 风险用色点、动作用符号、涨跌用 ▲▼；符号只做前缀不替代文字 |
+| §3.5.3.1 硬约束 2 | `render/feishu.py::_plan_block` | ⑥ 段触发/动作/有效期三行不含 emoji 与加粗，可整行照抄 |
+| §3.5.3.1 硬约束 5 | `render/icons.py::strip_markdown` | 降级纯文本前剥离 `**` 与标题井号 |
+| §3.5.3.1 硬约束 7（B48） | `render/feishu.py::fit_feishu` | 完整 1,800 / 精简 1,100；降级顺序＝删风险依据→删阶段证据→删不可设单分支→限分支条数 |
+| B48 两档同源 | `render/feishu.py` | 同一函数 + `RenderOptions` 开关；两档触发价/股数逐字一致（测试锁定） |
+| §3.5.3.1 ① 复盘子行（R23） | `render/review.py` | T-1 计划对照 T 日高低价判触发；跳空单独标；缺行情记「无法判定」不猜 |
 
 ---
 
@@ -209,6 +221,32 @@ src/assistant/
   `self.names.get(code, code)`，即默认显示代码。
 - 待办：由关注清单/持仓录入时带上名称，或接一次名称接口后缓存；不影响任何计算。
 
+### D-15 阶段「打法」「切换信号」文案为初值
+
+- 需求 §3.5.3.1 ⑤ 要求展示「打法 / 允许 / 禁止 / 切换信号」，但**只给了字段名，没给原文**。
+- 现取逐阶段一句话写在 `render/feishu.py::_STAGE_PLAYBOOK` / `_STAGE_SWITCH`（如 S1
+  「回踩不破再买，突破前高追买需确认」、切换「跌破 MA20 且连续 2 日不收回 → 转 S3」）。
+- 「允许 / 禁止」不是手写文案，而是**从 `STAGE_ALLOWED` 反推**——这样阶段门改了口径，
+  展示自动跟着变，不会出现「文案说可以、引擎却拦下」的矛盾。
+- 待你过目措辞；改文案不影响任何计算。
+
+### D-16 ② 段「大盘一句」暂未接指数取数
+
+- 渲染层已支持 `MarketLine`，但装配层暂未取指数，② 段如实写「大盘数据缺失（本次不判断
+  环境档）」，不编造涨跌与档位。
+- 原因：`MarketView` 的 2×2 环境档需要指数与宽度序列，属独立数据能力（方案 §3.1 M1），
+  与「文字好看」无关，未在本增量硬塞。
+- 待办：接入指数日线后填 `pct_change` 与 `regime`，渲染层无需改动。
+
+### D-17 极端超长时的最后一级：限制分支条数
+
+- 硬约束 7 只规定了「先删风险依据 → 再删阶段证据 → 再删不可设单分支」，但当标的数很多
+  （如 8 只 × 4 分支）时，仅靠前三步仍会超过 1,100 字。
+- 因此加最后一级：**只列前 6 条分支**，其余以「另有 N 条分支未展开（查看 WebUI）」一行
+  交代，**整条略去、不截断半句**；已列出的分支仍保留触发条件/股数/金额。
+- 判断依据：硬上限是硬约束，宁可少列分支也不发超长消息；且真正照抄场景在 WebUI 与
+  完整版里都有全量分支。
+
 ## 5. 验证
 
 ```bash
@@ -229,7 +267,7 @@ print(TradingDayGate().decide(datetime(2026,11,24,20,0)).as_dict())"
 python scripts/assistant_fetch_smoke.py --codes 600000 000001 --years 3
 ```
 
-当前结果：**254 passed**，`flake8` 无告警。
+当前结果：**278 passed**，`flake8` 无告警。
 
 **2026-11-24 联网实测（akshare 1.19.5）**：
 
@@ -262,6 +300,12 @@ python scripts/assistant_fetch_smoke.py --codes 600000 000001 --years 3
 | 防抖状态 | 两只均写入 `assistant_stage_state`，`as_of=2026-11-24` |
 | 三日连续（11-20/23/24） | 快照日与请求日一致；11-23 因当日 K 线未出 `gap=1` 但阶段稳定 S1；11-24 拿到新数据后评分由 90 → 82，阶段仍 S1 |
 
+**2026-11-24/25 真实渲染（同一库连续两日）**：
+
+- 11-24：`数据截止 2026-11-24 收盘`、来源 D2、复盘行写「无可用 T-1 快照」、待办 `➕ 加仓 600000 7200 股 · 约 7.43 万`、其余 `⏳ 等待买点 000001`
+- 11-25：`数据截止 2026-11-24 收盘`（当日 K 线未发布）、来源 D1、复盘行写「未触发 6 条（对照快照 20261124-54a2f982b8ab）」、风险段如实写「数据缺口 1 日」
+- 两日均满足：七段齐全、计划数值行无修饰、`600000` 名称缺省时不再重复显示代码
+
 **端到端演练（临时 SQLite，模拟一天 7 次触发 + 跨日 + 进程重启）**：
 
 - 07:00 / 08:05 / 12:00：不生成、不投递；08:00 配置的时点被跳过并告警（仅 20:00 推送）
@@ -285,6 +329,8 @@ python scripts/assistant_fetch_smoke.py --codes 600000 000001 --years 3
 - 投递：同日只生成一次、两时点同源、跨快照 `BLOCKED`、发送失败可重试、重启后台账仍防重
 - 节拍：取数前不生成、早于取数的时点不投递、错过的时点补投、非交易日 `notify_skip` 同日只提醒一次
 - 装配：同日同参数复用快照、换参数生成新快照、增量取数不截断历史、降级来源如实标注、全标的不可用则抛错不产出、防抖状态跨进程可用
+- 渲染：七段顺序固定、① 必带复盘子行、风险同股归并取最高、计划数值行无 emoji/加粗、两档触发价与股数逐字一致、精简版只留可设单分支、超长按序降级不超限、纯文本剥离 `**`
+- 复盘：触发/未触发/跳空/无法判定四类判定、缺行情不猜、无 T-1 快照明确说明
 
 > 未跑：仓库全量测试需要 `fastapi/anyio/httpx` 等完整依赖，本次环境未安装；改动未触及这些模块。
 
@@ -292,10 +338,12 @@ python scripts/assistant_fetch_smoke.py --codes 600000 000001 --years 3
 
 ## 6. 下一步（建议顺序）
 
-1. **输出层**（`render/`）：需求 §3.5.3.1 飞书七段图标化 + 卡片两档密度，替换
-   `pipeline.render_summary` 占位实现；LLM 文案层（只改措辞、不改数值）
-2. **配置落地**：五个 `ASSISTANT_*` + 资金键进 `src/config.py` / `config_registry` / 设置面板（D-11、D-12）
-3. **API + Web**（`api/v1/endpoints/assistant.py` + `pages/assistant/`）
-4. **战法启停清单**接入 `calc_version`（§5.12）
-5. **回测扩展**（`backtest/plan_backtest.py`）+ 纸面回看
-6. `adj_factor` 正式来源（M15）：现已有「同源 qfq/raw 比值推算」函数但默认不启用，待定是否作为长期路径
+1. **发送接线**：把七段文本接到现有 `feishu_sender`（`interactive` 卡片 + `msg_type=text`
+   降级剥离 `**`）、`notification_routing` 新增 `route_type`、`notification_noise` 用
+   `dedupe_key=snapshot_id` + `allow_repeat=True` 防止同源重投被吞
+2. **大盘一句话**（D-16）：接入指数日线填 `MarketLine`，改动只在装配层
+3. **LLM 文案层**（§5.13）：只改措辞、不改数值；失败降级模板
+4. **配置落地**：五个 `ASSISTANT_*` + 资金键进 `src/config.py` / `config_registry` / 设置面板（D-11、D-12）
+5. **API + Web**（`api/v1/endpoints/assistant.py` + `pages/assistant/`）
+6. **战法启停清单**接入 `calc_version`（§5.12）；**回测扩展** + 纸面回看
+7. `adj_factor` 正式来源（M15）：现已有「同源 qfq/raw 比值推算」函数但默认不启用，待定是否作为长期路径
