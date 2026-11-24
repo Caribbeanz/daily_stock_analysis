@@ -16,11 +16,11 @@
 | 处理数据源失败或降级 | [数据源稳定性与故障处理图示](data-source-stability.md) | [FAQ](FAQ.md) |
 | 确认某个市场支持哪些数据 | [市场支持与边界](market-support.md) | [数据中心](data-center-diagnostics.md) |
 | 参与开发或提交 PR | [贡献指南](CONTRIBUTING.md) | [API 规格](architecture/api_spec.json) |
-| 查看「股票分析助手」需求规格 | [需求规格 v2.4](requirements/stock-analysis-assistant-requirements-v2.4.md) | [需求文档目录说明](requirements/README.md) |
-| 查看「股票分析助手」可交互原型 | [原型 v2.4（PC / H5 · 六阶段 / 试探仓 / 参数弹层 / 飞书样张）](prototypes/stock-analysis-assistant-prototype-v2.4.html) | [需求规格 v2.4](requirements/stock-analysis-assistant-requirements-v2.4.md) |
-| 看不懂需求文档？读白话图解版 | [需求白话解读 v2.4（流程图 / 架构图 / 决策引擎 / 存储 / 参数 / 飞书排版）](prototypes/stock-analysis-assistant-explained-v2.4.html) | [需求规格 v2.4](requirements/stock-analysis-assistant-requirements-v2.4.md) |
-| 查看「股票分析助手」技术实现方案 | [技术方案 v0.1（c 阶段：架构 / 存储表 / 决策引擎 / 参数 / 输出层 / 回测）](technical-design/stock-analysis-assistant-technical-design-v0.1.md) | [需求规格 v2.4](requirements/stock-analysis-assistant-requirements-v2.4.md) |
-| 想直观理解技术方案？看可视化版 | [技术方案可视化 v0.1（五层架构 / 四层存储 / 守卫链 / 阶段门 / 飞书七段）](technical-design/stock-analysis-assistant-technical-design-v0.1.html) | [技术方案 Markdown 版](technical-design/stock-analysis-assistant-technical-design-v0.1.md) |
+| 查看「股票分析助手」需求规格 | [需求规格 v2.6（R23 单推 + R24 时点可配）](requirements/stock-analysis-assistant-requirements-v2.6.md) | [需求文档目录说明](requirements/README.md) |
+| 查看「股票分析助手」可交互原型 | [原型 v2.6（PC / H5 · 六阶段 / 试探仓 / 参数弹层含推送时点配置 / 飞书样张）](prototypes/stock-analysis-assistant-prototype-v2.6.html) | [需求规格 v2.6](requirements/stock-analysis-assistant-requirements-v2.6.md) |
+| 看不懂需求文档？读白话图解版 | [需求白话解读 v2.6（流程图 / 架构图 / 决策引擎 / 存储 / 参数 / 飞书排版 / 推送时点可配）](prototypes/stock-analysis-assistant-explained-v2.6.html) | [需求规格 v2.6](requirements/stock-analysis-assistant-requirements-v2.6.md) |
+| 查看「股票分析助手」技术实现方案 | [技术方案 v0.3（c 阶段：架构 / 存储表 / 决策引擎 / 参数 / 输出层 / 回测 / 时点配置与交易日门控）](technical-design/stock-analysis-assistant-technical-design-v0.3.md) | [需求规格 v2.6](requirements/stock-analysis-assistant-requirements-v2.6.md) |
+| 想直观理解技术方案？看可视化版 | [技术方案可视化 v0.3（五层架构 / 四层存储 / 守卫链 / 阶段门 / 飞书七段 / 门控时序）](technical-design/stock-analysis-assistant-technical-design-v0.3.html) | [技术方案 Markdown 版](technical-design/stock-analysis-assistant-technical-design-v0.3.md) |
 
 ## 快速开始
 

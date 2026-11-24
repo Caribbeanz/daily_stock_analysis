@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>股票分析助手 · 交互原型 v2.4（模拟数据）</title>
+<title>股票分析助手 · 交互原型 v2.6（模拟数据）</title>
 <style>
 :root{
   --bg:#f3f6fa; --surface:#fff; --surface2:#f8fafc; --border:#e3e8f0; --border2:#eef1f6;
@@ -349,7 +349,7 @@ body.show-spec [data-spec]{outline:1px dashed #c7d2e2}
 </head>
 <body>
 <div class="proto-bar">
-  <span class="brand">交互原型 v2.4</span>
+  <span class="brand">交互原型 v2.6</span>
   <span class="fake">模拟数据 · 非真实行情</span>
   <span class="hint">需求对照：§6 三视图展示契约 / §5.14 阶段定位与策略匹配 / §5.10 风险 / §5.11 条件计划 / §5.13 LLM 文案层</span>
   <div class="seg" id="deviceSeg">
@@ -364,11 +364,11 @@ body.show-spec [data-spec]{outline:1px dashed #c7d2e2}
 
 <div class="stage">
   <div class="device" id="device">
-    <div class="phone-status"><span>08:02</span><span class="phone-notch"></span><span>●●● 100%</span></div>
+    <div class="phone-status"><span>20:02</span><span class="phone-notch"></span><span>●●● 100%</span></div>
     <div class="app-frame" id="appFrame">
       <header class="app-head">
         <div class="title-row">
-          <h1>盘前助手 · 高抛低吸</h1>
+          <h1>股票分析助手 · 高抛低吸</h1>
           <span class="sub">中长期分红策略 / 技术面为主</span>
           <div class="right"><span class="chip blue">已登录</span><span class="chip fake">原型模拟数据</span></div>
         </div>
@@ -377,7 +377,7 @@ body.show-spec [data-spec]{outline:1px dashed #c7d2e2}
       <nav class="tabbar" id="tabbar"></nav>
       <main id="views"></main>
       <footer class="foot">
-        以上为盘前静态结论与条件计划，由本人在券商端自行设置条件单；工具不自动下单、不监控盘中、开盘后不更新。数据为原型模拟数据，不构成任何投资建议或收益承诺。投资有风险，决策需谨慎。
+        以上为交易日 20:00 推送的静态结论与次一交易日条件计划，由本人在券商端自行设置条件单；工具不自动下单、不监控盘中、开盘后不更新。数据为原型模拟数据，不构成任何投资建议或收益承诺。投资有风险，决策需谨慎。
       </footer>
     </div>
   </div>
@@ -389,13 +389,13 @@ body.show-spec [data-spec]{outline:1px dashed #c7d2e2}
 
 <script>
 /* ============================================================
-   股票分析助手 v2.4 · 交互原型
+   股票分析助手 v2.6 · 交互原型
    全部数据为模拟数据，仅用于验证信息架构 / 展示契约 / 交互。
-   数据严格遵循 docs/requirements/...v2.4.md 的字段与口径。
+   数据严格遵循 docs/requirements/...v2.6.md 的字段与口径。
    ============================================================ */
 const SNAP = {
-  data_date:'2026-11-10', decision_time:'2026-11-11 07:30', render_time:'2026-11-11 08:02',
-  next_trade_date:'2026-11-11', snapshot_id:'snap-20261111-0730', calc_version:'cv2.0.3',
+  data_date:'2026-11-10', decision_time:'2026-11-10 18:00', render_time:'2026-11-10 20:02',
+  next_trade_date:'2026-11-11', snapshot_id:'snap-20261110-2000', calc_version:'cv2.0.3',
   source_tag:'D1', is_trading_day:true, triple_ok:true,
   total_capital:500000, position_pct:62.4, cash_pct:37.6, t_pct:3.1,
   market:{
@@ -453,7 +453,7 @@ const SNAP = {
   todo_codes:['601088','601006','600900','600036','510300','000895']
 };
 
-/* ---------- 阶段定位（§5.14）：六阶段定义（v2.2 含 S5 无结构；v2.4 仅改推送呈现层）+ 每只标的的阶段证据 ---------- */
+/* ---------- 阶段定位（§5.14）：六阶段定义（v2.2 含 S5 无结构；v2.5 改推送时序、v2.6 改时点配置化）+ 每只标的的阶段证据 ---------- */
 const STAGE_DEF={
  S1:{name:'上升趋势',tag:'趋势段',play:'趋势跟随 + 回踩加仓（不追高）',
   allow:'回踩买入 / 持有 / 移动止盈后的减仓 / 正 T（底仓不动）',
@@ -587,7 +587,7 @@ function makeBranch(o){
  return Object.assign({
    action:'不操作',shares:0,amount:0,pct:0,settable:true,
    valid:SNAP.next_trade_date+' 09:30–15:00，收盘未触发作废',
-   invalidate:'收盘未触发 / 次日快照重新生成 / 除权日价位重算 / 三元组不一致转待同步（不因其他分支触发而失效）',
+   invalidate:'收盘未触发 / 下一交易日 20:00 快照重新生成 / 除权日价位重算 / 三元组不一致转待同步（不因其他分支触发而失效）',
    check:'单只 12.8%≤20% ✓ | 总仓 62.4%≤80% ✓ | 现金 37.6%≥20% ✓ | T 仓 3.1%≤10% ✓',
    notes:'',basis:false
  },o);
@@ -991,8 +991,9 @@ function feishuText(mode){
  const sigCount=risks.reduce((a,r)=>a+r.items.length,0), top=risks.slice(0,3);
  const L=[];
  /* ① 头部 */
- L.push('📊 **盘前助手 · '+SNAP.next_trade_date+'**');
- L.push('🗓 基准 '+SNAP.data_date+' 收盘 ｜ 快照 '+SNAP.snapshot_id+' ｜ 版本 '+SNAP.calc_version+' ｜ 数据源 '+SNAP.source_tag);
+ L.push('📊 **股票分析助手 · '+SNAP.next_trade_date+'**');
+ L.push('🗓 基准 '+SNAP.data_date+' 收盘 ｜ 推送 '+SNAP.data_date+' 20:00 ｜ 适用 '+SNAP.next_trade_date+' ｜ 快照 '+SNAP.snapshot_id+' ｜ 版本 '+SNAP.calc_version+' ｜ 数据源 '+SNAP.source_tag);
+ L.push('🔎 当日复盘：上期计划触发 1 / 未触发 2 / 跳空 0（仅回看，不构成新建议）');
  /* ② 一句话 */
  L.push('');
  L.push('🧭 **一句话**');
@@ -1078,7 +1079,7 @@ function feishuText(mode){
  /* ⑦ 声明 */
  L.push('');
  L.push('━━━━━━━━━━━━━━');
- L.push('🔒 盘前静态计划，需本人在券商端自行设单；工具不下单、不盯盘、开盘后不更新');
+ L.push('🔒 静态计划，需本人在券商端自行设单；工具不下单、不盯盘、开盘后不更新');
  L.push('ℹ️ 触发条件 / 股数 / 风险等级 / 数据日期为关键字段，渠道压缩时不得删减');
  L.push('⚠️ 仅供研究参考，不构成投资建议，不承诺收益');
  return L.join('\n');
@@ -1166,7 +1167,13 @@ document.addEventListener('click',e=>{
  if(act==='config'){
   const presetCard=(name,cur,desc,diff)=>'<div style="flex:1 1 110px;min-width:104px;border:1.5px solid '+(cur?'#3b5bdb':'#e5e9ef')+';background:'+(cur?'#f5f8ff':'#fff')+';border-radius:10px;padding:11px 12px"><div style="display:flex;align-items:center;gap:6px"><b style="font-size:13px">'+name+'</b>'+(cur?'<span class="pill plan">当前</span>':'')+'</div><div class="tiny" style="margin-top:5px;line-height:1.7">'+desc+'</div><div class="tiny" style="margin-top:6px;color:#8791a0">'+diff+'</div></div>';
   const row=(k,cur,def,rng,note)=>'<tr><td>'+k+'</td><td><b>'+cur+'</b></td><td>'+def+'</td><td>'+rng+'</td><td class="tiny">'+note+'</td></tr>';
-  const body='<div class="notice blue" style="margin-bottom:10px">配置只改<b>数值</b>，不改枚举与守卫链顺序；保存后<b>次日盘前生效</b>，当日已生成结论零改动；历史快照凭 <b>param_hash</b> 可复现，<b>不产生配置版本号</b>（§5.16 / §6.8）。</div>'+
+  const body='<div class="notice blue" style="margin-bottom:10px">配置只改<b>数值</b>，不改枚举与守卫链顺序；保存后<b>下一次快照生成时生效</b>，当日已生成结论零改动；历史快照凭 <b>param_hash</b> 可复现，<b>不产生配置版本号</b>（§5.16 / §6.8）。</div>'+
+   '<div class="card" style="margin-bottom:12px"><div class="card-h"><h2>运行配置 · 推送时点（v2.6 / R24）</h2><span class="pill state">全局 · 不随三档切换</span></div>'+
+   '<div class="tiny" style="line-height:1.9">• <b>推送时点</b>：<code>20:00</code>（默认）<br>'+
+   '• 可写 <code>08:00,20:00</code> 多时点，或标准 cron <code>0 20 * * 1-5</code>（周一至五 20:00），两种可混用<br>'+
+   '• <b>多时点同源</b>：当天只生成一份快照，各时点推同一份文本，不重算、不产生新建议<br>'+
+   '• <b>非交易日</b>：<code>skip</code>（默认，零产出）／ <code>notify_skip</code>（只发一条「今日非交易日」短提醒，仍不生成报告）<br>'+
+   '• <b>交易日门控独立</b>：先判交易日再投递，日历判不出来按非交易日处理并告警，不会在节假日误推。</div></div>'+
    '<div style="display:flex;gap:9px;flex-wrap:wrap">'+
     presetCard('宽松','','少拦、多做；适合天天看盘、愿意手动纠错','箱体 15% · 防抖 1 日 · 试探仓开（1/3）')+
     presetCard('标准','1','平衡档，也是回测基线；大多数情况选这档','箱体 12% · 防抖 2 日 · 试探仓开（1/3）')+
@@ -1200,7 +1207,7 @@ document.addEventListener('click',e=>{
    '<div class="fs-card"><div class="fs-head"><span class="fs-logo">股</span><b>股票智能分析报告</b><span class="fs-tag">飞书 · 卡片消息</span></div><div class="fs-body">'+fsRender(txt)+'</div></div>'+
    '<details class="fs-raw"><summary>查看纯文本（降级 text 时用，已剥离 <code>**</code>）</summary><pre>'+H(txt.replace(/\*\*/g,''))+'</pre></details>'+
    '<div class="fs-legend"><b>图标语义（固定，不随场景换）</b>：🔴 严重 · 🟠 警示 · 🔵 观察 · ⚪ 无 ｜ ➕ 买入/加仓 · ⏳ 等待 · ➖ 减仓 · 🔻 清仓 · ⏸ 持有 · 👀 观望 · ⛔ 不可操作 ｜ ▲▼ 涨跌（不用红绿点，避免与风险色冲突）</div>';
-  openModal('入口二 · 飞书推送预览（v2.4 · 图标分层）',body,
+  openModal('入口二 · 飞书推送预览（v2.6 · 默认 20:00 单推 + 时点可配 + 图标分层）',body,
    '<button class="btn" data-act="copy-feishu">复制推送文本</button><button class="btn primary" data-act="modal-close">关闭</button>');
   return;
  }

@@ -2,14 +2,15 @@
 
 | 字段 | 内容 |
 | --- | --- |
-| 版本 | v0.1（初稿，待用户过目；批准后才正式排期编码） |
-| 创建日期 | 2026-11-19 |
-| 状态 | **草案 / 技术方案初稿**。本方案在需求 v2.4 **未获用户批准** 前产出，仅供过目；不构成实施授权，不锁定最终实现，不开始编码 |
-| 上游依赖 | `docs/requirements/stock-analysis-assistant-requirements-v2.4.md`（需求 v2.4，状态：草案 / 待批准） |
-| 适用范围 | 把需求 v2.4 中所有「留 c 阶段 / 留技术方案阶段」的待补项落到具体模块、表结构、接口契约、参数初值与实测前置；**不重复需求口径，只做实现落地** |
-| 阅读约定 | 本方案与需求 v2.4 口径必须一致；冲突时以需求 v2.4 为准，本方案按附录 C 变更规则修订。所有「留 d 阶段」的编码细节不在本方案范围 |
+| 版本 | v0.3（在 v0.2 基础上对齐需求 v2.6 的 **R24 推送时点配置化**：默认 20:00 单推、cron/HH:MM 可配、多时点同源、非交易日开关 + fail-closed 门控；其余实现设计不变） |
+| 创建日期 | 2026-11-19（v0.1） |
+| 本次升版日期 | 2026-11-24（v0.2 → v0.3） |
+| 状态 | **草案 / 技术方案初稿**。本方案在需求 v2.6 **未获用户批准** 前产出，仅供过目；不构成实施授权，不锁定最终实现，不开始编码 |
+| 上游依赖 | `docs/requirements/stock-analysis-assistant-requirements-v2.6.md`（需求 v2.6，状态：草案 / 待批准，含 R23 + R24） |
+| 适用范围 | 把需求 v2.6 中所有「留 c 阶段 / 留技术方案阶段」的待补项落到具体模块、表结构、接口契约、参数初值与实测前置；**不重复需求口径，只做实现落地** |
+| 阅读约定 | 本方案与需求 v2.6 口径必须一致；冲突时以需求 v2.6 为准，本方案按附录 C 变更规则修订。所有「留 d 阶段」的编码细节不在本方案范围。**v0.3 变更**：新增 §2.4 调度配置与时区门控、§5.x 调度配置项、§6.3 多时点同源投递、§9.2 门控实测，同步 §2.1 架构、§2.3 时序、§10 映射与口径承诺；**不改决策引擎/表结构主体/参数框架/回测设计**。**全文「20:00」按 R24 为默认可配置时点** |
 
-> **关键提示**：本方案列出的大量「可复用」文件路径与接口签名，来源于 2026-11-10 需求核查与 2026-11-19 代码库实读。**编码启动前须逐条复核**（库可能已演进）；复核结果走附录 C 变更规则，不静默改写。
+> **关键提示**：本方案列出的大量「可复用」文件路径与接口签名，来源于 2026-11-10 需求核查与 2026-11-19 代码库实读。**编码启动前须逐条复核**（库可能已演进）；复核结果走附录 C 变更规则，不静默改写。2026-11-24 已完成一次复核（见 `stock-analysis-assistant-recheck-2026-11-24.md`）：A.0 14 项中 11 项属实、3 项数字/表述需修正（库表 36、`adj_factor` 仅无落库字段、有效渠道 14），待正式编码前回写本方案对应表格。
 
 ---
 
@@ -37,7 +38,7 @@
 
 ### 1.1 本方案要解决什么
 
-需求 v2.4 把所有「怎么算、怎么存、怎么跑、怎么验」的实现细节都显式推迟到 c 阶段。本方案一次性把这些待补项落到：
+需求 v2.6 把所有「怎么算、怎么存、怎么跑、怎么验」的实现细节都显式推迟到 c 阶段。本方案一次性把这些待补项落到：
 
 1. **模块边界**：新增独立模块放在哪、与现有工程怎么隔离（§2）
 2. **表结构与存储**：L1–L4 四层存储的具体表、字段、索引、写入时机（§3）
@@ -71,12 +72,12 @@
 | **配置读取链** | 破坏 `STOCK_LIST` 现有读取链（`src/config.py:refresh_stock_list`） | 新增运行时持久化写入层，读取时合并配置 + 运行时 |
 | **战法文件** | 删除 `strategies/*.yaml`、改其 `instructions` | 本助手不加载不启用战法的 LLM 输出；只转写其判定条件为确定性规则 |
 
-### 1.4 与需求 v2.4 的关系
+### 1.4 与需求 v2.6 的关系
 
-- 本方案**不新增、不修改**任何需求口径；所有口径以需求 v2.4 §1–§10 + 附录为准。
+- 本方案**不新增、不修改**任何需求口径；所有口径以需求 v2.6 §1–§10 + 附录为准（含 **R23 统一推送时序、R24 推送时点配置化**）。
 - 本方案只把需求中「留 c 阶段」的待补项**具体化**为可编码的设计。
 - 若本方案在细化过程中发现需求口径有缺口或矛盾，**不自行裁定**，登记到 §9 待补表并提请用户决策，走需求文档的变更规则（附录 C）。
-- 本方案批准后，需求 v2.4 的「草案 / 待批准」状态方可转为「已批准」，解锁 d 阶段编码。
+- v0.2 按 R23 同步实现时序与措辞、v0.3 按 R24 落地时点配置化；本方案批准后，需求 v2.6 的「草案 / 待批准」状态方可转为「已批准」，解锁 d 阶段编码。
 
 ---
 
@@ -113,7 +114,9 @@
 │  └─ L4 用户输入（持仓/笔记/关注清单/参数覆盖）                │
 ├─────────────────────────────────────────────────────────────┤
 │  调度与配置层                                                 │
-│  ├─ 盘前调度（17:30 取数 → 18:00 生成 → 次日 7:30 可查）      │
+│  ├─ 盘后调度（默认 T 17:30 取数 → T 20:00 前生成 → T 20:00 推送）│
+│  ├─ 时点配置（HH:MM 简写 + 5 字段 cron；多时点同源投递）       │
+│  ├─ 交易日门控（trading_calendar，fail-closed + 时区归一）     │
 │  ├─ 参数框架（三档 + 单项覆盖 + param_hash）                  │
 │  └─ 三元组一致性 [data_date, snapshot_id, calc_version]       │
 └─────────────────────────────────────────────────────────────┘
@@ -134,6 +137,7 @@
 | 取数与存储 | `src/assistant/data/` | L1 取数/回补/补洞、L3 快照写入、L4 用户输入读写 | `akshare_fetcher`（改为不复权）、`trading_calendar` |
 | 决策引擎 | `src/assistant/engine/` | 守卫链、评分、阶段判定、阶段门、风险信号、条件计划 | `analysis_tools`（取数底座，只读） |
 | 参数框架 | `src/assistant/config/` | 三档预设、单项覆盖、变更记录、param_hash | `src/config.py`（只加键，不改读取链） |
+| **调度与时点（v0.3）** | `src/assistant/scheduling/`（新增） | cron/HH:MM 解析与校验、多时点同源投递、交易日门控、时区归一、非交易日开关 | `src/scheduler.py`（`normalize_schedule_times` 兼容 HH:MM）、`src/core/trading_calendar.py`（`build_market_phase_context`）、`src/notification_*`（降噪/静默时段） |
 | 输出装配 | `src/assistant/render/` | 卡片/列表/详情/飞书七段渲染、LLM 文案调用 | `src/llm/`（文案层）、`SUMMARY_SYSTEM_PROMPT` 范式 |
 | Web API | `api/v1/endpoints/assistant.py`（新增） | 只读快照 API（holding_conclusion/plan/risk/snapshot） | `api/app.py`（只加路由，不改 SPA 回退） |
 | Web 前端 | `apps/dsa-web/src/pages/assistant/`（新增） | 独立页面组件，不套 Shell | `App.tsx`（+1 路由）、`AuthProvider` |
@@ -145,27 +149,60 @@
 ### 2.3 调度与运行时序
 
 ```
-T-1 日 17:30  取数（L1 增量：日线 + adj_factor + 板块/指数 + 公告 event_feed）
+调度触发     按 FR-9.13 配置的时点/表达式（默认 20:00；HH:MM 简写与 5 字段 cron 可混用）
+             ├─ 时区归一：按 A 股本地时区（Asia/Shanghai）解析，不受服务器 UTC 影响
+             ├─ 表达式非法 → 回退默认 20:00 + 告警，不静默停摆
+             └─ 【门控】build_market_phase_context("cn").is_trading_day
+                        ├─ None（日历不可用/判不出）→ 按非交易日处理 + 告警（fail-closed）
+                        ├─ False（非交易日）→ 按 non_trading_action 处置（默认 skip）
+                        └─ True（交易日）→ 进入下方链路
+T 日 17:30    取数（L1 增量：T 日线 + adj_factor + 板块/指数 + 公告 event_feed）
              ├─ 缺口检测：≤3 日自动补；>3 日标 stale + 阶段降 S0
              └─ 失败保留旧数据，全链路标 stale
-T-1 日 18:00  决策引擎只跑一次
+T 日 18:00    决策引擎只跑一次（首推时点前必须完成）
              ├─ L2 派生（内存）：MA/斜率/箱体/分位/阶段/评分/风险
-             ├─ 守卫链 S0→S6 产出 advice + 条件计划 + 风险信号
+             ├─ 守卫链 S0→S6 产出供 T+1 使用的 advice + 条件计划 + 风险信号
              ├─ 阶段门 S5.5 校验改写 + 留痕 stage_gate_hit
              ├─ L3 快照写入（append-only，带三元组 + param_hash）
-             └─ LLM 文案层生成三处文案（超时降级规则模板）
-T 日 00:00    参数变更生效（写操作次日盘前生效）
-T 日 07:30    WebUI 可查 / 飞书推送发出（走 notification_noise 静默时段）
-T 日 08:00    必须可查看（FR-9.2）
-非交易日      整链路跳过，不发提示（§8.2）
+             ├─ LLM 文案层生成三处文案（超时降级规则模板）
+             └─ 复盘装配：只读 T-1 快照的条件计划 + T 日收盘，生成 §3.5.3.1 ① 子行
+T 日首推时点  飞书推送一条：T 日复盘（仅回看）+ T+1 结论/计划（FR-9.12 / B49）
+其余配置时点  **同源重投**：读同一份 T 日快照与同一份渲染文本，不再取数/不再计算/不再写快照
+T+1 日 08:00  **无推送、不生成、不重算**（除非用户显式配置该时点）；WebUI 只读 T 日快照（R23）
+非交易日      skip → 零产出；notify_skip → 仅一条「今日非交易日」短提醒，仍不生成快照/卡片
 ```
 
 **时序硬约束**：
-- 取数（17:30）→ 生成（18:00）→ 推送（07:30）之间有约 13 小时缓冲，LLM 超时上限建议 ≤ 120s/标的，13 只 ≤ 26 分钟，远在窗口内。
-- M17 实测若 3 年首次回补超 8:00 窗口 → 改「分批回补 + 回补期阶段记 S0」（§4.6.3）。
-- 非交易日 `trading_calendar` 判定后整链路跳过，不进入取数/生成/推送任何环节。
+- 取数（17:30）→ 生成（18:00）→ 首推（默认 20:00）之间有约 2 小时缓冲，LLM 超时上限建议 ≤ 120s/标的，13 只 ≤ 26 分钟，远在窗口内；M14 实测须在首推时点前完成，超时降级规则模板。
+- 写操作/参数变更按**下一次快照生成时点**生效：T 日快照生成前确认则纳入 T 日快照，生成后确认则纳入下一交易日快照；已生成快照 append-only 不可改（§5.3 / §8.2）。
+- M17 实测若 3 年首次回补超首推时点前窗口 → 改「分批回补 + 回补期阶段记 S0」（§4.6.3）。
+- **门控独立于调度**：cron 只决定「何时尝试」，交易日判定决定「是否真跑」；不得因配置时点命中而在非交易日产出。日历不可用时 fail-closed（§2.4 / FR-8.7）。
+- **多时点同源**：当日只生成一份快照与一份文本，后续时点仅重复投递；须处理与 `notification_noise` 去重的冲突——`notify` 调用带 `dedupe_key = snapshot_id` 与 `allow_repeat=True`，确保「同源重复投递」不被内容去重静默吞掉，同时仍走静默时段与路由规则。
 
-### 2.4 三元组一致性机制
+### 2.4 调度配置与时区门控（v0.3 / R24）
+
+**配置项（建议落在 `src/config.py`，沿用「只加键不改读取链」）**
+
+| 键（建议名） | 默认值 | 含义 | 约束 |
+| --- | --- | --- | --- |
+| `ASSISTANT_PUSH_SCHEDULE` | `20:00` | 推送时点表达式 | `HH:MM` 逗号分隔简写，或标准 5 字段 cron（分 时 日 月 周）；两种可混用 |
+| `ASSISTANT_TRADE_FETCH_TIME` | `17:30` | 取数时点 | `HH:MM`；须早于首推时点 |
+| `ASSISTANT_NON_TRADING_ACTION` | `skip` | 非交易日处置 | `skip` \| `notify_skip`；两值都不生成快照/卡片 |
+| `ASSISTANT_SCHEDULE_TIMEZONE` | `Asia/Shanghai` | 调度与门控时区 | IANA 时区名；与 `trading_calendar` 的市场时区一致 |
+| `ASSISTANT_SCHEDULE_FALLBACK` | `warn` | 表达式解析失败动作 | 回退默认 20:00 并告警（`warn`），不静默停摆 |
+
+**解析与校验**：
+- `HH:MM` 简写复用 `src/scheduler.py::normalize_schedule_times` 的校验正则（`(?:[01]\d|2[0-3]):[0-5]\d`），逗号分隔、排序去重。
+- 5 字段 cron 建议用 `croniter`（新增依赖，需 M 系列前置确认）或 APScheduler `CronTrigger.from_crontab`；**技术选型留 d 阶段定**，本方案只锁定能力边界：能表达 `0 20 * * 1-5`、每 N 分钟、指定星期，且与简写可混用。
+- 解析失败的条目**逐条告警、回退该条为默认 20:00**，不影响其他合法条目；全部失败则整体回退默认并告警。
+
+**门控实现要点**：
+- 用 `build_market_phase_context(market="cn", current_time=...)`，取 `is_trading_day`；该函数 fail-closed（`UNKNOWN` → `is_trading_day=None`），正是 FR-8.7 所需。
+- **不要**用 `is_market_open()` 做门控——它 fail-open（日历不可用返回 `True`），会在节假日误推送。
+- `current_time` 用 `get_market_now("cn")` 取本地时区时间，避免服务器 UTC 跨日误判。
+- `notify_skip` 的短提醒走现有通知通道，标注 `purpose="non_trading_notice"`，不进去重池、不写本地文件。
+
+### 2.5 三元组一致性机制
 
 所有共享对象（`holding_conclusion` / `conditional_plan[]` / `risk_signals[]` / `market_snapshot` / `sector_snapshot`）均携带：
 
@@ -239,7 +276,7 @@ MA / 斜率 / 箱体 / 分位 / 阶段 / 评分 / 风险信号 → 生成时内�
 
 | 表 | 用途 | 关键字段 | 约束 |
 | --- | --- | --- | --- |
-| `snapshot`（新增） | 盘前快照主表 | `snapshot_id, data_date, calc_version, param_hash, generated_at, bars_used, gap_days, source_tag` | `PK(snapshot_id)` append-only，**不可重算覆盖** |
+| `snapshot`（新增） | 交易日快照主表（T 日盘后生成，供 T+1） | `snapshot_id, data_date, calc_version, param_hash, generated_at, bars_used, gap_days, source_tag` | `PK(snapshot_id)` append-only，**不可重算覆盖** |
 | `holding_conclusion`（新增） | 个股结论 | `snapshot_id, code, name, type, advice, advice_display, trend, position_tag, est_level, div_yield, stage, stage_confidence, stage_gate_hit` | `FK(snapshot_id)` |
 | `conditional_plan`（新增） | 条件计划分支 | `snapshot_id, code, branch_id, scenario, trigger_type, trigger_price, action, shares, est_amount, pct_of_total, valid_days, can_set_order, notes` | `FK(snapshot_id)` |
 | `risk_signals`（新增） | 风险信号 | `snapshot_id, code, category, level, human_text, trigger_basis, affects_advice` | `FK(snapshot_id)` |
@@ -255,9 +292,9 @@ MA / 斜率 / 箱体 / 分位 / 阶段 / 评分 / 风险信号 → 生成时内�
 
 | 表 | 用途 | 关键字段 | 写入规则 |
 | --- | --- | --- | --- |
-| `user_holding`（新增） | 持仓与成本 | `code, shares, cost_basis, buy_date, recorded_at` | 用户手工录入；次日生效 |
+| `user_holding`（新增） | 持仓与成本 | `code, shares, cost_basis, buy_date, recorded_at` | 用户手工录入；下一次快照生成时生效 |
 | `user_note`（新增） | 操作笔记 | `note_id, trade_date, code, content, created_at` | 飞书入站写入；不进评分/回测 |
-| `watchlist_runtime`（新增） | 关注清单运行时写入 | `code, action(add/remove), op_time, effective_date, user_id, audit_id` | 飞书二次确认后写入；次日盘前生效；可撤销 |
+| `watchlist_runtime`（新增） | 关注清单运行时写入 | `code, action(add/remove), op_time, effective_date, user_id, audit_id` | 飞书二次确认后写入；下一次快照生成时生效；可撤销 |
 | `param_override`（新增） | 参数单项覆盖 | `param_key, param_value, baseline_preset, op_time, effective_date, user_id, audit_id` | append-only 变更记录；可回滚（回滚也记一条） |
 
 > **关注清单读取链（§3.6.3 护栏）**：读取时 = `STOCK_LIST` 配置 ∪ `watchlist_runtime` 生效项；**不破坏 `src/config.py:refresh_stock_list` 现有读取链**，在其之上合并运行时写入。
@@ -278,7 +315,7 @@ MA / 斜率 / 箱体 / 分位 / 阶段 / 评分 / 风险信号 → 生成时内�
 | --- | --- | --- |
 | **M15** 周线/月线 + `adj_factor` 免费源 | §3.3 复权方案是否成立 | 周/月线由日线聚合（已设计）；`adj_factor` 退化为「除权事件表本地推算」，**不得退回前复权落库** |
 | **M16** 公告接口字段完整性 + 单日返回量 | §5.15 消息推送能否上线 | 降级为「只显示标题 + 来源，无链接」 |
-| **M17** 3 年首次回补耗时 + 限频 | §8.2 的 7:30 产出是否来得及 | 改「分批回补 + 回补期阶段记 S0」 |
+| **M17** 3 年首次回补耗时 + 限频 | §2.3 / §8.1 的 20:00 推送前能否产出 | 改「分批回补 + 回补期阶段记 S0」 |
 
 > 实测在编码启动前优先完成（§7.4）；结果登记进本表与附录 C，不可得时按上表降级。
 
@@ -296,7 +333,7 @@ MA / 斜率 / 箱体 / 分位 / 阶段 / 评分 / 风险信号 → 生成时内�
 ### 3.6 关注清单与笔记存储（§3.6.3 / §3.6.4）
 
 - **笔记** `user_note`：按 `trade_date` / `code` 存储与检索；不进评分、不进回测；不复用 `src/agent/memory.py`（那是分析记忆与置信度校准，用途不同，§3.6.4）
-- **关注清单运行时写入** `watchlist_runtime`：append-only、留痕、可撤销、次日盘前生效；与 `STOCK_LIST` 配置合并读取，不破坏现有读取链
+- **关注清单运行时写入** `watchlist_runtime`：append-only、留痕、可撤销、下一次快照生成时生效；与 `STOCK_LIST` 配置合并读取，不破坏现有读取链
 
 ---
 
@@ -511,7 +548,12 @@ stage_gate_hit = {
 | | `plan_valid_days` | 1 | 1–3 | §4.6 |
 | 展示 | `list_sort_primary` | `risk_level` | 枚举 | §6.2 |
 | | `push_min_level` | 警示 | 观察/警示/严重 | §6.3 |
+| **调度（v0.3 / R24）** | `push_schedule`（详见 §2.4） | `20:00` | HH:MM 简写或 5 字段 cron | §2.3 / §6.3 |
+| | `non_trading_action` | `skip` | `skip` / `notify_skip` | §2.4 / §8.2 |
+| | `schedule_timezone` | `Asia/Shanghai` | IANA 时区名 | §2.4 |
 
+> 调度类配置**不走三档预设**（不随宽松/标准/严格切换），是全局运行参数，改动即时影响下一次触发、不需重算快照；详见 §2.4。
+>
 > 仓位类硬上限（20/80/20/10）是 §5.6 护栏，放进配置页只为「集中可见」，修改须二次确认并强提示「改大等于放宽风控」，默认折叠。参数键名是示例，具体命名属编码阶段；**分组与区间边界属于需求契约**。
 
 ### 5.3 覆盖、生效与变更记录（§5.16.4）
@@ -519,7 +561,7 @@ stage_gate_hit = {
 **基线 + 覆盖**：当前值 = 预设基线（三档之一）+ 用户单项覆盖。页面显示「标准档 · 2 项自定义」，点开可看是哪两项。
 
 **生效规则**：
-- 参数变更**次日盘前生效**（当日结论零改动，L3 append-only 不可重算覆盖）
+- 参数变更**下一次快照生成时生效**（当日结论零改动，L3 append-only 不可重算覆盖；R23）
 - 越界拒绝（超出允许区间的单项覆盖不予接受）
 - 只能调数值，不能改枚举/守卫顺序
 
@@ -541,7 +583,7 @@ stage_gate_hit = {
 3. 变更记录（append-only 列表，可回滚）
 4. 仓位硬上限区（默认折叠，改须二次确认）
 
-**只改参数、不改结论**：配置页写 `param_override` 表，不触发当日重算。保存后提示「次日盘前生效」。
+**只改参数、不改结论**：配置页写 `param_override` 表，不触发当日重算。保存后提示「下一次快照生成时生效」。
 
 **实现落点**：`apps/dsa-web/src/pages/assistant/Settings.tsx`（新增），读/写 `api/v1/endpoints/assistant.py` 的参数接口（新增只读 + 写入 API）。
 
@@ -597,11 +639,15 @@ stage_gate_hit = {
 
 **现状核查**：`feishu_sender._send_feishu_message` 主路径发 `interactive` 卡片（正文 `lark_md`，支持加粗），失败降级 `msg_type=text`。降级时须**剥离 `**`**（硬约束 5）。
 
+**R23 推送时序（R24 起时点可配）**：交易日 T **首推时点（默认 20:00）只发一条**，含 ① 子行的 **T 日复盘**（只读 T-1 快照与 T 日收盘，标「仅回看，不构成新建议」）+ ②–⑦ 的 **T+1 交易日结论/计划**；**T+1 8:00 不推送、不重算**（除非用户显式配置该时点）。复盘不新增段、不改变七段顺序与图标语义。
+
+**R24 多时点同源投递**：配置多个时点时，只在首推时点生成一份快照与一份渲染文本；后续时点从 L3 按 `snapshot_id` 读回**同一份文本**直接投递——不重跑决策引擎、不重取数、不重写快照、不改任何字段。投递时用 `dedupe_key=snapshot_id` + `allow_repeat=True` 绕过 `notification_noise` 的内容去重（否则同源文本会被静默吞掉），但仍走静默时段与路由规则；若首推时点处于静默时段被延后，后续时点以**实际送达的第一条**为首推，其余为同源重投。非交易日 `notify_skip` 的短提醒走同一渠道但带 `purpose="non_trading_notice"`，独立去重键、不写本地文件。
+
 **七段结构（顺序固定，可整段省略，不得换序/合并）**：
 
 | 段 | 图标 | 内容 | 省略条件 |
 | --- | --- | --- | --- |
-| ① 头部 | 📊 🗓 | 交易日 + 三元组 + 数据源 | 不可省 |
+| ① 头部 | 📊 🗓 | 交易日 + 三元组 + 数据源；**附一行 T 日复盘摘要（仅回看）** | 不可省 |
 | ② 一句话 | 🧭 | 大盘一句 + 自选动作计数 | 不可省 |
 | ③ 风险 | 🔥 | 按等级排序，同股只出现一次（取最高归并）；每条三行 | 无信号写「⚪ 今日无风险信号」 |
 | ④ 待办 | ✅ | 今日需处理标的，动作符号前置，带股数/原因 | 无待办写「今日无待办」 |
@@ -668,13 +714,13 @@ stage_gate_hit = {
 
 | # | 命令 | 输入 | 输出 | 写入 |
 | --- | --- | --- | --- | --- |
-| 1 | 加入/移除关注 | 股票代码 | 二次确认 → 确认结果 | `watchlist_runtime`（次日生效） |
+| 1 | 加入/移除关注 | 股票代码 | 二次确认 → 确认结果 | `watchlist_runtime`（下一次快照生效） |
 | 2 | 记录操作思路/心得 | 自然语言笔记 | 确认存入 | `user_note`（不进评分/回测） |
 | 3 | 查询当日结论/条件计划 | 股票代码或「今日」 | 当日快照摘要 | 只读 L3 |
 | 4 | 盘后复盘问答 | 自然语言提问 | 复盘回答（标「仅回看，不构成新建议」） | 只读，**不写回 advice** |
 
 **写操作护栏（§3.6.3）**：
-- `user_id` 白名单 + **二次确认** + 幂等 + 审计 + 可撤销 + **次日盘前生效**（当日结论零改动）
+- `user_id` 白名单 + **二次确认** + 幂等 + 审计 + 可撤销 + **下一次快照生成时生效**（当日结论零改动）
 - 关注清单写入不破坏 `STOCK_LIST` 现有读取链
 - 笔记不进评分/回测
 - 入站视为通知通道扩展（修订 NG-10）；`notification_sender` 仍只负责出站
@@ -780,7 +826,7 @@ stage_gate_hit = {
 
 **统一约束**：
 - 所有响应带三元组 `[data_date, snapshot_id, calc_version]`
-- 渲染前校验三元组一致（§2.4）；不一致返回「待同步」
+- 渲染前校验三元组一致（§2.5）；不一致返回「待同步」
 - **只读**，禁止前端重算
 - 鉴权：复用现有 AuthProvider，未登录 401
 
@@ -789,12 +835,12 @@ stage_gate_hit = {
 | 端点 | 方法 | 入参 | 出参 | 说明 |
 | --- | --- | --- | --- | --- |
 | `/api/v1/assistant/params` | GET | — | `{baseline_preset, overrides[], param_hash}` | 当前生效参数 |
-| `/api/v1/assistant/params/preset` | PUT | `{preset: loose|standard|strict}` | `{ok, effective_date}` | 切换三档（次日生效） |
+| `/api/v1/assistant/params/preset` | PUT | `{preset: loose|standard|strict}` | `{ok, effective_snapshot_date}` | 切换三档（下一次快照生成时生效） |
 | `/api/v1/assistant/params/override` | PUT | `{key, value}` | `{ok, effective_date}` 或 `{error: out_of_range}` | 单项覆盖（越界拒绝） |
 | `/api/v1/assistant/params/override` | DELETE | `{key}` | `{ok, effective_date}` | 撤销单项覆盖（记一条回滚） |
 | `/api/v1/assistant/params/history` | GET | — | `param_override[]` | 变更记录（append-only） |
 
-**约束**：写操作次日盘前生效；append-only；仓位类改须二次确认。
+**约束**：写操作下一次快照生成时生效；append-only；仓位类改须二次确认。
 
 ### 8.3 飞书入站命令接口（复用 dispatcher）
 
@@ -805,7 +851,7 @@ stage_gate_hit = {
 | `查询 <code>` 或 `今日` | 代码或关键字 | 当日快照摘要 | 只读 L3 |
 | `复盘 <问题>` | 自然语言 | 复盘回答 | 只读，不写回 advice |
 
-**约束**：`user_id` 白名单 + 二次确认 + 幂等 + 审计 + 可撤销 + 次日生效。
+**约束**：`user_id` 白名单 + 二次确认 + 幂等 + 审计 + 可撤销 + 下一次快照生效。
 
 ### 8.4 LLM 文案层接口（内部）
 
@@ -845,7 +891,8 @@ stage_gate_hit = {
 | M14 LLM 渠道可用性 | §6.4 能否按时产出 | 降级规则模板 | §6.4 |
 | M15 周/月线 + adj_factor | §3.3 复权方案 | 日线聚合 + 事件表推算 | §3.4 |
 | M16 公告接口字段 | §5.15 消息推送 | 只显示标题+来源 | §3.4 |
-| M17 3 年回补耗时 | §8.2 7:30 产出 | 分批回补 + S0 | §3.4 |
+| M17 3 年回补耗时 | §2.3 / §8.1 首推时点前产出 | 分批回补 + S0 | §3.4 |
+| **M18（v0.3）cron 解析库与交易日门控实测** | FR-9.13 完整 5 字段 cron（含 `1-5` 星期、`*/N`）能否稳定解析；`trading_calendar` 判不出来时 fail-closed 是否生效；`notification_noise` 同源重投不被吞 | 解析库选型改 `croniter` / APScheduler；门控异常一律零产出 + 告警；重投改独立去重键 | §2.4 / §2.3 / §6.3 |
 
 ### 9.3 需纸面回看回写（编码后跑 §7.1）
 
@@ -892,30 +939,31 @@ stage_gate_hit = {
 | §4.7 战法转写 | C3 | §5.12 | R11 |
 | §5 参数框架 | C4 | §5.16、§6.8 | R21 |
 | §6.1 Web 页面 | C5 | §3.5.2 | R14 |
-| §6.3 飞书推送 | C5 | §3.5.3、§3.5.3.1 | R15、R22 |
+| §6.3 飞书推送 | C5 | §3.5.3、§3.5.3.1、§8.1 FR-9.12 | R15、R22、R23 |
+| **§2.3/§2.4 调度与门控（v0.3）** | C2/C4 | §8.1 FR-9.13、§8.2 FR-8.6/FR-8.7、§9.1 B50 | **R24** |
 | §6.4 LLM 文案层 | C5 | §5.13 | R16 |
 | §6.5 飞书入站 | C5 | §3.6 | R17 |
 | §7 验证回测 | C6 | §9.2、§9.4 | D2、R13 |
 
-**口径一致性承诺**：本方案每一处设计都可回溯到需求 v2.4 的章节与决议号；无新增口径、无修改口径。冲突时以需求 v2.4 为准。
+**口径一致性承诺**：本方案每一处设计都可回溯到需求 v2.6 的章节与决议号；v0.2 已按 R23 同步推送时序与生效措辞，v0.3 已按 R24 落地时点配置化、多时点同源、非交易日开关与 fail-closed 门控，**新增的是实现设计，不新增/修改需求口径**。冲突时以需求 v2.6 为准。
 
 ---
 
 ## 附录 A：可复用清单总表（代码库实读）
 
-> 来源：需求 v2.4 的 2026-11-10 核查结论 + 2026-11-19 代码库实读（Explore 全量探查 8 模块）。**编码启动前须逐条复核**（库可能已演进）。
+> 来源：需求 v2.6 的 2026-11-10 核查结论 + 2026-11-19 代码库实读（Explore 全量探查 8 模块）+ 2026-11-24 复核记录。**编码启动前须逐条复核**（库可能已演进）。
 
-### A.0 实读核查关键发现（2026-11-19，与需求/方案基线的差异）
+### A.0 实读核查关键发现（2026-11-19 初读 + 2026-11-24 复核，与需求/方案基线的差异）
 
-> 以下为 Explore 实读代码库后的**关键修正与确认**，直接影响 §3–§7 的实现设计。
+> 以下为 Explore 实读代码库后的**关键修正与确认**，直接影响 §3–§7 的实现设计。2026-11-24 复核修正 3 处：#1 表数 28→**36**（不含 schema_migrations）、#4 表述改为「无 adj_factor **落库字段**」、#5 渠道 13→**14 个有效渠道**（+ UNKNOWN＝15 枚举值）。
 
 | # | 发现 | 与基线差异 | 影响章节 | 处理 |
 | --- | --- | --- | --- | --- |
-| 1 | **8 张规划表全部不存在**：`market_regime`/`rs_t`/`sector_strength`/`holding_conclusion`/`conditional_plan`/`risk_signals`/`market_snapshot`/`sector_snapshot` 均需新建 | 需求 §4.6.1 记 38 张表，实读**实存 28 张**（不含 schema_migrations）；差异可能因统计口径或库演进 | §3.2 | 以实读为准；8 张表按 §3.2 设计新建 |
+| 1 | **8 张规划表全部不存在**：`market_regime`/`rs_t`/`sector_strength`/`holding_conclusion`/`conditional_plan`/`risk_signals`/`market_snapshot`/`sector_snapshot` 均需新建 | 需求 §4.6.1 记 38 张表；2026-11-24 复核实存 **36 张**（不含 `schema_migrations`），既非 38 也非初稿 28 | §3.2 | 以复核 36 为准；8 张表按 §3.2 设计新建 |
 | 2 | **`source_tag`(D1/D2/D3) 不存在**：代码中无此标记，仅 `docs/requirements` 与 `deliverables/` 中规划；`snapshot.py` 的 `df.attrs["snapshot_source"]`(L106) 可作派生基础 | 需求/方案多处引用 source_tag | §3.1 | 新建：`Pick`/`ScreenResult` 加 `source_tag` 字段 |
-| 3 | **`calc_version` 不存在**：代码层只有 `backtest_engine_version: str = "v1"`（config L1296）；无独立 calc_version 字段 | 方案 §2.4/§5.3 大量引用 calc_version | §2.4/§5.3 | 复用 `backtest_engine_version` 或新增 `calc_version` 字段（走 Config 迁移） |
-| 4 | **复权**：`akshare_fetcher` 全部 `adjust="qfq"`（前复权），无独立 `adj_factor` 接口；`TICKFLOW_KLINE_ADJUST` 有 5 值但默认 `none` | 与 §3.2 修正一致 | §3.2 | 确认需改 `adjust=""` + 新建 adj_factor 取数 |
-| 5 | **通知渠道 13 个**（非需求记的 15+）：WECHAT/FEISHU/DINGTALK/TELEGRAM/EMAIL/PUSHOVER/NTFY/GOTIFY/PUSHPLUS/SERVERCHAN3/CUSTOM/DISCORD/SLACK/ASTRBOT；`route_type` 三类 `report/alert/system_error` | 数字修正 | §6.3 | 以实读为准；新增 route_type 在 `NOTIFICATION_ROUTE_CONFIGS`(L31) 注册 |
+| 3 | **`calc_version` 不存在**：代码层只有 `backtest_engine_version: str = "v1"`（config L1296）；无独立 calc_version 字段 | 方案 §2.5/§5.3 大量引用 calc_version | §2.5/§5.3 | 复用 `backtest_engine_version` 或新增 `calc_version` 字段（走 Config 迁移） |
+| 4 | **复权**：`akshare_fetcher` 为 `adjust="qfq"`（前复权）；`screening/daily.py` 已有 tushare `pro.adj_factor` 调用，但**无 `adj_factor` 落库字段**；`TICKFLOW_KLINE_ADJUST` 有 5 值但默认 `none` | 与 §3.2 修正一致；2026-11-24 复核修正「无接口」表述 | §3.2 | 确认需改 `adjust=""` + 新建 adj_factor 落库字段/取数 |
+| 5 | **通知渠道 14 个有效值**（`NotificationChannel` 14 个 + `UNKNOWN` 共 15 个枚举；需求写 15+、初稿写 13 均不准）：WECHAT/FEISHU/DINGTALK/TELEGRAM/EMAIL/PUSHOVER/NTFY/GOTIFY/PUSHPLUS/SERVERCHAN3/CUSTOM/DISCORD/SLACK/ASTRBOT；`route_type` 三类 `report/alert/system_error` | 2026-11-24 复核对齐为 14 | §6.3 | 以 14 为准；新增 route_type 在 `NOTIFICATION_ROUTE_CONFIGS`(L31) 注册 |
 | 6 | **回测 `win_rate_pct` 口径**：分母 = `win_count + loss_count`（**排除 neutral**）；`neutral_rate_pct` 单独算；`_MIN_CALIBRATION_SAMPLES=30` 在 `src/agent/memory.py` L32 | 方案 §7.2 引用 evaluated>=30 | §7.2 | 确认落点；条件计划回测模式须自定胜率口径 |
 | 7 | **回测不支持条件单模拟**：`BacktestResultLike` 有 `hit_stop_loss/take_profit/first_hit` 但无 conditional order；`_classify_outcome` 仅 win/loss/neutral 三分类 | 与 §7.2 缺口判断一致 | §7.2 | 确认需扩展条件计划回测模式 |
 | 8 | **LLM fallback 闭集**：`SUPPORTED_GENERATION_FALLBACK_BACKENDS = frozenset({LITELLM_BACKEND_ID})`，fallback 只能到 litellm；**无独立成本($/token)预算机制**，只有 token 用量统计（`usage.py` → `LLMUsage` 表） | 方案 §6.4 提渠道/成本留编码 | §6.4 | 成本上限需新建 `src/llm/cost_budget.py` |
@@ -1009,7 +1057,7 @@ stage_gate_hit = {
 - `win_rate_pct = win_count / (win_count + loss_count) × 100`，**分母排除 neutral**；`neutral_rate_pct` 单独计算
 - `_MIN_CALIBRATION_SAMPLES = 30`（样本下限）落在 `src/agent/memory.py` L32，非 backtest_engine 内
 - `BacktestResultLike` 有 `hit_stop_loss/take_profit/first_hit` 但**无 conditional order 模拟**；`_classify_outcome` 仅 win/loss/neutral 三分类
-- `engine_version = "v1"`（config L1296），即 `calc_version` 对应物；方案 §2.4 的新 `calc_version` 须复用或扩展此字段
+- `engine_version = "v1"`（config L1296），即 `calc_version` 对应物；方案 §2.5 的新 `calc_version` 须复用或扩展此字段
 - 条件计划回测模式（§7.2）须**自定胜率口径**（含分红、扣成本、T+1、部分成交），不复用现有 win/loss/neutral 三分类
 
 ---
@@ -1071,9 +1119,9 @@ stage_gate_hit = {
 
 ## 文档状态说明
 
-- 本方案为 **c 阶段技术方案初稿 v0.1**，在需求 v2.4 **未获用户批准** 前产出，仅供过目。
-- 本方案不构成实施授权；用户过目并批准需求 v2.4 后，本方案方可转为正式技术方案、进入 d 阶段编码。
-- 本方案与需求 v2.4 口径一致；若过目中发现缺口或矛盾，登记到 §9 并提请用户决策，走需求变更规则。
+- 本方案为 **c 阶段技术方案初稿 v0.3**，在需求 v2.6 **未获用户批准** 前产出，仅供过目；v0.2 按 R23 同步推送时序与生效措辞，v0.3 按 R24 落地时点配置化、多时点同源、非交易日开关与 fail-closed 门控。
+- 本方案不构成实施授权；用户过目并批准需求 v2.6 后，本方案方可转为正式技术方案、进入 d 阶段编码。
+- 本方案与需求 v2.6 口径一致；若过目中发现缺口或矛盾，登记到 §9 并提请用户决策，走需求变更规则。
 - 附录 A 的文件路径与接口签名须在编码启动前逐条复核（库可能已演进）。
 
 

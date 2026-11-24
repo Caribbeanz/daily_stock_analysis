@@ -1,0 +1,507 @@
+{
+  "overall": {
+    "evaluations": 4643,
+    "completed": 4643,
+    "win": 1894,
+    "loss": 1967,
+    "neutral": 782,
+    "win_rate_pct": 49.05,
+    "neutral_rate_pct": 16.84,
+    "profit_factor": 1.376,
+    "avg_return_pct": 0.751,
+    "advice_distribution": {
+      "持有": 1862,
+      "观望": 838,
+      "清仓": 938,
+      "减仓": 889,
+      "等待买点": 55,
+      "建仓": 61
+    },
+    "stage_distribution": {
+      "S1": 1787,
+      "S0": 290,
+      "S3": 1567,
+      "S2": 390,
+      "S5": 548,
+      "S4": 61
+    },
+    "hold_and_watch_share_pct": 58.15,
+    "flip_rate_pct": 18.04,
+    "stage_switches_per_year": 27.63,
+    "max_consecutive_watch_days": 22
+  },
+  "in_sample": {
+    "evaluations": 2035,
+    "completed": 2035,
+    "win": 777,
+    "loss": 1015,
+    "neutral": 243,
+    "win_rate_pct": 43.36,
+    "neutral_rate_pct": 11.94,
+    "profit_factor": 1.795,
+    "avg_return_pct": 1.479,
+    "advice_distribution": {
+      "持有": 867,
+      "观望": 463,
+      "清仓": 303,
+      "减仓": 366,
+      "等待买点": 24,
+      "建仓": 12
+    },
+    "stage_distribution": {
+      "S1": 844,
+      "S0": 146,
+      "S3": 554,
+      "S2": 162,
+      "S5": 317,
+      "S4": 12
+    },
+    "hold_and_watch_share_pct": 65.36,
+    "flip_rate_pct": 17.38,
+    "stage_switches_per_year": 29.26,
+    "max_consecutive_watch_days": 22
+  },
+  "out_of_sample": {
+    "evaluations": 2608,
+    "completed": 2608,
+    "win": 1117,
+    "loss": 952,
+    "neutral": 539,
+    "win_rate_pct": 53.99,
+    "neutral_rate_pct": 20.67,
+    "profit_factor": 1.087,
+    "avg_return_pct": 0.182,
+    "advice_distribution": {
+      "持有": 995,
+      "观望": 375,
+      "清仓": 635,
+      "减仓": 523,
+      "等待买点": 31,
+      "建仓": 49
+    },
+    "stage_distribution": {
+      "S1": 943,
+      "S0": 144,
+      "S5": 231,
+      "S3": 1013,
+      "S2": 228,
+      "S4": 49
+    },
+    "hold_and_watch_share_pct": 52.53,
+    "flip_rate_pct": 18.62,
+    "stage_switches_per_year": 26.37,
+    "max_consecutive_watch_days": 14
+  },
+  "by_stage": {
+    "S0": {
+      "evaluations": 290,
+      "completed": 290,
+      "win": 117,
+      "loss": 173,
+      "neutral": 0,
+      "win_rate_pct": 40.34,
+      "neutral_rate_pct": 0.0,
+      "profit_factor": 1.708,
+      "avg_return_pct": 0.934,
+      "advice_distribution": {
+        "观望": 290
+      },
+      "stage_distribution": {
+        "S0": 290
+      },
+      "hold_and_watch_share_pct": 100.0,
+      "flip_rate_pct": 0.0,
+      "stage_switches_per_year": 0.0,
+      "max_consecutive_watch_days": 48
+    },
+    "S1": {
+      "evaluations": 1787,
+      "completed": 1787,
+      "win": 888,
+      "loss": 628,
+      "neutral": 271,
+      "win_rate_pct": 58.58,
+      "neutral_rate_pct": 15.17,
+      "profit_factor": 1.301,
+      "avg_return_pct": 0.615,
+      "advice_distribution": {
+        "持有": 1732,
+        "等待买点": 55
+      },
+      "stage_distribution": {
+        "S1": 1787
+      },
+      "hold_and_watch_share_pct": 96.92,
+      "flip_rate_pct": 5.3,
+      "stage_switches_per_year": 0.0,
+      "max_consecutive_watch_days": 3
+    },
+    "S2": {
+      "evaluations": 390,
+      "completed": 390,
+      "win": 137,
+      "loss": 146,
+      "neutral": 107,
+      "win_rate_pct": 48.41,
+      "neutral_rate_pct": 27.44,
+      "profit_factor": 1.566,
+      "avg_return_pct": 1.028,
+      "advice_distribution": {
+        "减仓": 260,
+        "持有": 130
+      },
+      "stage_distribution": {
+        "S2": 390
+      },
+      "hold_and_watch_share_pct": 33.33,
+      "flip_rate_pct": 25.89,
+      "stage_switches_per_year": 0.0,
+      "max_consecutive_watch_days": 0
+    },
+    "S3": {
+      "evaluations": 1567,
+      "completed": 1567,
+      "win": 562,
+      "loss": 624,
+      "neutral": 381,
+      "win_rate_pct": 47.39,
+      "neutral_rate_pct": 24.31,
+      "profit_factor": 1.353,
+      "avg_return_pct": 0.776,
+      "advice_distribution": {
+        "清仓": 938,
+        "减仓": 629
+      },
+      "stage_distribution": {
+        "S3": 1567
+      },
+      "hold_and_watch_share_pct": 0.0,
+      "flip_rate_pct": 22.79,
+      "stage_switches_per_year": 0.0,
+      "max_consecutive_watch_days": 0
+    },
+    "S4": {
+      "evaluations": 61,
+      "completed": 61,
+      "win": 24,
+      "loss": 14,
+      "neutral": 23,
+      "win_rate_pct": 63.16,
+      "neutral_rate_pct": 37.7,
+      "profit_factor": 2.046,
+      "avg_return_pct": 1.085,
+      "advice_distribution": {
+        "建仓": 61
+      },
+      "stage_distribution": {
+        "S4": 61
+      },
+      "hold_and_watch_share_pct": 0.0,
+      "flip_rate_pct": 0.0,
+      "stage_switches_per_year": 0.0,
+      "max_consecutive_watch_days": 0
+    },
+    "S5": {
+      "evaluations": 548,
+      "completed": 548,
+      "win": 166,
+      "loss": 382,
+      "neutral": 0,
+      "win_rate_pct": 30.29,
+      "neutral_rate_pct": 0.0,
+      "profit_factor": 1.417,
+      "avg_return_pct": 0.79,
+      "advice_distribution": {
+        "观望": 548
+      },
+      "stage_distribution": {
+        "S5": 548
+      },
+      "hold_and_watch_share_pct": 100.0,
+      "flip_rate_pct": 0.0,
+      "stage_switches_per_year": 0.0,
+      "max_consecutive_watch_days": 96
+    }
+  },
+  "by_symbol": {
+    "000725": {
+      "evaluations": 566,
+      "completed": 566,
+      "win": 231,
+      "loss": 247,
+      "neutral": 88,
+      "win_rate_pct": 48.33,
+      "neutral_rate_pct": 15.55,
+      "profit_factor": 1.28,
+      "avg_return_pct": 0.847,
+      "advice_distribution": {
+        "持有": 224,
+        "等待买点": 7,
+        "观望": 112,
+        "清仓": 110,
+        "减仓": 102,
+        "建仓": 11
+      },
+      "stage_distribution": {
+        "S1": 221,
+        "S5": 75,
+        "S3": 185,
+        "S0": 37,
+        "S2": 37,
+        "S4": 11
+      },
+      "hold_and_watch_share_pct": 59.36,
+      "flip_rate_pct": 17.88,
+      "stage_switches_per_year": 25.69,
+      "max_consecutive_watch_days": 21
+    },
+    "513100": {
+      "evaluations": 566,
+      "completed": 566,
+      "win": 306,
+      "loss": 194,
+      "neutral": 66,
+      "win_rate_pct": 61.2,
+      "neutral_rate_pct": 11.66,
+      "profit_factor": 1.702,
+      "avg_return_pct": 1.092,
+      "advice_distribution": {
+        "持有": 283,
+        "观望": 99,
+        "清仓": 58,
+        "减仓": 111,
+        "等待买点": 6,
+        "建仓": 9
+      },
+      "stage_distribution": {
+        "S1": 269,
+        "S0": 32,
+        "S5": 67,
+        "S3": 143,
+        "S2": 46,
+        "S4": 9
+      },
+      "hold_and_watch_share_pct": 67.49,
+      "flip_rate_pct": 18.23,
+      "stage_switches_per_year": 28.69,
+      "max_consecutive_watch_days": 22
+    },
+    "513180": {
+      "evaluations": 746,
+      "completed": 746,
+      "win": 297,
+      "loss": 343,
+      "neutral": 106,
+      "win_rate_pct": 46.41,
+      "neutral_rate_pct": 14.21,
+      "profit_factor": 1.045,
+      "avg_return_pct": 0.129,
+      "advice_distribution": {
+        "清仓": 182,
+        "减仓": 165,
+        "观望": 143,
+        "持有": 246,
+        "等待买点": 10
+      },
+      "stage_distribution": {
+        "S3": 319,
+        "S5": 96,
+        "S1": 240,
+        "S0": 47,
+        "S2": 44
+      },
+      "hold_and_watch_share_pct": 52.14,
+      "flip_rate_pct": 19.46,
+      "stage_switches_per_year": 26.46,
+      "max_consecutive_watch_days": 19
+    },
+    "513530": {
+      "evaluations": 566,
+      "completed": 566,
+      "win": 215,
+      "loss": 233,
+      "neutral": 118,
+      "win_rate_pct": 47.99,
+      "neutral_rate_pct": 20.85,
+      "profit_factor": 1.613,
+      "avg_return_pct": 0.901,
+      "advice_distribution": {
+        "观望": 66,
+        "清仓": 115,
+        "减仓": 124,
+        "持有": 245,
+        "等待买点": 4,
+        "建仓": 12
+      },
+      "stage_distribution": {
+        "S5": 43,
+        "S3": 196,
+        "S2": 51,
+        "S0": 23,
+        "S1": 241,
+        "S4": 12
+      },
+      "hold_and_watch_share_pct": 54.95,
+      "flip_rate_pct": 16.46,
+      "stage_switches_per_year": 25.26,
+      "max_consecutive_watch_days": 14
+    },
+    "520660": {
+      "evaluations": 501,
+      "completed": 501,
+      "win": 168,
+      "loss": 232,
+      "neutral": 101,
+      "win_rate_pct": 42.0,
+      "neutral_rate_pct": 20.16,
+      "profit_factor": 1.337,
+      "avg_return_pct": 0.486,
+      "advice_distribution": {
+        "观望": 83,
+        "持有": 215,
+        "清仓": 93,
+        "减仓": 93,
+        "建仓": 12,
+        "等待买点": 5
+      },
+      "stage_distribution": {
+        "S0": 30,
+        "S1": 209,
+        "S5": 53,
+        "S3": 159,
+        "S2": 38,
+        "S4": 12
+      },
+      "hold_and_watch_share_pct": 59.48,
+      "flip_rate_pct": 15.8,
+      "stage_switches_per_year": 27.16,
+      "max_consecutive_watch_days": 14
+    },
+    "601169": {
+      "evaluations": 566,
+      "completed": 566,
+      "win": 246,
+      "loss": 211,
+      "neutral": 109,
+      "win_rate_pct": 53.83,
+      "neutral_rate_pct": 19.26,
+      "profit_factor": 1.403,
+      "avg_return_pct": 0.676,
+      "advice_distribution": {
+        "持有": 234,
+        "观望": 87,
+        "清仓": 126,
+        "减仓": 103,
+        "等待买点": 11,
+        "建仓": 5
+      },
+      "stage_distribution": {
+        "S1": 221,
+        "S0": 38,
+        "S3": 196,
+        "S2": 57,
+        "S5": 49,
+        "S4": 5
+      },
+      "hold_and_watch_share_pct": 56.71,
+      "flip_rate_pct": 19.82,
+      "stage_switches_per_year": 29.97,
+      "max_consecutive_watch_days": 12
+    },
+    "601818": {
+      "evaluations": 566,
+      "completed": 566,
+      "win": 238,
+      "loss": 205,
+      "neutral": 123,
+      "win_rate_pct": 53.72,
+      "neutral_rate_pct": 21.73,
+      "profit_factor": 1.334,
+      "avg_return_pct": 0.508,
+      "advice_distribution": {
+        "减仓": 104,
+        "持有": 226,
+        "观望": 104,
+        "等待买点": 7,
+        "清仓": 115,
+        "建仓": 10
+      },
+      "stage_distribution": {
+        "S2": 62,
+        "S1": 208,
+        "S0": 35,
+        "S5": 69,
+        "S3": 182,
+        "S4": 10
+      },
+      "hold_and_watch_share_pct": 58.3,
+      "flip_rate_pct": 19.65,
+      "stage_switches_per_year": 26.98,
+      "max_consecutive_watch_days": 19
+    },
+    "601919": {
+      "evaluations": 566,
+      "completed": 566,
+      "win": 193,
+      "loss": 302,
+      "neutral": 71,
+      "win_rate_pct": 38.99,
+      "neutral_rate_pct": 12.54,
+      "profit_factor": 1.715,
+      "avg_return_pct": 1.534,
+      "advice_distribution": {
+        "观望": 144,
+        "清仓": 139,
+        "减仓": 87,
+        "持有": 189,
+        "等待买点": 5,
+        "建仓": 2
+      },
+      "stage_distribution": {
+        "S0": 48,
+        "S5": 96,
+        "S3": 187,
+        "S2": 55,
+        "S1": 178,
+        "S4": 2
+      },
+      "hold_and_watch_share_pct": 58.83,
+      "flip_rate_pct": 16.99,
+      "stage_switches_per_year": 30.83,
+      "max_consecutive_watch_days": 22
+    }
+  },
+  "health": {
+    "动作分布": {
+      "value": 58.15,
+      "limit": "持有+观望 ≤ 85% 且 加仓/买入 > 0",
+      "pass": true
+    },
+    "改写归因": {
+      "value": "未产生（简化版未实现阶段门 stage_gate_hit）",
+      "limit": "单一规则 ≤ 30%",
+      "pass": null
+    },
+    "建议翻转率": {
+      "value": 18.04,
+      "limit": "≤ 25%",
+      "pass": true
+    },
+    "阶段切换次数": {
+      "value": 27.63,
+      "limit": "≤ 8 次/年",
+      "pass": false
+    },
+    "连续观望天数": {
+      "value": 22,
+      "limit": "≤ 20 交易日",
+      "pass": false
+    }
+  },
+  "sample_sufficiency": {
+    "completed": 4643,
+    "threshold": 30,
+    "pass": true,
+    "note": "本脚本样本为逐日评估，非完整回合；30 仅为参考门槛"
+  }
+}

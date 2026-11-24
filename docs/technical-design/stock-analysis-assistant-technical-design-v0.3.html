@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>股票分析助手 · 技术实现方案 v0.1</title>
+<title>股票分析助手 · 技术实现方案 v0.3</title>
 <style>
 :root{
   --bg:#f6f7f9; --card:#ffffff; --ink:#20252f; --ink2:#556070; --ink3:#8791a0;
@@ -166,7 +166,7 @@ svg{display:block;width:100%;height:auto;max-width:100%}
 
 <div class="topbar">
   <div class="logo">股票分析助手 · <b>技术实现方案</b></div>
-  <span class="badge v">v0.1</span>
+  <span class="badge v">v0.3</span>
   <span class="badge d">草案 / 待批准</span>
   <div class="spacer"></div>
   <div class="tip">需求说「要什么」，这份文档说「怎么实现」</div>
@@ -193,7 +193,7 @@ svg{display:block;width:100%;height:auto;max-width:100%}
 <section id="s0">
   <div class="hero">
     <h1>把「怎么算、怎么存、怎么跑、怎么验」一次定下来</h1>
-    <p>需求 v2.4 把所有实现细节都显式推迟到 c 阶段。这份技术方案把那些「留到后面再说」的待补项，落到具体的模块边界、数据库表、接口契约、参数初值和实测前置——让你能看清这套东西到底怎么搭起来，再决定要不要批准进入编码。</p>
+    <p>需求 v2.6 把所有实现细节都显式推迟到 c 阶段。这份技术方案把那些「留到后面再说」的待补项，落到具体的模块边界、数据库表、接口契约、参数初值和实测前置——让你能看清这套东西到底怎么搭起来，再决定要不要批准进入编码。v0.2 已按 R23 把推送统一到交易日 20:00 一次；v0.3 按 R24 把时点做成可配置（默认仍 20:00 单推，cron / HH:MM 可配、多时点同源、非交易日开关 + 门控）。</p>
     <div class="row">
       <div class="stat"><div class="n">6 个</div><div class="l">实现模块 C1–C6</div></div>
       <div class="stat"><div class="n">20+ 张</div><div class="l">新增/扩展数据表</div></div>
@@ -216,7 +216,7 @@ svg{display:block;width:100%;height:auto;max-width:100%}
       <!-- 4 boxes -->
       <rect x="20" y="42" width="195" height="66" rx="11" fill="#edfbf0" stroke="#2f9e44"/>
       <text x="117" y="68" text-anchor="middle" font-size="14" font-weight="700" fill="#1f6b31">a 需求</text>
-      <text x="117" y="89" text-anchor="middle" font-size="11.5" fill="#2f9e44">已完成 v2.4</text>
+      <text x="117" y="89" text-anchor="middle" font-size="11.5" fill="#2f9e44">已完成 v2.6</text>
       <rect x="245" y="42" width="195" height="66" rx="11" fill="#edfbf0" stroke="#2f9e44"/>
       <text x="342" y="68" text-anchor="middle" font-size="14" font-weight="700" fill="#1f6b31">b 原型</text>
       <text x="342" y="89" text-anchor="middle" font-size="11.5" fill="#2f9e44">已完成三视图</text>
@@ -230,7 +230,7 @@ svg{display:block;width:100%;height:auto;max-width:100%}
       <line x1="215" y1="75" x2="243" y2="75" stroke="#8791a0" stroke-width="1.6" marker-end="url(#ar)"/>
       <line x1="440" y1="75" x2="468" y2="75" stroke="#8791a0" stroke-width="1.6" marker-end="url(#ar)"/>
       <line x1="665" y1="75" x2="693" y2="75" stroke="#8791a0" stroke-width="1.6" marker-end="url(#ar)"/>
-      <text x="460" y="24" text-anchor="middle" font-size="12.5" font-weight="700" fill="#c92a2a">⚠ 阻断点：需求 v2.4 需你先「批准」，才允许进入 d 编码</text>
+      <text x="460" y="24" text-anchor="middle" font-size="12.5" font-weight="700" fill="#c92a2a">⚠ 阻断点：需求 v2.6 需你先「批准」，才允许进入 d 编码</text>
     </svg>
     <div class="cap">图 0-1 · 四阶段进度：a、b 已完成，c 为本文档，d 待批准后启动</div>
   </div>
@@ -257,7 +257,7 @@ svg{display:block;width:100%;height:auto;max-width:100%}
       <p>纸面回看两步法、回测引擎扩展条件计划模式、健康度指标。</p></div>
   </div>
 
-  <div class="note"><b>一句话提醒</b>：这份文档的状态是 <b>「草案 / 技术方案初稿」</b>。它不构成实施授权——需求 v2.4 还没批准，所以现在还不能开始写代码。你过目认可后，批准需求，才会进入 d 阶段。</div>
+  <div class="note"><b>一句话提醒</b>：这份文档的状态是 <b>「草案 / 技术方案初稿」</b>。它不构成实施授权——需求 v2.6 还没批准，所以现在还不能开始写代码。你过目认可后，批准需求，才会进入 d 阶段。</div>
 </section>
 
 <!-- ============ 1 ============ -->
@@ -269,7 +269,7 @@ svg{display:block;width:100%;height:auto;max-width:100%}
   <div class="grid2">
     <div class="mini"><h4><span class="tag b">DP-1</span> 复用优先</h4><p>能用现有能力的，不另起一套；新增 ≠ 修改现有。避免重复造轮子，也避免动了不该动的地方。</p></div>
     <div class="mini"><h4><span class="tag b">DP-2</span> 口径隔离</h4><p>本助手模块与主流程口径隔离，主流程不感知本助手存在。两边各跑各的，互不污染。</p></div>
-    <div class="mini"><h4><span class="tag b">DP-3</span> 单一真值</h4><p>盘前引擎每天只跑一次，WebUI / 通知 / 卡片 / 导出四处读同一份快照，禁止各自重算。</p></div>
+    <div class="mini"><h4><span class="tag b">DP-3</span> 单一真值</h4><p>引擎每交易日盘后只跑一次，WebUI / 通知 / 卡片 / 导出四处读同一份快照，禁止各自重算；默认 T 20:00 一条推送（时点可配，多时点同源），T+1 不再推送。</p></div>
     <div class="mini"><h4><span class="tag b">DP-4</span> 决策归代码，措辞归 LLM</h4><p>LLM 只进文案层，不进评分 / advice / 风险 / 回测。数字和结论永远由代码算。</p></div>
     <div class="mini"><h4><span class="tag b">DP-5</span> 可复现</h4><p>同 calc_version + 同快照 → 同结论；参数改了不追溯历史（快照只追加不改）。</p></div>
     <div class="mini"><h4><span class="tag b">DP-6</span> 只收紧不放宽</h4><p>阶段门、风险信号都是事后收紧层，不改写评分逻辑。只会让动作更保守，不会更激进。</p></div>
@@ -326,7 +326,7 @@ svg{display:block;width:100%;height:auto;max-width:100%}
 
       <rect x="22" y="394" width="600" height="60" rx="11" fill="#f1f3f6" stroke="#d5dbe4"/>
       <text x="42" y="420" font-size="14.5" font-weight="800" fill="#556070">调度与配置层</text>
-      <text x="42" y="441" font-size="12" fill="#556070">17:30 取数 → 18:00 生成 → 07:30 推送 · 三元组一致性</text>
+      <text x="42" y="441" font-size="12" fill="#556070">T 17:30 取数 → T 首推时点前生成 → 首推一条 · 三元组一致性</text>
 
       <!-- right: reused -->
       <rect x="642" y="18" width="256" height="436" rx="11" fill="#fafbfc" stroke="#c7ced8" stroke-dasharray="5 4"/>
@@ -368,46 +368,47 @@ svg{display:block;width:100%;height:auto;max-width:100%}
   </table>
   </div>
 
-  <h3>每天几点跑（调度时序）</h3>
+  <h3>每天几点跑（调度时序，R23 + R24）</h3>
   <div class="figure">
-    <svg viewBox="0 0 920 230" role="img" aria-label="调度时序">
-      <line x1="50" y1="120" x2="880" y2="120" stroke="#c7ced8" stroke-width="2"/>
-      <!-- 5 nodes -->
+    <svg viewBox="0 0 920 250" role="img" aria-label="调度时序：默认 20:00 单推送，时区归一与交易日门控后生成，多时点同源重投">
+      <line x1="50" y1="110" x2="880" y2="110" stroke="#c7ced8" stroke-width="2"/>
       <g>
-        <circle cx="110" cy="120" r="7" fill="#3b5bdb"/>
-        <text x="110" y="100" text-anchor="middle" font-size="12.5" font-weight="800" fill="#2b3c7a">T-1 17:30</text>
-        <text x="110" y="150" text-anchor="middle" font-size="11" fill="#556070">取数</text>
-        <text x="110" y="167" text-anchor="middle" font-size="10" fill="#8791a0">日线+因子+板块+公告</text>
+        <circle cx="95" cy="110" r="7" fill="#3b5bdb"/>
+        <text x="95" y="88" text-anchor="middle" font-size="12.5" font-weight="800" fill="#2b3c7a">T 17:30</text>
+        <text x="95" y="140" text-anchor="middle" font-size="11" fill="#556070">取数</text>
+        <text x="95" y="157" text-anchor="middle" font-size="10" fill="#8791a0">日线+因子+公告</text>
       </g>
       <g>
-        <circle cx="285" cy="120" r="7" fill="#3b5bdb"/>
-        <text x="285" y="100" text-anchor="middle" font-size="12.5" font-weight="800" fill="#2b3c7a">T-1 18:00</text>
-        <text x="285" y="150" text-anchor="middle" font-size="11" fill="#556070">生成</text>
-        <text x="285" y="167" text-anchor="middle" font-size="10" fill="#8791a0">守卫链→快照→文案</text>
+        <circle cx="270" cy="110" r="7" fill="#e8820c"/>
+        <text x="270" y="88" text-anchor="middle" font-size="12.5" font-weight="800" fill="#8a5300">触发时点</text>
+        <text x="270" y="140" text-anchor="middle" font-size="11" fill="#556070">默认 20:00</text>
+        <text x="270" y="157" text-anchor="middle" font-size="10" fill="#8791a0">HH:MM / cron 可配</text>
       </g>
       <g>
-        <circle cx="460" cy="120" r="7" fill="#e8820c"/>
-        <text x="460" y="100" text-anchor="middle" font-size="12.5" font-weight="800" fill="#8a5300">T 00:00</text>
-        <text x="460" y="150" text-anchor="middle" font-size="11" fill="#556070">参数生效</text>
-        <text x="460" y="167" text-anchor="middle" font-size="10" fill="#8791a0">写操作次日生效</text>
+        <circle cx="445" cy="110" r="7" fill="#c92a2a"/>
+        <text x="445" y="88" text-anchor="middle" font-size="12.5" font-weight="800" fill="#a32d2d">交易日门控</text>
+        <text x="445" y="140" text-anchor="middle" font-size="11" fill="#556070">fail-closed</text>
+        <text x="445" y="157" text-anchor="middle" font-size="10" fill="#8791a0">时区归一 Asia/Shanghai</text>
       </g>
       <g>
-        <circle cx="650" cy="120" r="7" fill="#2f9e44"/>
-        <text x="650" y="100" text-anchor="middle" font-size="12.5" font-weight="800" fill="#1f6b31">T 07:30</text>
-        <text x="650" y="150" text-anchor="middle" font-size="11" fill="#556070">可查 / 推送</text>
-        <text x="650" y="167" text-anchor="middle" font-size="10" fill="#8791a0">WebUI + 飞书</text>
+        <circle cx="620" cy="110" r="7" fill="#3b5bdb"/>
+        <text x="620" y="88" text-anchor="middle" font-size="12.5" font-weight="800" fill="#2b3c7a">生成一次</text>
+        <text x="620" y="140" text-anchor="middle" font-size="11" fill="#556070">首推前完成</text>
+        <text x="620" y="157" text-anchor="middle" font-size="10" fill="#8791a0">守卫链→快照→文案→复盘</text>
       </g>
       <g>
-        <circle cx="820" cy="120" r="7" fill="#2f9e44"/>
-        <text x="820" y="100" text-anchor="middle" font-size="12.5" font-weight="800" fill="#1f6b31">T 08:00</text>
-        <text x="820" y="150" text-anchor="middle" font-size="11" fill="#556070">必须可见</text>
-        <text x="820" y="167" text-anchor="middle" font-size="10" fill="#8791a0">FR-9.2 硬要求</text>
+        <circle cx="835" cy="110" r="7" fill="#2f9e44"/>
+        <text x="835" y="88" text-anchor="middle" font-size="12.5" font-weight="800" fill="#1f6b31">首推一条</text>
+        <text x="835" y="140" text-anchor="middle" font-size="11" fill="#556070">复盘 + T+1 计划</text>
+        <text x="835" y="157" text-anchor="middle" font-size="10" fill="#8791a0">其余时点同源重投</text>
       </g>
-      <!-- bracket: 13h buffer -->
-      <line x1="285" y1="192" x2="650" y2="192" stroke="#8791a0" stroke-dasharray="4 3"/>
-      <text x="467" y="210" text-anchor="middle" font-size="10.5" fill="#8791a0">约 13 小时缓冲：LLM 超时也能降级，不误 8:00</text>
+      <text x="270" y="190" text-anchor="middle" font-size="10" fill="#8791a0">非法表达式 → 回退 20:00 + 告警</text>
+      <text x="445" y="190" text-anchor="middle" font-size="10" fill="#8791a0">非交易日：skip 零产出 / notify_skip 一条短提醒</text>
+      <text x="445" y="208" text-anchor="middle" font-size="10" fill="#8791a0">判不出来 → 按非交易日 + 告警（不在节假日误推）</text>
+      <line x1="620" y1="222" x2="835" y2="222" stroke="#8791a0" stroke-dasharray="4 3"/>
+      <text x="727" y="238" text-anchor="middle" font-size="10.5" fill="#8791a0">多时点只读同一份快照，不重算、不写新快照</text>
     </svg>
-    <div class="cap">图 2-2 · 调度时序：取数 → 生成 → 参数生效 → 推送，非交易日整链路跳过</div>
+    <div class="cap">图 2-2 · 调度时序：取数 → 配置时点触发 → 交易日门控 → 生成一次 → 首推一条（多时点同源重投）；T+1 无推送</div>
   </div>
 
   <h3>三元组一致性：四处看到的必须是同一份</h3>
@@ -445,7 +446,7 @@ svg{display:block;width:100%;height:auto;max-width:100%}
       <rect x="22" y="290" width="8" height="88" rx="4" fill="#7a869a"/>
       <text x="46" y="317" font-size="14" font-weight="800" fill="#556070">L4 用户输入</text>
       <text x="46" y="339" font-size="12" fill="#556070">user_holding（持仓成本）· user_note（笔记）· watchlist_runtime（关注清单）· param_override（参数覆盖）</text>
-      <text x="46" y="357" font-size="11" fill="#8791a0">写入：用户操作 / 飞书确认　生效：次日盘前　特性：可删、可撤销、append-only 变更记录</text>
+      <text x="46" y="357" font-size="11" fill="#8791a0">写入：用户操作 / 飞书确认　生效：下一次快照生成时　特性：可删、可撤销、append-only 变更记录</text>
       <text x="46" y="373" font-size="11" fill="#8791a0">读取关注清单 = STOCK_LIST 配置 ∪ watchlist_runtime 生效项，不破坏现有读取链</text>
     </svg>
     <div class="cap">图 3-1 · 四层存储：原始 / 派生 / 快照 / 用户输入，职责不混层</div>
@@ -593,7 +594,7 @@ svg{display:block;width:100%;height:auto;max-width:100%}
   <h3>改参数怎么留痕（不搞版本号）</h3>
   <div class="grid3">
     <div class="mini"><h4>基线 + 单项覆盖</h4><p>当前值 = 三档基线之一 + 你单独改的项。页面显示「标准档 · 2 项自定义」。</p></div>
-    <div class="mini"><h4>次日生效</h4><p>参数改了不影响当天已出的结论；当天快照只追加不改，历史永远可复现。</p></div>
+    <div class="mini"><h4>下一次快照生效</h4><p>参数改了不影响当天已出的结论；当天快照只追加不改，历史永远可复现。</p></div>
     <div class="mini"><h4>append-only 记录</h4><p>每次变更记一条（可回滚，回滚也记一条）。不引入配置版本号，用 param_hash 随快照留痕。</p></div>
   </div>
   <div class="note"><b>param_hash 与 calc_version 分开</b>：param_hash 是「参数数值指纹」，calc_version 是「规则版本指纹」（战法启停、维度权重、判定结构、temperature）。两者都随快照留痕，保证同 calc_version + 同 param_hash + 同快照 → 同结论。</div>
@@ -720,10 +721,11 @@ svg{display:block;width:100%;height:auto;max-width:100%}
       <tr><td>M11</td><td>风险历史序列 → 连续判定</td><td>信号标「数据不足」</td></tr>
       <tr><td>M12</td><td>财报渐进恶化 → 基本面风险</td><td>信号标「数据不足」</td></tr>
       <tr><td>M13</td><td>Stream + emoji 三端渲染</td><td>入站关闭 / emoji 回退纯文本</td></tr>
-      <tr><td>M14</td><td>LLM 渠道可用性 → 能否 8:00 前产出</td><td>降级规则模板</td></tr>
+      <tr><td>M14</td><td>LLM 渠道可用性 → 能否首推时点前产出</td><td>降级规则模板</td></tr>
       <tr><td>M15</td><td>周/月线 + adj_factor 免费源</td><td>日线聚合 + 事件表推算</td></tr>
       <tr><td>M16</td><td>公告接口字段完整性</td><td>只显示标题 + 来源</td></tr>
-      <tr><td>M17</td><td>3 年回补耗时 → 7:30 产出是否来得及</td><td>分批回补 + 回补期 S0</td></tr>
+      <tr><td>M17</td><td>3 年回补耗时 → 首推时点前是否来得及</td><td>分批回补 + 回补期 S0</td></tr>
+      <tr><td>M18</td><td>cron 解析 + 交易日门控 fail-closed + 同源重投不被去重吞掉</td><td>解析库选型 / 零产出告警 / 独立去重键</td></tr>
     </tbody>
   </table>
   </div>
@@ -741,10 +743,10 @@ svg{display:block;width:100%;height:auto;max-width:100%}
     <thead><tr><th style="width:6%">#</th><th style="width:58%">发现</th><th style="width:36%">影响</th></tr></thead>
     <tbody>
       <tr><td><b>1</b></td><td><b>8 张规划表全部不存在</b>：holding_conclusion / conditional_plan / risk_signals / market_snapshot / sector_snapshot / market_regime / rs_t / sector_strength</td><td class="wait">全部需新建</td></tr>
-      <tr><td><b>2</b></td><td>实存 <b>28 张表</b>（需求记 38 张，以实读为准）</td><td>§3.2 已修正</td></tr>
+      <tr><td><b>2</b></td><td>实存 <b>36 张表</b>（不含 schema_migrations；需求记 38、A.0 初稿记 28，均按 2026-11-24 复核修正）</td><td>以实读为准</td></tr>
       <tr><td><b>3</b></td><td><b>source_tag / calc_version 不存在</b>，只有 backtest_engine_version="v1"</td><td>需新建或复用</td></tr>
-      <tr><td><b>4</b></td><td>复权：akshare_fetcher 全部 <code>adjust="qfq"</code>，无独立 adj_factor</td><td>确认需改 + 新建</td></tr>
-      <tr><td><b>5</b></td><td>通知 <b>13 个渠道</b>（非 15+）；route_type 三类 report/alert/system_error</td><td>数字修正</td></tr>
+      <tr><td><b>4</b></td><td>复权：akshare_fetcher 为 <code>adjust="qfq"</code>，tushare 有 <code>adj_factor</code> 接口但<b>无落库字段</b></td><td>确认需新增落库</td></tr>
+      <tr><td><b>5</b></td><td>通知 <b>14 个有效渠道</b>（+ UNKNOWN = 15 枚举值；A.0 初稿写 13、需求写 15+ 均不准）；route_type 三类 report/alert/system_error</td><td>数字修正</td></tr>
       <tr><td><b>6</b></td><td>回测 win_rate_pct <b>分母排除 neutral</b>；<code>_MIN_CALIBRATION_SAMPLES=30</code> 在 memory.py L32</td><td>条件计划回测须自定口径</td></tr>
       <tr><td><b>7</b></td><td>LLM fallback <b>闭集只能到 litellm</b>；无独立成本($)预算机制</td><td>成本上限需新建</td></tr>
       <tr><td><b>8</b></td><td>条件计划仅 <code>watch_conditions</code> 雏形；风险 <code>risk_flags</code> 未持久化；前端无 ScreenPage</td><td>确认需新建 + 以实读为准</td></tr>
@@ -755,9 +757,9 @@ svg{display:block;width:100%;height:auto;max-width:100%}
 </section>
 
 <div class="foot">
-  <b>股票分析助手 · 技术实现方案 v0.1</b>　|　状态：草案 / 技术方案初稿　|　创建：2026-11-19<br>
-  本 HTML 是 <code>docs/technical-design/stock-analysis-assistant-technical-design-v0.1.md</code> 的可视化解读版，与 Markdown 版逐条对应；口径冲突以需求 v2.4 为准。<br>
-  本方案不构成实施授权：需求 v2.4 未批准前，不进入 d 阶段编码。
+  <b>股票分析助手 · 技术实现方案 v0.3</b>　|　状态：草案 / 技术方案初稿　|　创建：2026-11-19　|　v0.2/v0.3：2026-11-24<br>
+  本 HTML 是 <code>docs/technical-design/stock-analysis-assistant-technical-design-v0.3.md</code> 的可视化解读版，与 Markdown 版逐条对应；口径冲突以需求 v2.6 为准。<br>
+  本方案不构成实施授权：需求 v2.6 未批准前，不进入 d 阶段编码。
 </div>
 
 </main>
