@@ -28,6 +28,7 @@ from src.assistant.config.overrides import ParamChange
 from src.assistant.data.models import (
     AssistantBase,
     ConditionalPlanRow,
+    DeliveryLogRow,
     HoldingConclusionRow,
     LlmTextCacheRow,
     ParamOverrideRow,
@@ -485,6 +486,116 @@ class AssistantStore:
                     consistency_check=consistency or None,
                 )
             )
+
+    # ------------------------------------------------------------------
+    # 投递台账（多时点去重 + 同源校验，需求 B50 ③）
+    # ------------------------------------------------------------------
+    def claim_delivery(
+        self,
+        slot_key: str,
+        *,
+        data_date: date,
+        snapshot_id: str,
+        slot_label: str,
+        now: datetime | None = None,
+    ) -> bool:
+        """领取某时点的投递权。已发送过返回 ``False``；失败过的可再次领取。"""
+        stamp = now or datetime.now()
+        with self.session() as sess:
+            stmt = (
+                sqlite_insert(DeliveryLogRow)
+                .values(
+                    slot_key=slot_key,
+                    slot_label=slot_label,
+                    data_date=data_date,
+                    snapshot_id=snapshot_id,
+                    status="claimed",
+                    attempts=1,
+                    first_attempt_at=stamp,
+                    last_attempt_at=stamp,
+                )
+                .on_conflict_do_nothing(index_elements=["slot_key"])
+            )
+            inserted = sess.execute(stmt).rowcount == 1
+            if inserted:
+                return True
+
+            row = sess.execute(
+                select(DeliveryLogRow).where(DeliveryLogRow.slot_key == slot_key)
+            ).scalars().first()
+            if row is None:  # pragma: no cover - 冲突必然对应已有行
+                return False
+            if row.status == "sent":
+                return False
+            row.attempts += 1
+            row.status = "claimed"
+            row.snapshot_id = snapshot_id
+            row.last_attempt_at = stamp
+            row.error = None
+            return True
+
+    def mark_delivery_sent(self, slot_key: str, *, now: datetime | None = None) -> None:
+        stamp = now or datetime.now()
+        with self.session() as sess:
+            row = sess.execute(
+                select(DeliveryLogRow).where(DeliveryLogRow.slot_key == slot_key)
+            ).scalars().first()
+            if row is None:  # pragma: no cover - 调用方必先 claim
+                return
+            row.status = "sent"
+            row.sent_at = stamp
+            row.last_attempt_at = stamp
+            row.error = None
+
+    def release_delivery(self, slot_key: str, error: str) -> None:
+        """发送失败：标记 failed，供下一次触发重试（不删除记录）。"""
+        with self.session() as sess:
+            row = sess.execute(
+                select(DeliveryLogRow).where(DeliveryLogRow.slot_key == slot_key)
+            ).scalars().first()
+            if row is None:  # pragma: no cover
+                return
+            row.status = "failed"
+            row.error = error[:500]
+
+    def delivery_done(self, slot_key: str) -> bool:
+        with self.session() as sess:
+            row = sess.execute(
+                select(DeliveryLogRow).where(DeliveryLogRow.slot_key == slot_key)
+            ).scalars().first()
+            return row is not None and row.status == "sent"
+
+    def delivered_snapshot_for(self, data_date: date) -> str | None:
+        """当日已成功投递的快照 id（用于「当日快照只生成一次」的同源校验）。"""
+        with self.session() as sess:
+            row = sess.execute(
+                select(DeliveryLogRow)
+                .where(DeliveryLogRow.data_date == data_date, DeliveryLogRow.status == "sent")
+                .order_by(DeliveryLogRow.sent_at.asc())
+                .limit(1)
+            ).scalars().first()
+            return None if row is None else row.snapshot_id
+
+    def delivery_log(self, data_date: date) -> list[dict]:
+        """当日投递台账（排查用）。"""
+        with self.session() as sess:
+            rows = sess.execute(
+                select(DeliveryLogRow)
+                .where(DeliveryLogRow.data_date == data_date)
+                .order_by(DeliveryLogRow.slot_key.asc())
+            ).scalars().all()
+        return [
+            {
+                "slot_key": row.slot_key,
+                "slot_label": row.slot_label,
+                "snapshot_id": row.snapshot_id,
+                "status": row.status,
+                "attempts": row.attempts,
+                "sent_at": None if row.sent_at is None else row.sent_at.isoformat(),
+                "error": row.error,
+            }
+            for row in rows
+        ]
 
 
 def _decode(raw: str) -> object:

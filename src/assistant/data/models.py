@@ -419,3 +419,29 @@ class ParamOverrideRow(AssistantBase):
     audit_id = Column(String(40), nullable=True)
 
     __table_args__ = (Index("idx_assistant_param_override_key", "param_key", "op_time"),)
+
+
+class DeliveryLogRow(AssistantBase):
+    """投递台账（多时点去重 + 同源校验，需求 B50 ③）。
+
+    ``slot_key`` 精确到分钟（``2026-11-24T20:00``）且唯一：同一时点重复触发只会命中
+    同一行（重启后仍能防重），不同时点各自独立、互不吞并。
+
+    ``status``：``claimed`` 已领取未发送 / ``sent`` 已发送 / ``failed`` 发送失败（可重试）。
+    """
+
+    __tablename__ = "assistant_delivery_log"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    slot_key = Column(String(32), nullable=False, unique=True)
+    slot_label = Column(String(64), nullable=False)  # 命中的配置原文（HH:MM 或 cron）
+    data_date = Column(Date, nullable=False)
+    snapshot_id = Column(String(64), nullable=False)
+    status = Column(String(16), nullable=False, default="claimed")
+    attempts = Column(Integer, nullable=False, default=1)
+    first_attempt_at = Column(DateTime, nullable=False)
+    last_attempt_at = Column(DateTime, nullable=False)
+    sent_at = Column(DateTime, nullable=True)
+    error = Column(Text, nullable=True)
+
+    __table_args__ = (Index("idx_assistant_delivery_date", "data_date", "status"),)
