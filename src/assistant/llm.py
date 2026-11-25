@@ -180,12 +180,27 @@ def build_whitelist(
             key: getattr(market, key, None)
             for key in ("index_name", "pct_change", "regime", "available")
         }
+    by_advice: dict[str, int] = {}
+    for row in conclusions:
+        advice = str(row.get("advice") or "未给")
+        by_advice[advice] = by_advice.get(advice, 0) + 1
     payload["counts"] = {
-        "conclusions": len(conclusions),
+        "total": len(conclusions),
+        "by_advice": by_advice,
         "plans": len(payload["conditional_plan"]),
         "risks": len(payload["risk_signals"]),
     }
     return _compact(payload)
+
+
+def _counts_consistent(whitelist: Mapping[str, Any]) -> bool:
+    """``sum(by_advice.values()) == total``；字段缺失视为不一致（宁可不说）。"""
+    counts = whitelist.get("counts") or {}
+    by_advice = counts.get("by_advice") or {}
+    total = counts.get("total")
+    if not isinstance(total, int) or not isinstance(by_advice, Mapping):
+        return False
+    return sum(int(value) for value in by_advice.values()) == total
 
 
 def _tokens(whitelist: Mapping[str, Any]) -> set[str]:
@@ -227,7 +242,7 @@ def validate_text(text: str, whitelist: Mapping[str, Any], *, position: str,
         if advice in BUY_WORDS and any(word in cleaned for word in SELL_WORDS):
             return False, "opposite_advice"
 
-    if position in ("stock", "summary"):
+    if position in ("stock", "summary", "market"):
         new_actions = [word for word in BANNED_ACTION if word in cleaned and word not in source_text]
         if new_actions:
             return False, f"new_action:{new_actions[0]}"
@@ -250,6 +265,26 @@ def _fallback_summary(content: Mapping[str, Any], market: Any) -> str:
     return (
         f"自选 {len(conclusions)} 只（待办 {todo} 只） · 风险 {len(risks)} 项"
         f" · 条件计划 {len(plans)} 条{regime}；以上按结构化字段执行。"
+    )
+
+
+def _fallback_market(content: Mapping[str, Any], market: Any) -> str:
+    """大盘/板块总结的规则模板：只陈述已固化的档位与计数，不做推断。"""
+    conclusions = list(content.get("conclusions") or [])
+    risks = list(content.get("risks") or [])
+    if not getattr(market, "available", False):
+        return (
+            f"大盘数据缺失，不判断环境档；自选 {len(conclusions)} 只 · 风险 {len(risks)} 项。"
+        )
+    pct = getattr(market, "pct_change", None)
+    move = ""
+    if pct is not None:
+        move = f" {'涨' if pct > 0 else '跌' if pct < 0 else '平'}{abs(pct):.2f}%"
+    regime = getattr(market, "regime", "") or ""
+    return (
+        f"{getattr(market, 'index_name', '') or '指数'}{move}"
+        f"{f' · {regime}' if regime else ''}；自选 {len(conclusions)} 只 · 风险 {len(risks)} 项，"
+        "按结构化字段执行。"
     )
 
 
@@ -369,6 +404,7 @@ class LlmTextService:
         fallback = (
             _fallback_stock(content, code or "")
             if position == "stock"
+            else _fallback_market(content, market) if position == "market"
             else _fallback_summary(content, market)
         )
         today = self._clock().date()
@@ -378,6 +414,12 @@ class LlmTextService:
             return self._save_fallback(snapshot_id, position, code, fallback, reason)
 
         whitelist = build_whitelist(content, market=market, code=code)
+        if position in ("summary", "market") and not _counts_consistent(whitelist):
+            # 需求 §4.2：大盘总结段额外硬校验 sum(counts) == total，不等则不输出并报数据异常
+            logger.error("快照 %s 的分类计数与实际标的不一致，本次不输出总结段", snapshot_id)
+            return TextOutcome(
+                text="", degraded=True, source="template", consistency="fallback:counts_mismatch"
+            )
         payload = json.dumps(whitelist, ensure_ascii=False, sort_keys=True)
         prompt = f"结构化快照（只读）：\n{payload}\n\n请按系统规则输出一段中文文案。"
         self._calls[today] = used + 1

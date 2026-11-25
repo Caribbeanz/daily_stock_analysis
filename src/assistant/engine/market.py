@@ -129,4 +129,6 @@ def market_line_from_bars(
         pct_change=pct_change,
         regime=regime,
         available=True,
+        as_of=ordered[-1].trade_date,
+        factors=f"{side}+{slope}",
     )

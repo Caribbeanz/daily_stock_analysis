@@ -20,7 +20,7 @@ from datetime import date
 from typing import Any, Iterable, Mapping, Sequence
 
 from src.assistant.domain import MarketLine
-from src.assistant.enums import ACTION_ORDER, Action, RiskLevel, Stage, STAGE_ALLOWED
+from src.assistant.enums import Action, RiskLevel, Stage
 from src.assistant.render.icons import (
     CAL_ICON,
     RISK_NONE,
@@ -30,6 +30,7 @@ from src.assistant.render.icons import (
     strip_markdown,
 )
 from src.assistant.render.review import PlanReview
+from src.assistant.stage_text import STAGE_PLAYBOOK, STAGE_SWITCH, action_lists
 
 __all__ = [
     "FULL_LIMIT",
@@ -45,26 +46,6 @@ FULL_LIMIT = 1800
 COMPACT_LIMIT = 1100
 
 _WEEKDAY_CN = ("周一", "周二", "周三", "周四", "周五", "周六", "周日")
-
-#: 各阶段打法（一句话）。需求只给「打法」这个词，未给原文，此处为初值（见 D-15）。
-_STAGE_PLAYBOOK: dict[str, str] = {
-    Stage.S0.value: "数据不足，先补数据，不出手",
-    Stage.S1.value: "回踩不破再买，突破前高追买需确认",
-    Stage.S2.value: "上沿减 T 仓、下沿买回，不追高",
-    Stage.S3.value: "只减不加，反弹减仓，破位清仓",
-    Stage.S4.value: "箱体下沿小仓试探，确认后再建仓",
-    Stage.S5.value: "无结构不交易，只处理风险",
-}
-
-#: 各阶段的切换信号（初值，同 D-15）
-_STAGE_SWITCH: dict[str, str] = {
-    Stage.S0.value: "数据补齐后重新判定",
-    Stage.S1.value: "跌破 MA20 且连续 2 日不收回 → 转 S3",
-    Stage.S2.value: "有效突破箱体上沿或下沿 → 转 S1 / S3",
-    Stage.S3.value: "站回 MA20 且连续 2 日不破 → 转 S4",
-    Stage.S4.value: "有效跌破箱体下沿 → 转 S3",
-    Stage.S5.value: "出现 20 日新高或新低且量能配合 → 重判",
-}
 
 #: 需要用户处理的建议（进入 ④ 待办）
 _NEEDS_ACTION = frozenset(
@@ -295,12 +276,12 @@ def _stage_block(
         f"{SECTION_ICONS['stage']} **{_display(row.get('code'), row.get('name'))} · "
         f"{stage} {Stage(stage).label if _is_stage(stage) else ''} · 置信度 {row.get('stage_confidence') or '—'}**"
     )
-    lines = [title, f"  打法：{_STAGE_PLAYBOOK.get(stage, '—')}"]
+    lines = [title, f"  打法：{STAGE_PLAYBOOK.get(stage, '—')}"]
     if options.stage_detail:
         allowed, forbidden = _stage_actions(stage)
         lines.append(f"  允许：{allowed}")
         lines.append(f"  禁止：{forbidden}")
-        lines.append(f"  切换：{_STAGE_SWITCH.get(stage, '—')}")
+        lines.append(f"  切换：{STAGE_SWITCH.get(stage, '—')}")
     else:
         _, forbidden = _stage_actions(stage)
         lines.append(f"  禁止：{forbidden}")
@@ -443,12 +424,9 @@ def _stage_sample(
 
 
 def _stage_actions(stage: str) -> tuple[str, str]:
-    if not _is_stage(stage):
-        return "—", "—"
-    allowed_set = STAGE_ALLOWED.get(Stage(stage), frozenset())
-    allowed = "、".join(action.value for action in ACTION_ORDER if action in allowed_set)
-    forbidden = "、".join(action.value for action in ACTION_ORDER if action not in allowed_set)
-    return allowed or "—", forbidden or "—"
+    """允许/禁止动作一律查 :mod:`src.assistant.stage_text`，与 WebUI 同源。"""
+    allowed, forbidden = action_lists(stage)
+    return "、".join(allowed) or "—", "、".join(forbidden) or "—"
 
 
 def _trigger_text(plan: Mapping[str, Any]) -> str:

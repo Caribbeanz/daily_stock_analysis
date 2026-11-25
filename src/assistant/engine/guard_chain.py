@@ -274,6 +274,8 @@ def run_guard_chain(inp: GuardChainInput) -> GuardChainOutcome:
         est_level=tech["position_tag"],
         div_yield=view.valuation.dividend_yield,
         pnl_pct=view.pnl_pct,
+        last_close=view.last_close,
+        pct_change=_pct_change(view),
         risk_level=risk_summary.highest,
         human_text=_human_text(stage_result, final_action, risk_summary),
         degraded=quality.degraded or view.source_tag.value == "D3",
@@ -569,6 +571,17 @@ def _early_exit(
         trace=tuple(traces),
     )
     return GuardChainOutcome(result=result, stage_state=new_state)
+
+
+def _pct_change(view: StockView) -> float | None:
+    """最近两根收盘算涨跌幅（%）；不足两根返回 None，不拿 0 冒充「平盘」。"""
+    bars = view.bars
+    if len(bars) < 2:
+        return None
+    prev = bars[-2].close
+    if not prev:
+        return None
+    return (bars[-1].close / prev - 1) * 100
 
 
 def _human_text(stage_result: StageResult, action: Action, risks: RiskSummary) -> str:

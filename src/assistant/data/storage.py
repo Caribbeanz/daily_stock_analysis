@@ -31,8 +31,11 @@ from src.assistant.data.models import (
     DeliveryLogRow,
     HoldingConclusionRow,
     LlmTextCacheRow,
+    MarketSnapshotRow,
     ParamOverrideRow,
+    PortfolioSettingRow,
     RiskSignalRow,
+    SectorSnapshotRow,
     Snapshot,
     StageStateRow,
     StockDailyRaw,
@@ -316,6 +319,24 @@ class AssistantStore:
                     est_level=c.est_level,
                     div_yield=c.div_yield,
                     pnl_pct=c.pnl_pct,
+                    last_close=c.last_close,
+                    pct_change=c.pct_change,
+                    key_levels=json.dumps(
+                        [
+                            {"price": lv.price, "kind": lv.kind, "source": lv.source,
+                             "detail": dict(lv.detail)}
+                            for lv in (result.key_levels or ())
+                        ],
+                        ensure_ascii=False,
+                        default=str,
+                    )
+                    if result.key_levels
+                    else None,
+                    position_tier=getattr(result.position_advice, "tier", None),
+                    position_pct=getattr(result.position_advice, "capped_pct", None),
+                    position_reasons=json.dumps(
+                        list(getattr(result.position_advice, "cap_reasons", ())), ensure_ascii=False
+                    ),
                     risk_level=c.risk_level.value,
                     human_text=c.human_text,
                     degraded=c.degraded,
@@ -473,6 +494,82 @@ class AssistantStore:
             "risks": [_risk_row(row) for row in risks],
         }
 
+    def snapshot_market(self, snapshot_id: str) -> dict | None:
+        """读大盘快照；未写入时返回 None（API 层如实标「不可用」，不编造）。"""
+        with self.session() as sess:
+            row = sess.execute(
+                select(MarketSnapshotRow).where(MarketSnapshotRow.snapshot_id == snapshot_id)
+                .order_by(MarketSnapshotRow.id.desc()).limit(1)
+            ).scalars().first()
+            if row is None:
+                return None
+            return {
+                "index_code": row.index_code,
+                "index_name": row.index_name,
+                "pct_change": row.pct_change,
+                "market_regime": row.market_regime,
+                "regime_cells": row.regime_cells,
+                "width": row.width,
+                "degraded": bool(row.degraded),
+            }
+
+    def save_market_snapshot(
+        self,
+        snapshot_id: str,
+        *,
+        index_code: str,
+        index_name: str = "",
+        pct_change: float | None = None,
+        market_regime: str = "中性",
+        regime_cells: str | None = None,
+        width: float | None = None,
+        degraded: bool = False,
+    ) -> bool:
+        """写入大盘快照；同一 ``snapshot_id`` 已存在则跳过（幂等，不改写历史）。
+
+        返回是否真的写入。**不可用时不写**——宁缺不造，读取方按「未写入」处理。
+        """
+        with self.session() as sess:
+            exists = sess.execute(
+                select(MarketSnapshotRow.id).where(MarketSnapshotRow.snapshot_id == snapshot_id).limit(1)
+            ).first()
+            if exists is not None:
+                return False
+            sess.add(
+                MarketSnapshotRow(
+                    snapshot_id=snapshot_id,
+                    index_code=index_code,
+                    index_name=index_name,
+                    pct_change=pct_change,
+                    market_regime=market_regime,
+                    regime_cells=regime_cells,
+                    width=width,
+                    degraded=degraded,
+                )
+            )
+            return True
+
+    def snapshot_sectors(self, snapshot_id: str) -> list[dict]:
+        with self.session() as sess:
+            rows = sess.execute(
+                select(SectorSnapshotRow).where(SectorSnapshotRow.snapshot_id == snapshot_id)
+                .order_by(SectorSnapshotRow.sector_code.asc())
+            ).scalars().all()
+            return [
+                {
+                    "sector_code": row.sector_code,
+                    "sector_name": row.sector_name,
+                    "pct_change": row.pct_change,
+                    "sector_strength": row.sector_strength,
+                    "rs_label": row.rs_label,
+                    "rs_t": row.rs_t,
+                    "up_count": row.up_count,
+                    "down_count": row.down_count,
+                    "lead_stock": row.lead_stock,
+                }
+                for row in rows
+            ]
+
     # ------------------------------------------------------------------
     # 跨日阶段防抖状态（需求 §5.14.2「连续 N 日」）
     # ------------------------------------------------------------------
@@ -548,6 +645,53 @@ class AssistantStore:
     # ------------------------------------------------------------------
     # L4 用户输入
     # ------------------------------------------------------------------
+    def save_portfolio_settings(
+        self,
+        *,
+        baseline_preset: str,
+        total_capital: float,
+        cash_available: float | None = None,
+        now: datetime | None = None,
+    ) -> dict:
+        """追加一条运行设置；当前生效值取最新一行（不覆盖历史）。"""
+        if total_capital <= 0:
+            raise ValueError("total_capital 必须为正数")
+        if cash_available is not None and cash_available < 0:
+            raise ValueError("cash_available 不能为负")
+        stamp = now or datetime.now()
+        with self.session() as sess:
+            sess.add(
+                PortfolioSettingRow(
+                    baseline_preset=baseline_preset,
+                    total_capital=float(total_capital),
+                    cash_available=None if cash_available is None else float(cash_available),
+                    updated_at=stamp,
+                )
+            )
+        return {
+            "baseline_preset": baseline_preset,
+            "total_capital": float(total_capital),
+            "cash_available": None if cash_available is None else float(cash_available),
+            "updated_at": stamp.isoformat(),
+        }
+
+    def current_portfolio_settings(self) -> dict | None:
+        """当前生效的运行设置；从未写入过返回 ``None``（由服务层回退 env）。"""
+        with self.session() as sess:
+            row = sess.execute(
+                select(PortfolioSettingRow)
+                .order_by(PortfolioSettingRow.updated_at.desc(), PortfolioSettingRow.id.desc())
+                .limit(1)
+            ).scalars().first()
+            if row is None:
+                return None
+            return {
+                "baseline_preset": row.baseline_preset,
+                "total_capital": row.total_capital,
+                "cash_available": row.cash_available,
+                "updated_at": row.updated_at.isoformat(),
+            }
+
     def record_param_change(self, change: ParamChange) -> None:
         """追加一条参数变更记录（不删除历史）。"""
         row = change.as_row()
@@ -852,6 +996,14 @@ def _conclusion_row(row) -> dict:
         "est_level": row.est_level,
         "div_yield": row.div_yield,
         "pnl_pct": row.pnl_pct,
+        "last_close": row.last_close,
+        "pct_change": row.pct_change,
+        "key_levels": json.loads(row.key_levels) if row.key_levels else [],
+        "position": {
+            "tier": row.position_tier or "",
+            "pct": row.position_pct,
+            "reasons": json.loads(row.position_reasons) if row.position_reasons else [],
+        },
         "risk_level": row.risk_level,
         "human_text": row.human_text,
         "degraded": row.degraded,

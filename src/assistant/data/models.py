@@ -235,6 +235,15 @@ class HoldingConclusionRow(AssistantBase):
     est_level = Column(String(16), nullable=True)
     div_yield = Column(Float, nullable=True)
     pnl_pct = Column(Float, nullable=True)
+    #: 最近交易日收盘与涨跌幅（列表页展示用；不复权，需求 P0-2）。老库无此列需重建
+    last_close = Column(Float, nullable=True)
+    pct_change = Column(Float, nullable=True)
+    #: 关键价位 JSON（[{price, kind, source, detail}]，需求 §5.3 每个价位须带来源）
+    key_levels = Column(Text, nullable=True)
+    #: 仓位建议（S6 硬上限裁剪后）：轻/中/重 + 目标占比 + 裁剪原因
+    position_tier = Column(String(4), nullable=True)
+    position_pct = Column(Float, nullable=True)
+    position_reasons = Column(Text, nullable=True)
     risk_level = Column(String(8), nullable=False, default="观察")
     human_text = Column(Text, nullable=True)
     degraded = Column(Boolean, nullable=False, default=False)
@@ -363,6 +372,21 @@ class LlmTextCacheRow(AssistantBase):
 # ---------------------------------------------------------------------------
 # L4 用户输入层
 # ---------------------------------------------------------------------------
+class PortfolioSettingRow(AssistantBase):
+    """运行设置（基线档位 + 资金）——append-only，取最新一行作为当前生效值。
+
+    env 里的 ``ASSISTANT_*`` 只作初始 fallback；Web 配置页写入后以本表为准（D-12）。
+    """
+
+    __tablename__ = "assistant_portfolio_setting"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    baseline_preset = Column(String(16), nullable=False, default="standard")
+    total_capital = Column(Float, nullable=False)
+    cash_available = Column(Float, nullable=True)
+    updated_at = Column(DateTime, nullable=False)
+
+
 class UserHolding(AssistantBase):
     """持仓与成本（用户手工录入，下一次快照生成时生效）。"""
 

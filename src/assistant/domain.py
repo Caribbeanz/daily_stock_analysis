@@ -402,6 +402,9 @@ class HoldingConclusion:
     est_level: str = ""
     div_yield: float | None = None
     pnl_pct: float | None = None
+    #: 最近交易日收盘与当日涨跌幅（%）：列表页要展示，且必须与快照同源
+    last_close: float | None = None
+    pct_change: float | None = None
     risk_level: RiskLevel = RiskLevel.INFO
     human_text: str = ""
     degraded: bool = False
@@ -490,6 +493,10 @@ class MarketLine:
     pct_change: float | None = None
     regime: str = ""
     available: bool = False
+    #: 数据截止日（指数当日未发布时 < 请求日，展示层据此标「截至 MM-DD」）
+    as_of: "date | None" = None
+    #: M1 两因子取值，如 ``"above+up"``；仅用于留痕与展示，不参与判定
+    factors: str = ""
 
     def sentence(self) -> str:
         if not self.available:

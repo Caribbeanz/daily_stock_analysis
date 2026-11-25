@@ -9,6 +9,7 @@ from datetime import date
 from types import SimpleNamespace
 
 from src.assistant.data.storage import AssistantStore
+from src.assistant.domain import MarketLine
 from src.assistant.llm import (
     LlmTextService,
     LlmTextSettings,
@@ -245,3 +246,73 @@ class TestRenderIntegration:
         payload = pipeline.payload(DAY)
         assert "AI 生成摘要，以结构化字段为准" in payload.text
         assert backend.calls  # 真走过一次后端，之后同快照复用缓存
+
+
+class TestMarketText:
+    """大盘/板块总结（§5.13.3 第 3 处）：同一套护栏，另加计数硬校验。"""
+
+    def market(self, *, available: bool = True) -> MarketLine:
+        return MarketLine(
+            index_name="上证指数", pct_change=0.27, regime="偏弱", available=available
+        )
+
+    def test_disabled_uses_rule_template(self) -> None:
+        llm, store = service(FakeBackend(), enabled=False)
+
+        outcome = llm.text("market", content(), market=self.market())
+
+        assert outcome.source == "template"
+        assert "上证指数" in outcome.text
+        assert "涨0.27%" in outcome.text
+        assert "偏弱" in outcome.text
+        assert "自选 1 只" in outcome.text
+        # 落库便于 /llm_text 只读回放
+        assert store.load_llm_text("20261125-abc", "market", None)["text"] == outcome.text
+
+    def test_market_unavailable_says_missing(self) -> None:
+        llm, _ = service(FakeBackend(), enabled=False)
+
+        outcome = llm.text("market", content(), market=self.market(available=False))
+
+        assert "大盘数据缺失" in outcome.text
+        assert "偏弱" not in outcome.text
+
+    def test_action_words_rejected_for_market(self) -> None:
+        """§5.13.5 第 4 条：大盘/板块总结同样不得出现动作词。"""
+        llm, _ = service(FakeBackend(text="大盘偏弱，建议减仓一半。"), enabled=True)
+
+        outcome = llm.text("market", content(), market=self.market())
+
+        assert outcome.source == "template"
+        assert outcome.consistency.startswith("fallback:new_action")
+
+    def test_prompt_carries_market_snapshot(self) -> None:
+        backend = FakeBackend(text="上证指数涨 0.27%，环境偏弱，自选 1 只。")
+        llm, _ = service(backend, enabled=True)
+
+        outcome = llm.text("market", content(), market=self.market())
+
+        assert outcome.source == "llm"
+        assert '"market_snapshot"' in backend.calls[0]["prompt"]
+        assert "偏弱" in backend.calls[0]["prompt"]
+
+    def test_counts_mismatch_outputs_nothing(self, monkeypatch) -> None:
+        """§4.2：sum(counts) != total 时不输出总结段，也不写缓存。"""
+        import src.assistant.llm as llm_module
+
+        def broken(content_, *, market=None, code=None):  # noqa: ANN001
+            return {
+                "data_date": DAY.isoformat(),
+                "snapshot_id": "20261125-abc",
+                "calc_version": "rules-v1/p1",
+                "counts": {"total": 3, "by_advice": {"加仓": 1}},
+            }
+
+        monkeypatch.setattr(llm_module, "build_whitelist", broken)
+        llm, store = service(FakeBackend(text="随便一句。"), enabled=True)
+
+        outcome = llm.text("market", content(), market=self.market())
+
+        assert outcome.text == ""
+        assert outcome.consistency == "fallback:counts_mismatch"
+        assert store.load_llm_text("20261125-abc", "market", None) is None

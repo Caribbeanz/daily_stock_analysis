@@ -241,6 +241,7 @@ class AssistantPipeline:
             data_date=day,
             notes="" if not skipped else "跳过：" + "；".join(f"{c}({r})" for c, r in skipped),
         )
+        self._persist_market(snapshot_id, day)
         content = self.store.snapshot_content(snapshot_id)
         if content is None:  # pragma: no cover
             raise PipelineError(f"快照 {snapshot_id} 写入后读不回")
@@ -261,9 +262,13 @@ class AssistantPipeline:
             "review": self.review(day),
             "market": market,
         }
-        # LLM 只润色 ② 段，不进决策；默认关闭时连 service 都不构造
-        if self.llm is not None or (self.llm_settings or LlmTextSettings.from_env()).enabled:
+        # LLM 只润色文案，不进决策；默认关闭时连 service 都不构造
+        if self._llm_enabled():
             render_kwargs["llm_summary"] = self.llm_text("summary", content, market=market).text
+            # 详情页/卡片读的是缓存，GET 不生成：所以三处文案必须在生成快照时一次写完
+            self.llm_text("market", content, market=market)
+            for code in (row["code"] for row in content.get("conclusions") or []):
+                self.llm_text("stock", content, market=market, code=code)
         return DeliveryPayload(
             data_date=day,
             bar_date=outcome.bar_date,
@@ -344,6 +349,8 @@ class AssistantPipeline:
                 pct_change=line.pct_change,
                 regime=line.regime,
                 available=True,
+                as_of=line.as_of or ordered[-1].trade_date,
+                factors=line.factors,
             )
         self._market_cache[day] = line
         return line
@@ -354,6 +361,33 @@ class AssistantPipeline:
     # ------------------------------------------------------------------
     # 内部
     # ------------------------------------------------------------------
+    def _llm_enabled(self) -> bool:
+        if self.llm is not None:
+            return True
+        return bool((self.llm_settings or LlmTextSettings.from_env()).enabled)
+
+    def _persist_market(self, snapshot_id: str, day: date) -> None:
+        """把大盘快照落库（D-20）；不可用时不写，「宁缺不造」。
+
+        写库失败只降级为「该行缺失」（`/market` 会如实返回 available=false），
+        不能让一次大盘表异常带走当天已经算好的个股结论。
+        """
+        line = self.market_line(day)
+        if not line.available:
+            return
+        try:
+            self.store.save_market_snapshot(
+                snapshot_id,
+                index_code=self.settings.index_code,
+                index_name=self.index_name,
+                pct_change=line.pct_change,
+                market_regime=line.regime or "中性",
+                regime_cells=line.factors or None,
+                degraded=bool(line.as_of and line.as_of < day),
+            )
+        except Exception as exc:  # noqa: BLE001 - 大盘表异常不阻塞当日结论
+            logger.warning("大盘快照写入失败（按未写入处理）：%s: %s", type(exc).__name__, exc)
+
     def _params(self) -> ParamSet:
         if self.params is not None:
             return self.params
