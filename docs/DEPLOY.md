@@ -178,6 +178,14 @@ Web/API scheduler 优先，助手不启动。助手日报渠道由 `NOTIFICATION
 LLM 文案层默认关闭（只润色措辞、不参与任何计算）；要启用见 `.env.example` 的 `ASSISTANT_LLM_*`，
 渠道不可用时自动回退规则模板，不影响日报生成与推送。
 
+助手还提供一组独立 API：8 个只读快照端点（`/api/v1/assistant/snapshot|market|sectors|holdings|holding/{code}|plans/{code}|risks|llm_text`）
+与 5 个配置端点（`/api/v1/assistant/params` 及 `preset`/`override`/`funds`）。全部走现有鉴权，
+只读端点不重算结论，响应带三元组；配置写入 append-only 留痕，下一次快照才生效。
+
+页面入口是 **`/assistant`**（独立页面，不套主工作台外壳）：Tab A 大盘与板块、Tab B 个股列表、
+`?code=600000` 详情、`?view=settings` 参数配置。未生成当日快照时页面会提示「交易日 20:00 后可用」，
+不是报错。该页面只在已有快照时才有内容，所以先跑一次 `--assistant-once` 再打开即可。
+
 > 不知道怎么访问？→ [云服务器 Web 界面访问指南](deploy-webui-cloud.md)
 
 ---

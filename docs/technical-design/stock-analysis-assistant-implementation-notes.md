@@ -15,14 +15,17 @@
 | C2 调度与门控 | ✅ 时点解析 / 交易日 fail-closed / 多时点同源投递 / 节拍编排 | `src/assistant/scheduling/` |
 | C2 装配链 | ✅ 取数 → 守卫链 → 当日快照 → 渲染 的端到端编排（幂等） | `src/assistant/pipeline.py` |
 | C5 入口接线 | ✅ `main.py --assistant` 显式 opt-in，时点仍由助手调度决定 | `src/assistant/service.py` + `main.py` |
-| C5 飞书渲染 | 🟡 七段图标化文本 + 两档密度 + T 日复盘已完成；卡片/Web 页面未做 | `src/assistant/render/` |
+| C5 快照/配置 API | ✅ 8 个只读端点 + 5 个配置端点，三元组校验、只读不重算 | `api/v1/endpoints/assistant.py` |
+| C5 飞书渲染 | ✅ 七段图标化文本 + 两档密度 + T 日复盘 | `src/assistant/render/` |
+| C5 Web 独立页面 | ✅ `/assistant` 单条路由（不套 `<Shell>`），Tab A 大盘/板块 + Tab B 列表 + 详情 + 配置 | `apps/dsa-web/src/pages/assistant/` |
+| C5 卡片与区块 | ✅ 卡片八项固定顺序 + 详情五区块，全部只读快照、前端不重算 | `pages/assistant/components/` |
 | C3 决策引擎 | ✅ 守卫链 / 阶段 / 阶段门 / 评分 / 风险 / 条件计划 | `src/assistant/engine/` |
 | C4 参数框架 | ✅ 三档预设 + 单项覆盖 + param_hash + 变更记录 | `src/assistant/config/` |
 | C5 发送接线 | ✅ 新增 `route_type=assistant_daily` + 去重键＝`snapshot_id` + 纯文本降级 | `src/assistant/notify.py` |
-| C5 LLM 文案层 | ✅ 飞书 ② 段摘要 + 个股一句话；白名单/数值校验/降级/缓存已接，默认关闭 | `src/assistant/llm.py` |
+| C5 LLM 文案层 | ✅ 三处用法（飞书 ② 段 / 个股一句话 / 大盘总结）；白名单、计数硬校验、降级、缓存，默认关闭 | `src/assistant/llm.py` |
 | C6 验证回测 | ⬜ 未开始（纸面回看 / 条件计划回测） | — |
 
-**没有做的部分**：快照 API、Web 页面与卡片渲染、飞书入站、大盘/板块总结（依赖 Web Tab）、回测扩展、战法启停清单接入 `calc_version`、adj_factor 正式来源（M15 兜底路径已实现但未启用）、股票名称来源（现用代码兜底）。
+**没有做的部分**：板块数据接入（Tab A 板块区如实空着）、飞书入站、回测扩展、战法启停清单接入 `calc_version`、adj_factor 正式来源（M15 兜底路径已实现但未启用）、股票名称来源（现用代码兜底）。
 
 ---
 
@@ -52,7 +55,12 @@ src/assistant/
 │   └── feishu.py           七段图标化渲染（两档密度 + 超长按序降级）
 ├── pipeline.py             装配链：ensure_snapshot / payload / generate（幂等）
 ├── llm.py                  文案层：白名单 → 生成 → 校验 → 缓存/降级（默认关闭）
+├── stage_text.py           阶段打法/允许/禁止/切换的唯一出处（飞书 ⑤ 段与 Web 详情共用）
 ├── notify.py               发送接线：payload → 既有通知链（route_type / 去重键 / 纯文本降级）
+├── config/
+│   ├── presets.py          45 项参数注册表 + 三档
+│   ├── overrides.py        单项覆盖 + param_hash + append-only 变更
+│   └── service.py          配置 API 唯一入口：env 初始 → L4 生效、下一次快照生效
 ├── mode.py                 main.py 入口判定（零依赖，未启用时不加载取数栈）
 ├── service.py              运行时装配 + 调度循环（main.py 显式 opt-in）
 ├── data/
@@ -118,6 +126,13 @@ src/assistant/
 | §5.13.5 硬约束 1–4 | `llm.py::validate_text` | 数值/日期逐字核对、收益承诺词、新动作词、个股建议反向检查，任一不过即降级 |
 | §5.13.5 硬约束 5/8 | `llm.py::LlmTextService` + `data/models.py::LlmTextCacheRow` | 超时/异常/校验失败用规则模板；`assistant_llm_text_cache` 留模型/渠道/用量/校验结果 |
 | §5.13.6 成本与延迟 | `LlmTextSettings` + 缓存 | 默认关闭、超时 ≤120s、每日调用上限、同快照同位置只生成一次 |
+| §8.1 只读 API | `api/v1/endpoints/assistant.py` | 8 个 GET 只读 L3；统一三元组，不一致 409「待同步」；鉴权走全局中间件 |
+| §6.1 Web 独立页面 | `pages/assistant/{Index,Detail,Settings}.tsx` | 单条路由 + `StandaloneRouteBoundary`（与 `/login` 同构），不套 Shell、不改现有 11 条 |
+| §6.2 卡片固定顺序 | `pages/assistant/components/blocks.tsx` | 操作意见→趋势→位置→关键价位→理由→风险→仓位→做 T 计划，顺序写死在组件里 |
+| §6.2 列表与红涨绿跌 | `components/HoldingTable.tsx` + `format.ts` | 列按 §6.3；涨红跌绿、=0 灰；价格不复权 |
+| §5.13.3 第 3 处 LLM | `llm.py::_fallback_market` + `pipeline.payload` | 大盘总结走同一套校验；`sum(by_advice) != total` 时不输出总结段 |
+| §8.2 配置 API | `config/service.py` + 端点 | 切档/覆盖/回滚/资金写 L4，append-only 留痕，下一次快照生效 |
+| §5.16.4 参数生效语义 | `config/overrides.py::resolve_effective_date` | 当日未生成快照则当日生效；已生成则顺延到下一交易日 |
 
 ---
 
@@ -216,13 +231,15 @@ src/assistant/
   才进入独立调度；与 `--serve/--webui` 互斥，Web 优先（有日志说明）。
 - 待办：设置面板若要做助手配置页，直接读写这些 env 键，不要新增第二套字段。
 
-### D-12 资金类输入暂由环境变量注入，尚未进 L4 表（**待 Web 配置页**）
+### D-12 资金配置进 L4（**已收口**）
 
-- 需求 §5.6：总资金是「用户填写的固定金额」，现金同理。本增量用
-  `ASSISTANT_TOTAL_CAPITAL` / `ASSISTANT_CASH_AVAILABLE` 注入，**缺总资金直接报错**，
-  不给默认值（给个假总资金会算出看似合理的错股数）。
-- 现金缺省时按 `总资金 − 持仓市值` 推算，并在组合视图里如实使用。
-- 待办：配置页落地后改存 L4 表（`assistant_portfolio_setting`），env 仅作初始值。
+- 需求 §5.6：总资金是「用户填写的固定金额」，不给假默认值。新增
+  `assistant_portfolio_setting`（append-only，取最新一行）保存
+  `baseline_preset / total_capital / cash_available`，由
+  `PUT /api/v1/assistant/params/funds` 与 `/params/preset` 写入。
+- `ASSISTANT_*` 环境变量退为**初始值**：从未通过配置页保存时才生效；
+  一旦 L4 有行即以 L4 为准。这样本地无配置也能起助手，页面保存后又不会两套值打架。
+- 现金缺省仍按 `总资金 − 持仓市值` 推算（在组合视图层），表内留空即表示「自动」。
 
 ### D-13 `assistant_snapshot` 增加 `bar_date` 列（**本地开发库需重建**）
 
@@ -305,15 +322,41 @@ src/assistant/
   temperature**，随文案一起存进 `assistant_llm_text_cache`，同快照可复现同一段文案。
 - `assistant_llm_text_cache` 增加 `fingerprint` / `usage_json` 两列（`create_all` 不改老表，
   本地开发库需重建——与 D-13 同一处理方式）。
-- 本期只接两处：飞书 ② 段摘要（`llm_summary` 可选参数，默认 None 时输出逐字不变）与个股
-  一句话（WebUI 详情页未建，先提供 `pipeline.llm_text("stock", ...)` 入口）；大盘/板块总结
-  要等 Web 大盘 Tab，不空写。
+- 三处已全部接上：飞书 ② 段摘要（`llm_summary` 可选参数，默认 None 时输出逐字不变）、
+  个股一句话、大盘总结（`position="market"`，Web Tab A 展示）。
+- **三处都在 `pipeline.payload` 一次写完**：详情页与 Web 只 GET 缓存，不在读接口里现调模型
+  ——否则第一次打开页面与飞书推送会是两段不同的文案，违反「同快照只生成一次」。
+  代价是 20:00 那次要串行调 `1 + 1 + N` 次；N 受 `ASSISTANT_LLM_MAX_CALLS_PER_DAY`（默认 20）
+  约束，超出的标的直接落规则模板，不会把推送拖成不可控长尾。
 - 后端复用 `src/llm/backend_factory`，主流程 Analyzer 的渠道 router 没有直接复用（它绑定
   Analyzer 实例），M14 实测完成前默认关闭；渠道不可用时一律规则模板降级，不阻塞推送。
 - 超时用线程池 + `future.result(timeout=)` 硬截断，**不在 `__exit__` 里等后台线程**，否则
   卡死的渠道会拖住 20:00 推送；后端自身仍应设 timeout。
 - 每日调用上限是**进程内软限制**（重启归零）；硬上限依赖「同快照同位置只生成一次」的
   缓存与每日快照数量。仓库目前没有按 $/token 的成本预算机制，本增量不假装做了金额封顶。
+
+### D-20 大盘已落库、板块仍缺（**部分收口**）
+
+- 大盘：`pipeline._persist_market` 在快照生成后写 `assistant_market_snapshot`
+  （指数 / 涨跌 / 三档 / 两因子 / degraded）。数据不可用或写表异常时**不写行**，
+  `/market` 继续返回 `available:false`，页面写「大盘数据缺失」，不编造档位。
+- 板块：管线还没有板块强度数据源（M1 的宽度/风格/相对大盘需要另一套取数），
+  因此 `assistant_sector_snapshot` 仍为空，Tab A 板块区如实写「未接入」。
+  等板块取数接入后只需补写表，页面与 API 不用改。
+- 另：`/params/funds` 是方案 §8.2 之外的补充端点——配置页必须能保存资金（D-12），
+  否则「只推 env」无法做到「页面改参数」。
+
+### D-21 结论表补 6 列（列表与卡片要的字段原先只在内存里）
+
+- 需求 §6.3 列表要「最近交易日价格 + 涨跌幅」、§6.4 卡片要「关键价位」「仓位建议」，
+  这些值引擎早就算出来了（`view.last_close` / `result.key_levels` / `position_advice`），
+  但 `holding_conclusion` 没存，Web 端只能去读原始 K 线重算——那会绕过「单一真值」。
+- 处理：结论表加 `last_close` / `pct_change` / `key_levels`(JSON) / `position_tier` /
+  `position_pct` / `position_reasons`(JSON)，由 `write_conclusion` 一次写全，
+  读回时组装成 `position` 子对象。
+- 代价：`create_all` 不会给老库补列，**本地开发库需重建**（同 D-13 的处理方式）；
+  生产尚无助手库，无迁移负担。
+- 关键价位的来源说明（`source`）一并落库，页面不自己编「这是箱体上沿」。
 
 ## 5. 验证
 
@@ -335,7 +378,7 @@ print(TradingDayGate().decide(datetime(2026,11,24,20,0)).as_dict())"
 python scripts/assistant_fetch_smoke.py --codes 600000 000001 --years 3
 ```
 
-当前结果：**342 passed**，`flake8` 无告警（`src/assistant`、`tests/assistant`；共享通知链的
+当前结果：**382 passed**（助手 Python 测试）+ **5 passed**（`pages/assistant` 前端用例），`flake8` / `tsc` / `eslint` 均无告警。，`flake8` 无告警（`src/assistant`、`tests/assistant`；共享通知链的
 历史告警数与改动前逐文件相同，见 D-18）。
 
 **2026-11-24 联网实测（akshare 1.19.5）**：
@@ -401,8 +444,13 @@ python scripts/assistant_fetch_smoke.py --codes 600000 000001 --years 3
 - 渲染：七段顺序固定、① 必带复盘子行、风险同股归并取最高、计划数值行无 emoji/加粗、两档触发价与股数逐字一致、精简版只留可设单分支、超长按序降级不超限、纯文本剥离 `**`
 - 复盘：触发/未触发/跳空/无法判定四类判定、缺行情不猜、无 T-1 快照明确说明
 - 大盘一句：四象限闭合、Q2/Q3 中性、缓冲带沿用历史档、无历史/序列不足/NaN 降级、取数失败降级、同日缓存、滞后指数标注日期
+- 大盘快照落库：可用时写行（含两因子与 degraded）、不可用/空序列时不写、重复写跳过、写表异常不影响当日结论
+- Web 页面：大盘页环境档与总结段、列表红涨绿跌与点行进入详情、空快照给人话提示、详情五区块与价位来源、配置页按注册表渲染并提示生效时点
+- 大盘文案：关闭时走规则模板、不可用时不编档位、动作词被拒、提示词含 market_snapshot、计数不一致时不输出总结段
 - 服务装配：总开关与参数解析、gate/dispatcher/pipeline 接线、20:00 投一次、同时点二次判重复、取数前时点不投、`run_loop` 中断退出
 - main 接线：从 `main.py` 直接抽取 `parse_arguments` 执行，锁定新 flag 可解析且默认不启用助手
+- 配置服务：env 初始 → L4 覆盖、切档/覆盖/回滚 append-only、越界拒绝、下一次快照生效（当日已生成则顺延）
+- API：8 个只读端点的三元组 404/409、LLM 缓存命中与未命中、资金 L4 覆盖 env、切档/覆盖/回滚、越界键 400
 - LLM 文案：白名单字段不越界、数值/承诺/新动作/反向建议四类校验、超时与异常降级、同快照复用缓存、每日预算、② 段接线与默认关闭时输出不变
 - 发送接线：参数翻译（路由/去重键＝`snapshot_id`/`allow_repeat`）、正文为空不发、服务失败如实返回失败、
   两个时点各投一次、同时点二次判 `duplicate`、非交易日提醒按日去重、`allow_repeat` 仍受静默时段与最低级别约束

@@ -172,6 +172,17 @@ The LLM wording layer is off by default (it only rephrases and never computes an
 see `ASSISTANT_LLM_*` in `.env.example` to enable it. An unavailable provider falls back
 to rule-based text without blocking report generation or delivery.
 
+The Web entry is **`/assistant`** (a standalone page outside the main shell): Tab A market & sectors,
+Tab B holdings list, `?code=600000` for detail, `?view=settings` for parameters. When no snapshot
+exists yet the page says "available after 20:00 on trading days" instead of failing; run
+`--assistant-once` once before opening it.
+
+The assistant also exposes its own API: 8 read-only snapshot endpoints
+(`/api/v1/assistant/snapshot|market|sectors|holdings|holding/{code}|plans/{code}|risks|llm_text`)
+and 5 configuration endpoints (`/api/v1/assistant/params` plus `preset`/`override`/`funds`).
+All use the existing auth layer; read endpoints never recompute and responses carry the
+snapshot triple. Config writes are append-only and take effect at the next snapshot.
+
 ---
 
 ## Option 3: Systemd Service

@@ -30,6 +30,7 @@ const AlertsPage = lazy(() => import('./pages/AlertsPage'));
 const TokenUsagePage = lazy(() => import('./pages/TokenUsagePage'));
 const StockScreeningPage = lazy(() => import('./pages/StockScreeningPage'));
 const DataCenterPage = lazy(() => import('./pages/DataCenterPage'));
+const AssistantPage = lazy(() => import('./pages/assistant/Index'));
 
 const AppContent: React.FC = () => {
   const location = useLocation();
@@ -80,6 +81,16 @@ const AppContent: React.FC = () => {
     return <Navigate to={redirect} replace />;
   }
 
+  if (location.pathname === '/assistant' || location.pathname.startsWith('/assistant/')) {
+    // 助手页是独立页面（需求 §3.5.2）：与 /login 同构走 StandaloneRouteBoundary，
+    // **不套 <Shell>**，因此不经过下面的 Outlet，现有菜单与页面组件零改动。
+    return (
+      <StandaloneRouteBoundary>
+        <AssistantPage />
+      </StandaloneRouteBoundary>
+    );
+  }
+
   return (
     <Shell>
       <RouteOutletBoundary />
@@ -98,6 +109,8 @@ const routeChildren = [
   { path: '/alerts', element: <AlertsPage /> },
   { path: '/usage', element: <TokenUsagePage /> },
   { path: '/settings', element: <SettingsPage /> },
+  // 助手页：仅新增这一条，现有 11 条路由不变；实际渲染由 AppContent 的独立分支接管
+  { path: '/assistant', element: <AssistantPage /> },
   { path: '*', element: <NotFoundPage /> },
 ];
 
