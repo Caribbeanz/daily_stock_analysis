@@ -375,6 +375,18 @@ def parse_arguments() -> argparse.Namespace:
     )
 
     parser.add_argument(
+        '--assistant',
+        action='store_true',
+        help='启用股票分析助手独立调度（只在其配置的时点生成并投递，默认 20:00）'
+    )
+
+    parser.add_argument(
+        '--assistant-once',
+        action='store_true',
+        help='只跑一次助手节拍后退出（验收/排障用；非触发时点不生成也不投递）'
+    )
+
+    parser.add_argument(
         '--no-run-immediately',
         action='store_true',
         help='定时任务启动时不立即执行一次'
@@ -1811,6 +1823,21 @@ def main() -> int:
     # === 启动 Web 服务 (如果启用) ===
     start_serve = (args.serve or args.serve_only) and os.getenv("GITHUB_ACTIONS") != "true"
 
+    # 助手独立调度是单进程常驻模式，不与 Web/API runtime scheduler 并行接管时点。
+    # 判定逻辑放在助手包内，便于脱离主流程依赖单测。
+    from src.assistant.mode import assistant_mode_decision
+
+    assistant_mode = assistant_mode_decision(
+        assistant_flag=bool(getattr(args, 'assistant', False)),
+        assistant_once=bool(getattr(args, 'assistant_once', False)),
+        env_enabled=bool(getattr(config, 'assistant_enabled', False)),
+        start_serve=start_serve,
+    )
+    if assistant_mode.message:
+        (logger.error if assistant_mode.level == "error" else logger.warning)(assistant_mode.message)
+        if assistant_mode.level == "error":
+            return 1
+
     if start_serve:
         args.host, args.port = _resolve_web_service_bind(args, config)
         _warn_if_public_webui_without_auth(args.host)
@@ -1952,6 +1979,35 @@ def main() -> int:
                 trigger_source="cli",
             )
             return 0 if market_review_result else 1
+
+        # 模式1.5: 股票分析助手独立调度（opt-in；不接管主流程 --schedule）
+        # 时点、交易日门控、同源投递、持久化防重投都在 src/assistant/service.py
+        # 装配好的运行时里；这里只负责在显式请求时进入该模式并映射退出码。
+        if assistant_mode.enter:
+            from src.assistant.scheduling.delivery import DeliveryOutcome
+            from src.assistant.service import build_runtime, run_loop, run_once
+
+            try:
+                runtime = build_runtime(db_path=config.database_path)
+            except Exception as exc:
+                logger.exception("助手运行时装配失败：%s", exc)
+                return 1
+
+            if getattr(args, 'assistant_once', False):
+                result = run_once(runtime)
+                logger.info(
+                    "助手单次节拍完成：交易日=%s 生成=%s 投递=%s 已跳过=%s",
+                    result.gate.is_trading_day,
+                    result.generated,
+                    result.sent,
+                    sum(1 for item in result.dispatches if item.outcome is DeliveryOutcome.DUPLICATE),
+                )
+                return 1 if any(
+                    item.outcome is DeliveryOutcome.FAILED for item in result.dispatches
+                ) else 0
+
+            run_loop(runtime)
+            return 0
 
         # 模式2: 定时任务模式
         if args.schedule or config.schedule_enabled:

@@ -16,6 +16,7 @@
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
 from typing import Any, Callable, Mapping, Optional, Sequence
@@ -24,14 +25,16 @@ from src.assistant.config.overrides import ParamSet
 from src.assistant.data.storage import AssistantStore
 from src.assistant.domain import (
     Bar,
+    MarketLine,
     PortfolioView,
     PositionView,
     StockView,
 )
 from src.assistant.engine.guard_chain import GuardChainInput, run_guard_chain
+from src.assistant.engine.market import market_line_from_bars
 from src.assistant.engine.stage import StageDebounceState
 from src.assistant.enums import Preset, SourceTag, Stage
-from src.assistant.render.feishu import MarketLine, fit_feishu
+from src.assistant.render.feishu import fit_feishu
 from src.assistant.render.review import PlanReview, build_plan_review
 from src.assistant.scheduling.delivery import DeliveryPayload
 from src.assistant.versioning import RuleFingerprint
@@ -43,6 +46,8 @@ __all__ = [
     "SnapshotOutcome",
     "render_summary",
 ]
+
+logger = logging.getLogger(__name__)
 
 DEFAULT_HISTORY_YEARS = 3
 DEFAULT_INDEX_CODE = "sh000001"
@@ -168,8 +173,15 @@ class AssistantPipeline:
     render: Callable[..., str] = fit_feishu
     trading_days: Optional[Callable[[date, date], Sequence[date] | None]] = None
     clock: Callable[[], datetime] = field(default=lambda: datetime.now())
+    #: ② 段大盘一句：指数日线取数器（ReferenceFetcher）；None = 离线/测试，如实写缺失
+    market_fetcher: Any = None
+    #: 注入指数日线可绕过网络（测试用）；不为 None 时优先用它
+    market_bars: Sequence[Bar] | None = None
+    index_name: str = "上证指数"
     _trading_cache: dict[date, Optional[tuple[date, ...]]] = field(default_factory=dict, repr=False)
     _known_tags: dict[str, SourceTag] = field(default_factory=dict, repr=False)
+    #: 同一天只取一次指数：同源投递与「二次渲染逐字相同」都依赖它
+    _market_cache: dict[date, MarketLine] = field(default_factory=dict, repr=False)
 
     # ------------------------------------------------------------------
     # 对外入口
@@ -263,8 +275,53 @@ class AssistantPipeline:
         return build_plan_review(content, bars)
 
     def market_line(self, day: date) -> MarketLine:
-        """② 段的大盘一句。**暂未接指数取数**，如实返回「缺失」而不编造（见 D-16）。"""
-        return MarketLine(available=False)
+        """② 段的大盘一句：指数日线 → 涨跌 + M1 环境档（D-16）。
+
+        取数失败、序列不足或落在缓冲带且无历史档，都返回 ``available=False``，
+        由渲染层如实写「大盘数据缺失」——**不编造涨跌与档位**。同日缓存结果，
+        保证「同源多时点」与「二次渲染逐字相同」。
+        """
+        cached = self._market_cache.get(day)
+        if cached is not None:
+            return cached
+
+        bars = self.market_bars
+        if bars is None:
+            if self.market_fetcher is None:
+                line = MarketLine(available=False)
+                self._market_cache[day] = line
+                return line
+            try:
+                # 200 个自然日足够 20 日均线 + 5 日斜率 + 缓冲带回溯，且不拖慢 20:00 推送
+                result = self.market_fetcher.fetch_index(
+                    self.settings.index_code,
+                    day - timedelta(days=200),
+                    day,
+                )
+                bars = result.bars
+            except Exception as exc:  # noqa: BLE001 - 大盘一句失败不能带走当日结论
+                logger.warning(
+                    "指数 %s 取数失败，大盘一句按数据缺失处理：%s: %s",
+                    self.settings.index_code,
+                    type(exc).__name__,
+                    exc,
+                )
+                line = MarketLine(available=False)
+                self._market_cache[day] = line
+                return line
+
+        ordered = sorted(bars, key=lambda item: item.trade_date)
+        line = market_line_from_bars(ordered, index_name=self.index_name)
+        if line.available and ordered and ordered[-1].trade_date != day:
+            # 指数当日尚未发布时不能把旧值说成今天：正文如实标注数据截止日
+            line = MarketLine(
+                index_name=f"{self.index_name}（截至 {ordered[-1].trade_date:%m-%d}）",
+                pct_change=line.pct_change,
+                regime=line.regime,
+                available=True,
+            )
+        self._market_cache[day] = line
+        return line
 
     #: 调度层直接把它当 ``generate`` 传进去
     generate = payload

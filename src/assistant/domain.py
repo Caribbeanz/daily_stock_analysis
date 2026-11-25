@@ -477,3 +477,30 @@ class CandidateAdvice:
     score: float
     reason: CandidateReason
     summary: str = ""
+
+
+# ---------------------------------------------------------------------------
+# 引擎产出、渲染消费的值对象
+# ---------------------------------------------------------------------------
+@dataclass(frozen=True)
+class MarketLine:
+    """② 段的大盘一句。数据缺失时 ``available=False``，如实写缺失。"""
+
+    index_name: str = ""
+    pct_change: float | None = None
+    regime: str = ""
+    available: bool = False
+
+    def sentence(self) -> str:
+        if not self.available:
+            return "大盘数据缺失（本次不判断环境档）"
+        pct = ""
+        if self.pct_change is not None:
+            if self.pct_change > 0:
+                pct = f" ▲{self.pct_change:.2f}%"
+            elif self.pct_change < 0:
+                pct = f" ▼{abs(self.pct_change):.2f}%"
+            else:
+                pct = " 0.00%"
+        regime = f" · {self.regime}" if self.regime else ""
+        return f"{self.index_name or '指数'}{pct}{regime}"

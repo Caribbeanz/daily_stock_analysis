@@ -19,6 +19,7 @@ from dataclasses import dataclass, replace
 from datetime import date
 from typing import Any, Iterable, Mapping, Sequence
 
+from src.assistant.domain import MarketLine
 from src.assistant.enums import ACTION_ORDER, Action, RiskLevel, Stage, STAGE_ALLOWED
 from src.assistant.render.icons import (
     CAL_ICON,
@@ -72,30 +73,6 @@ _NEEDS_ACTION = frozenset(
 
 #: 无需动作（仅列示）
 _NO_ACTION = frozenset({Action.HOLD.value, Action.WATCH.value, Action.WAIT_BUY.value, Action.WAIT_SELL.value})
-
-
-@dataclass(frozen=True)
-class MarketLine:
-    """② 段的大盘一句。数据缺失时 ``available=False``，如实写缺失。"""
-
-    index_name: str = ""
-    pct_change: float | None = None
-    regime: str = ""
-    available: bool = False
-
-    def sentence(self) -> str:
-        if not self.available:
-            return "大盘数据缺失（本次不判断环境档）"
-        pct = ""
-        if self.pct_change is not None:
-            if self.pct_change > 0:
-                pct = f" ▲{self.pct_change:.2f}%"
-            elif self.pct_change < 0:
-                pct = f" ▼{abs(self.pct_change):.2f}%"
-            else:
-                pct = " 0.00%"
-        regime = f" · {self.regime}" if self.regime else ""
-        return f"{self.index_name or '指数'}{pct}{regime}"
 
 
 @dataclass(frozen=True)

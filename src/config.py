@@ -1327,6 +1327,10 @@ class Config:
     # 设为 false 可完全旁路该行为（回到上游"每次启动都立即执行"的现状）
     schedule_startup_dedup: bool = True
     run_immediately: bool = True              # 启动时是否立即执行一次（非定时模式）
+    # 股票分析助手独立调度（默认关闭；与主流程 --schedule 是两条互不接管的路径）。
+    # 其余 ASSISTANT_* 参数由各自模块从环境解析（PipelineSettings.from_env /
+    # scheduling.config.parse_env_config），这里只承载总开关，避免同一键两处解析漂移。
+    assistant_enabled: bool = False
     market_review_enabled: bool = True        # 是否启用大盘复盘
     daily_market_context_enabled: bool = True   # 是否将大盘环境摘要用于个股分析 Prompt 与保守护栏
     # 大盘复盘市场区域：cn(A股)、hk(港股)、us(美股)、jp(日股)、kr(韩股)、both(全部市场)
@@ -2342,6 +2346,11 @@ class Config:
             schedule_run_immediately=schedule_run_immediately,
             schedule_startup_dedup=schedule_startup_dedup,
             run_immediately=legacy_run_immediately,
+            assistant_enabled=cls._resolve_env_value(
+                'ASSISTANT_ENABLED',
+                default='false',
+                prefer_env_file=True,
+            ).lower() == 'true',
             market_review_enabled=os.getenv('MARKET_REVIEW_ENABLED', 'true').lower() == 'true',
             daily_market_context_enabled=os.getenv('DAILY_MARKET_CONTEXT_ENABLED', 'true').lower() == 'true',
             market_review_region=cls._parse_market_review_region(

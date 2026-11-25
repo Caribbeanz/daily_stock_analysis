@@ -152,6 +152,23 @@ python main.py --schedule
 nohup python main.py --schedule > /dev/null 2>&1 &
 ```
 
+### Standalone stock-analysis assistant scheduler (optional, off by default)
+
+This is a separate path from the main `--schedule`: the assistant generates and
+delivers its own seven-section daily brief only at its configured times (20:00
+by default), without repeating the main analysis and push.
+
+```bash
+# Set ASSISTANT_TOTAL_CAPITAL in .env first (required, no default); other ASSISTANT_* keys: .env.example
+python main.py --assistant              # stays running, checks time points every minute
+python main.py --assistant-once         # one tick then exit, for verification/troubleshooting
+```
+
+`--assistant` cannot be combined with `--serve/--webui`. If only
+`ASSISTANT_ENABLED=true` is set and the Web service is enabled, the Web/API
+scheduler takes precedence and the assistant does not start. Its channels come
+from `NOTIFICATION_ASSISTANT_CHANNELS`; leaving it empty uses all configured channels.
+
 ---
 
 ## Option 3: Systemd Service

@@ -162,6 +162,20 @@ python main.py --webui-only
 python main.py --webui
 ```
 
+### 股票分析助手独立调度（可选，默认关闭）
+
+与主流程 `--schedule` 是两条互不接管的路径：助手只在其配置的时点（默认 20:00）
+生成并投递自己的七段日报，不会重复主流程的分析与推送。
+
+```bash
+# 先在 .env 填 ASSISTANT_TOTAL_CAPITAL（必填，无默认值），其余 ASSISTANT_* 见 .env.example
+python main.py --assistant              # 常驻，每分钟检查时点
+python main.py --assistant-once         # 只跑一拍后退出，用于验收/排障
+```
+
+`--assistant` 不能与 `--serve/--webui` 同用；仅设 `ASSISTANT_ENABLED=true` 且启用 Web 时，
+Web/API scheduler 优先，助手不启动。助手日报渠道由 `NOTIFICATION_ASSISTANT_CHANNELS` 决定，留空沿用全部已配置渠道。
+
 > 不知道怎么访问？→ [云服务器 Web 界面访问指南](deploy-webui-cloud.md)
 
 ---

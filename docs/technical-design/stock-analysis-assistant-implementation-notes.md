@@ -14,13 +14,14 @@
 | C2 数据与存储 | ✅ 取数层 + 存储层 + 投递台账 | `src/assistant/data/` |
 | C2 调度与门控 | ✅ 时点解析 / 交易日 fail-closed / 多时点同源投递 / 节拍编排 | `src/assistant/scheduling/` |
 | C2 装配链 | ✅ 取数 → 守卫链 → 当日快照 → 渲染 的端到端编排（幂等） | `src/assistant/pipeline.py` |
+| C5 入口接线 | ✅ `main.py --assistant` 显式 opt-in，时点仍由助手调度决定 | `src/assistant/service.py` + `main.py` |
 | C5 飞书渲染 | 🟡 七段图标化文本 + 两档密度 + T 日复盘已完成；卡片/Web 页面/LLM 文案未做 | `src/assistant/render/` |
 | C3 决策引擎 | ✅ 守卫链 / 阶段 / 阶段门 / 评分 / 风险 / 条件计划 | `src/assistant/engine/` |
 | C4 参数框架 | ✅ 三档预设 + 单项覆盖 + param_hash + 变更记录 | `src/assistant/config/` |
 | C5 发送接线 | ✅ 新增 `route_type=assistant_daily` + 去重键＝`snapshot_id` + 纯文本降级 | `src/assistant/notify.py` |
 | C6 验证回测 | ⬜ 未开始（纸面回看 / 条件计划回测） | — |
 
-**没有做的部分**：快照 API、Web 页面与卡片渲染、飞书入站、LLM 文案层、大盘指数取数（② 段现写「数据缺失」）、调度 tick 挂到 `main.py`、回测扩展、战法启停清单接入 `calc_version`、adj_factor 正式来源（M15 兜底路径已实现但未启用）、股票名称来源（现用代码兜底）。
+**没有做的部分**：快照 API、Web 页面与卡片渲染、飞书入站、LLM 文案层、回测扩展、战法启停清单接入 `calc_version`、adj_factor 正式来源（M15 兜底路径已实现但未启用）、股票名称来源（现用代码兜底）。
 
 ---
 
@@ -40,6 +41,7 @@ src/assistant/
 │   ├── stage_gate.py      阶段门 S5.5（8 条改写规则 + 只收紧断言）
 │   ├── scoring.py         技术面主导评分 + 决策表 + 档位缓冲
 │   ├── risk.py            风险 7 类 / 三级联动 / 同类合并
+│   ├── market.py          M1 大盘环境（指数日线 → 涨跌 + 2×2 档位）
 │   ├── plan.py            条件计划（阶段模板 + 同向过滤 + 股数 + 硬上限）
 │   └── guard_chain.py     守卫链 S0→S6 主入口（留痕 GuardTrace）
 ├── versioning.py           calc_version 指纹（规则集 + 参数 + 分数带）
@@ -49,6 +51,8 @@ src/assistant/
 │   └── feishu.py           七段图标化渲染（两档密度 + 超长按序降级）
 ├── pipeline.py             装配链：ensure_snapshot / payload / generate（幂等）
 ├── notify.py               发送接线：payload → 既有通知链（route_type / 去重键 / 纯文本降级）
+├── mode.py                 main.py 入口判定（零依赖，未启用时不加载取数栈）
+├── service.py              运行时装配 + 调度循环（main.py 显式 opt-in）
 ├── data/
 │   ├── models.py          21 张 assistant_ 表（L1 / L3 / L4 + 投递台账 + 防抖状态）
 │   └── storage.py         L1 幂等写入、周月线聚合、L3 append-only、L4 变更重放、投递台账
@@ -106,6 +110,8 @@ src/assistant/
 | §6.3 复用通知链（不新增平行发送器） | `notify.py` + `notification_routing.py` | 新增 1 个 `route_type`；发送仍由 `NotificationService`/`feishu_sender` 完成 |
 | §2.3 多时点同源 vs 降噪去重 | `notification_noise.py::allow_repeat` + `notify.py` | `dedupe_key=snapshot_id` + `allow_repeat`：有意重复不被内容去重吞掉，静默时段仍生效 |
 | §3.5.3.1 硬约束 5（降级剥离 `**`） | `notify.py` + `feishu_sender` 的 `fallback_content` | 卡片失败转 `msg_type=text` 时改发剥离版，不把加粗标记露给用户 |
+| D-16 大盘一句接指数 | `engine/market.py` + `pipeline.py::market_line` | 指数日线 → M1 2×2 三档；失败/缓冲带无历史档如实写「数据缺失」，同日缓存保证同源 |
+| D-11 配置与入口落地 | `service.py` + `config.py` + `main.py` | 只把总开关放进 `Config`，其余 `ASSISTANT_*` 由各自 owning 模块解析，避免二次解析漂移 |
 
 ---
 
@@ -193,13 +199,16 @@ src/assistant/
 - 风险：自实现需自己保证语义正确，已用 28 条用例锁定（含 OR 语义、`*/2` 归星号字段、
   闰年 2 月 30 日返回 `None` 而非死循环）。
 
-### D-11 五个配置键尚未落到 `src/config.py`
+### D-11 配置落地（**已收口：按 owning 模块单一解析**）
 
-- 方案 §2.4 建议把 `ASSISTANT_PUSH_SCHEDULE` 等五个键加进 `src/config.py`。本增量**先按
-  映射解析**（`parse_env_config(env)`），未改 `src/config.py` 与 `config_registry.py`。
-- 原因：改 `Config` dataclass 要同步 `from_env`、`config_registry` 元数据与设置面板，
-  属跨模块改动；调度层已可在不改动主流程的前提下独立验证。
-- 待装配阶段一并落地：加字段 + 注册表条目 + 设置面板，一次改完再回归主流程。
+- 入口阶段把总开关 `ASSISTANT_ENABLED` 加进 `src/config.py`（含 `from_env` 与
+  `.env.example`）；其余 `ASSISTANT_*` 仍由各自模块解析
+  （`PipelineSettings.from_env` / `scheduling.config.parse_env_config`）。
+- 这样做是不把同一个键解析两遍：若 `Config` 也存一份时的值，设置面板改了而
+  owning 模块读的是另一份，就会出现「页面显示 20:30、实际 20:00 推」的漂移。
+- `main.py` 新增 `--assistant` / `--assistant-once`，显式请求或被环境变量开启时
+  才进入独立调度；与 `--serve/--webui` 互斥，Web 优先（有日志说明）。
+- 待办：设置面板若要做助手配置页，直接读写这些 env 键，不要新增第二套字段。
 
 ### D-12 资金类输入暂由环境变量注入，尚未进 L4 表（**待 Web 配置页**）
 
@@ -234,13 +243,21 @@ src/assistant/
   展示自动跟着变，不会出现「文案说可以、引擎却拦下」的矛盾。
 - 待你过目措辞；改文案不影响任何计算。
 
-### D-16 ② 段「大盘一句」暂未接指数取数
+### D-16 ② 段「大盘一句」接指数（**已实现，范围限定**）
 
-- 渲染层已支持 `MarketLine`，但装配层暂未取指数，② 段如实写「大盘数据缺失（本次不判断
-  环境档）」，不编造涨跌与档位。
-- 原因：`MarketView` 的 2×2 环境档需要指数与宽度序列，属独立数据能力（方案 §3.1 M1），
-  与「文字好看」无关，未在本增量硬塞。
-- 待办：接入指数日线后填 `pct_change` 与 `regime`，渲染层无需改动。
+- `engine/market.py` 用指数日线实现 M1 的**指数可独立计算部分**：因子 A（价格相对 MA20，
+  缓冲带 near 沿用最近一个非 near 交易日有效档）、因子 B（MA 斜率严格二分，走平归 not_up）
+  → Q1/Q4 偏强/偏弱、Q2/Q3 中性；`pct_change` 取最后两根收盘。
+- 不做的部分：市场宽度、风格、指数共振、量能确认标记——它们需要别的数据能力，缺失时
+  **只减少展示项**，不编造档位；量能按需求「第 3 因子仅作确认」，本句不展示。
+- 降级：序列不足、非有限值、near 且无历史档、指数取数失败 → `available=False`，
+  渲染层如实写「大盘数据缺失（本次不判断环境档）」；指数当日未发布则在标签上标
+  「截至 MM-DD」，不把旧值说成今天。
+- 同日缓存：同一天只取一次指数，保证「同源多时点」与「二次渲染逐字相同」。
+- 真实联网实测（新浪指数源 D1）：`sh000001` 136 根日线，末根 2026-11-24 收盘 3548.369，
+  `pct_change=+0.27%`、`regime=偏弱`；请求 11-25 时取到当日新 bar 得 `-2.03%`，缓存二次调用逐字相同。
+- 阈值（MA 窗口 / 斜率回看 / eps / theta）是初值，纸面回看确定后应进入 `calc_version`；
+  目前未入版本，因为环境档只影响展示，未参与评分与守卫链。
 
 ### D-17 极端超长时的最后一级：限制分支条数
 
@@ -294,7 +311,7 @@ print(TradingDayGate().decide(datetime(2026,11,24,20,0)).as_dict())"
 python scripts/assistant_fetch_smoke.py --codes 600000 000001 --years 3
 ```
 
-当前结果：**293 passed**，`flake8` 无告警（`src/assistant`、`tests/assistant`；共享通知链的
+当前结果：**324 passed**，`flake8` 无告警（`src/assistant`、`tests/assistant`；共享通知链的
 历史告警数与改动前逐文件相同，见 D-18）。
 
 **2026-11-24 联网实测（akshare 1.19.5）**：
@@ -359,6 +376,9 @@ python scripts/assistant_fetch_smoke.py --codes 600000 000001 --years 3
 - 装配：同日同参数复用快照、换参数生成新快照、增量取数不截断历史、降级来源如实标注、全标的不可用则抛错不产出、防抖状态跨进程可用
 - 渲染：七段顺序固定、① 必带复盘子行、风险同股归并取最高、计划数值行无 emoji/加粗、两档触发价与股数逐字一致、精简版只留可设单分支、超长按序降级不超限、纯文本剥离 `**`
 - 复盘：触发/未触发/跳空/无法判定四类判定、缺行情不猜、无 T-1 快照明确说明
+- 大盘一句：四象限闭合、Q2/Q3 中性、缓冲带沿用历史档、无历史/序列不足/NaN 降级、取数失败降级、同日缓存、滞后指数标注日期
+- 服务装配：总开关与参数解析、gate/dispatcher/pipeline 接线、20:00 投一次、同时点二次判重复、取数前时点不投、`run_loop` 中断退出
+- main 接线：从 `main.py` 直接抽取 `parse_arguments` 执行，锁定新 flag 可解析且默认不启用助手
 - 发送接线：参数翻译（路由/去重键＝`snapshot_id`/`allow_repeat`）、正文为空不发、服务失败如实返回失败、
   两个时点各投一次、同时点二次判 `duplicate`、非交易日提醒按日去重、`allow_repeat` 仍受静默时段与最低级别约束
 
