@@ -34,6 +34,7 @@ from src.assistant.engine.guard_chain import GuardChainInput, run_guard_chain
 from src.assistant.engine.market import market_line_from_bars
 from src.assistant.engine.stage import StageDebounceState
 from src.assistant.enums import Preset, SourceTag, Stage
+from src.assistant.llm import LlmTextService, LlmTextSettings, TextOutcome
 from src.assistant.render.feishu import fit_feishu
 from src.assistant.render.review import PlanReview, build_plan_review
 from src.assistant.scheduling.delivery import DeliveryPayload
@@ -178,6 +179,9 @@ class AssistantPipeline:
     #: 注入指数日线可绕过网络（测试用）；不为 None 时优先用它
     market_bars: Sequence[Bar] | None = None
     index_name: str = "上证指数"
+    #: LLM 文案层：默认关闭；注入 service 或把 settings.enabled 置真才调用
+    llm: Any = None
+    llm_settings: LlmTextSettings | None = None
     _trading_cache: dict[date, Optional[tuple[date, ...]]] = field(default_factory=dict, repr=False)
     _known_tags: dict[str, SourceTag] = field(default_factory=dict, repr=False)
     #: 同一天只取一次指数：同源投递与「二次渲染逐字相同」都依赖它
@@ -252,13 +256,21 @@ class AssistantPipeline:
         """生成可投递载荷（调度层 ``generate`` 钩子）。"""
         outcome = self.ensure_snapshot(day, now=now)
         content = outcome.content
+        market = self.market_line(day)
+        render_kwargs: dict[str, Any] = {
+            "review": self.review(day),
+            "market": market,
+        }
+        # LLM 只润色 ② 段，不进决策；默认关闭时连 service 都不构造
+        if self.llm is not None or (self.llm_settings or LlmTextSettings.from_env()).enabled:
+            render_kwargs["llm_summary"] = self.llm_text("summary", content, market=market).text
         return DeliveryPayload(
             data_date=day,
             bar_date=outcome.bar_date,
             snapshot_id=outcome.snapshot_id,
             calc_version=content["calc_version"],
             param_hash=content["param_hash"],
-            text=self.render(content, review=self.review(day), market=self.market_line(day)),
+            text=self.render(content, **render_kwargs),
             stale=content["source_tag"] == "D3" or content["gap_days"] > 3,
         )
 
@@ -273,6 +285,19 @@ class AssistantPipeline:
         codes = {row["code"] for row in content.get("plans") or []}
         bars = {code: self.store.load_bars(code) for code in codes}
         return build_plan_review(content, bars)
+
+    def llm_text(
+        self,
+        position: str,
+        content: Mapping[str, Any],
+        *,
+        market: Any = None,
+        code: str | None = None,
+    ) -> TextOutcome:
+        """文案层入口（个股一句话 / 飞书摘要）；缓存命中不会重复调后端。"""
+        if self.llm is None:
+            self.llm = LlmTextService(self.store, self.llm_settings or LlmTextSettings.from_env())
+        return self.llm.text(position, content, market=market, code=code)
 
     def market_line(self, day: date) -> MarketLine:
         """② 段的大盘一句：指数日线 → 涨跌 + M1 环境档（D-16）。

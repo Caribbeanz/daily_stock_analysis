@@ -15,13 +15,14 @@
 | C2 调度与门控 | ✅ 时点解析 / 交易日 fail-closed / 多时点同源投递 / 节拍编排 | `src/assistant/scheduling/` |
 | C2 装配链 | ✅ 取数 → 守卫链 → 当日快照 → 渲染 的端到端编排（幂等） | `src/assistant/pipeline.py` |
 | C5 入口接线 | ✅ `main.py --assistant` 显式 opt-in，时点仍由助手调度决定 | `src/assistant/service.py` + `main.py` |
-| C5 飞书渲染 | 🟡 七段图标化文本 + 两档密度 + T 日复盘已完成；卡片/Web 页面/LLM 文案未做 | `src/assistant/render/` |
+| C5 飞书渲染 | 🟡 七段图标化文本 + 两档密度 + T 日复盘已完成；卡片/Web 页面未做 | `src/assistant/render/` |
 | C3 决策引擎 | ✅ 守卫链 / 阶段 / 阶段门 / 评分 / 风险 / 条件计划 | `src/assistant/engine/` |
 | C4 参数框架 | ✅ 三档预设 + 单项覆盖 + param_hash + 变更记录 | `src/assistant/config/` |
 | C5 发送接线 | ✅ 新增 `route_type=assistant_daily` + 去重键＝`snapshot_id` + 纯文本降级 | `src/assistant/notify.py` |
+| C5 LLM 文案层 | ✅ 飞书 ② 段摘要 + 个股一句话；白名单/数值校验/降级/缓存已接，默认关闭 | `src/assistant/llm.py` |
 | C6 验证回测 | ⬜ 未开始（纸面回看 / 条件计划回测） | — |
 
-**没有做的部分**：快照 API、Web 页面与卡片渲染、飞书入站、LLM 文案层、回测扩展、战法启停清单接入 `calc_version`、adj_factor 正式来源（M15 兜底路径已实现但未启用）、股票名称来源（现用代码兜底）。
+**没有做的部分**：快照 API、Web 页面与卡片渲染、飞书入站、大盘/板块总结（依赖 Web Tab）、回测扩展、战法启停清单接入 `calc_version`、adj_factor 正式来源（M15 兜底路径已实现但未启用）、股票名称来源（现用代码兜底）。
 
 ---
 
@@ -50,6 +51,7 @@ src/assistant/
 │   ├── review.py           T 日复盘（T-1 计划对照 T 日行情，只读）
 │   └── feishu.py           七段图标化渲染（两档密度 + 超长按序降级）
 ├── pipeline.py             装配链：ensure_snapshot / payload / generate（幂等）
+├── llm.py                  文案层：白名单 → 生成 → 校验 → 缓存/降级（默认关闭）
 ├── notify.py               发送接线：payload → 既有通知链（route_type / 去重键 / 纯文本降级）
 ├── mode.py                 main.py 入口判定（零依赖，未启用时不加载取数栈）
 ├── service.py              运行时装配 + 调度循环（main.py 显式 opt-in）
@@ -112,6 +114,10 @@ src/assistant/
 | §3.5.3.1 硬约束 5（降级剥离 `**`） | `notify.py` + `feishu_sender` 的 `fallback_content` | 卡片失败转 `msg_type=text` 时改发剥离版，不把加粗标记露给用户 |
 | D-16 大盘一句接指数 | `engine/market.py` + `pipeline.py::market_line` | 指数日线 → M1 2×2 三档；失败/缓冲带无历史档如实写「数据缺失」，同日缓存保证同源 |
 | D-11 配置与入口落地 | `service.py` + `config.py` + `main.py` | 只把总开关放进 `Config`，其余 `ASSISTANT_*` 由各自 owning 模块解析，避免二次解析漂移 |
+| §5.13.4 输入白名单 | `llm.py::build_whitelist` | 只读快照字段 + counts；原始行情/新闻/历史文案/未来数据一律不进提示词 |
+| §5.13.5 硬约束 1–4 | `llm.py::validate_text` | 数值/日期逐字核对、收益承诺词、新动作词、个股建议反向检查，任一不过即降级 |
+| §5.13.5 硬约束 5/8 | `llm.py::LlmTextService` + `data/models.py::LlmTextCacheRow` | 超时/异常/校验失败用规则模板；`assistant_llm_text_cache` 留模型/渠道/用量/校验结果 |
+| §5.13.6 成本与延迟 | `LlmTextSettings` + 缓存 | 默认关闭、超时 ≤120s、每日调用上限、同快照同位置只生成一次 |
 
 ---
 
@@ -291,6 +297,24 @@ src/assistant/
 - 未覆盖：飞书的**分片**（超长分批）路径不传 `fallback_content`——助手正文上限 1,800 字
   ≈5KB，远低于单条消息上限，实际进不到分片分支。
 
+### D-19 LLM 文案指纹与决策 `calc_version` 分开
+
+- 需求 §5.13.5 硬约束 8 写「temperature 等参数进 `calc_version`」。这里按语义拆成两个指纹：
+  **决策 `calc_version` 不含 temperature**（它只改措辞，进了会让同一份结构化结论换快照 ID，
+  与 B50 ③「当日快照只生成一次」冲突）；**文案指纹 `fingerprint` 含提示词版本 + 模型 +
+  temperature**，随文案一起存进 `assistant_llm_text_cache`，同快照可复现同一段文案。
+- `assistant_llm_text_cache` 增加 `fingerprint` / `usage_json` 两列（`create_all` 不改老表，
+  本地开发库需重建——与 D-13 同一处理方式）。
+- 本期只接两处：飞书 ② 段摘要（`llm_summary` 可选参数，默认 None 时输出逐字不变）与个股
+  一句话（WebUI 详情页未建，先提供 `pipeline.llm_text("stock", ...)` 入口）；大盘/板块总结
+  要等 Web 大盘 Tab，不空写。
+- 后端复用 `src/llm/backend_factory`，主流程 Analyzer 的渠道 router 没有直接复用（它绑定
+  Analyzer 实例），M14 实测完成前默认关闭；渠道不可用时一律规则模板降级，不阻塞推送。
+- 超时用线程池 + `future.result(timeout=)` 硬截断，**不在 `__exit__` 里等后台线程**，否则
+  卡死的渠道会拖住 20:00 推送；后端自身仍应设 timeout。
+- 每日调用上限是**进程内软限制**（重启归零）；硬上限依赖「同快照同位置只生成一次」的
+  缓存与每日快照数量。仓库目前没有按 $/token 的成本预算机制，本增量不假装做了金额封顶。
+
 ## 5. 验证
 
 ```bash
@@ -311,7 +335,7 @@ print(TradingDayGate().decide(datetime(2026,11,24,20,0)).as_dict())"
 python scripts/assistant_fetch_smoke.py --codes 600000 000001 --years 3
 ```
 
-当前结果：**324 passed**，`flake8` 无告警（`src/assistant`、`tests/assistant`；共享通知链的
+当前结果：**342 passed**，`flake8` 无告警（`src/assistant`、`tests/assistant`；共享通知链的
 历史告警数与改动前逐文件相同，见 D-18）。
 
 **2026-11-24 联网实测（akshare 1.19.5）**：
@@ -379,6 +403,7 @@ python scripts/assistant_fetch_smoke.py --codes 600000 000001 --years 3
 - 大盘一句：四象限闭合、Q2/Q3 中性、缓冲带沿用历史档、无历史/序列不足/NaN 降级、取数失败降级、同日缓存、滞后指数标注日期
 - 服务装配：总开关与参数解析、gate/dispatcher/pipeline 接线、20:00 投一次、同时点二次判重复、取数前时点不投、`run_loop` 中断退出
 - main 接线：从 `main.py` 直接抽取 `parse_arguments` 执行，锁定新 flag 可解析且默认不启用助手
+- LLM 文案：白名单字段不越界、数值/承诺/新动作/反向建议四类校验、超时与异常降级、同快照复用缓存、每日预算、② 段接线与默认关闭时输出不变
 - 发送接线：参数翻译（路由/去重键＝`snapshot_id`/`allow_repeat`）、正文为空不发、服务失败如实返回失败、
   两个时点各投一次、同时点二次判 `duplicate`、非交易日提醒按日去重、`allow_repeat` 仍受静默时段与最低级别约束
 

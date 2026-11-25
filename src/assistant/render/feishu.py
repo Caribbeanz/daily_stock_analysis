@@ -101,9 +101,12 @@ def render_feishu(
     mode: str = "full",
     review: PlanReview | None = None,
     market: MarketLine | None = None,
+    llm_summary: str | None = None,
 ) -> str:
     """按档位渲染（不裁剪长度，裁剪见 :func:`fit_feishu`）。"""
-    return _render(content, RenderOptions(mode=mode), review=review, market=market)
+    return _render(
+        content, RenderOptions(mode=mode), review=review, market=market, llm_summary=llm_summary
+    )
 
 
 def fit_feishu(
@@ -112,6 +115,7 @@ def fit_feishu(
     mode: str = "full",
     review: PlanReview | None = None,
     market: MarketLine | None = None,
+    llm_summary: str | None = None,
 ) -> str:
     """渲染并保证不超长（完整版 1,800 / 精简版 1,100）。
 
@@ -142,7 +146,7 @@ def fit_feishu(
 
     text = ""
     for options in ladder:
-        text = _render(content, options, review=review, market=market)
+        text = _render(content, options, review=review, market=market, llm_summary=llm_summary)
         if len(text) <= limit:
             return text
     return text  # 已降到最简仍超长：返回最简版，由发送层按渠道能力再处理
@@ -154,9 +158,12 @@ def render_plain(
     mode: str = "full",
     review: PlanReview | None = None,
     market: MarketLine | None = None,
+    llm_summary: str | None = None,
 ) -> str:
     """纯文本降级版（发送失败转 ``msg_type=text`` 时用，硬约束 5：先剥离 ``**``）。"""
-    return strip_markdown(fit_feishu(content, mode=mode, review=review, market=market))
+    return strip_markdown(
+        fit_feishu(content, mode=mode, review=review, market=market, llm_summary=llm_summary)
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -168,6 +175,7 @@ def _render(
     *,
     review: PlanReview | None,
     market: MarketLine | None,
+    llm_summary: str | None,
 ) -> str:
     conclusions = list(content.get("conclusions") or [])
     plans = list(content.get("plans") or [])
@@ -179,7 +187,7 @@ def _render(
 
     blocks = [
         _header(content, review),
-        _summary(conclusions, market),
+        _summary(conclusions, market, llm_summary),
         _risk_block(risks, conclusions, options),
         _todo_block(conclusions, plans),
         _stage_block(conclusions, plans, options),
@@ -204,13 +212,21 @@ def _header(content: Mapping[str, Any], review: PlanReview | None) -> str:
     return "\n".join(lines)
 
 
-def _summary(conclusions: Sequence[Mapping[str, Any]], market: MarketLine | None) -> str:
+def _summary(
+    conclusions: Sequence[Mapping[str, Any]],
+    market: MarketLine | None,
+    llm_summary: str | None = None,
+) -> str:
     sentence = (market or MarketLine()).sentence()
     total = len(conclusions)
     todo = sum(1 for row in conclusions if (row.get("advice") or "") in _NEEDS_ACTION)
     wait = sum(1 for row in conclusions if (row.get("advice") or "") in _NO_ACTION)
     counts = f"自选 {total} 只（待办 {todo} · 观察/等待 {wait}）"
-    return f"{SECTION_ICONS['summary']} 大盘：{sentence} · {counts}"
+    line = f"{SECTION_ICONS['summary']} 大盘：{sentence} · {counts}"
+    if llm_summary and llm_summary.strip():
+        # 文案已由 LLM 层做白名单/数字/禁用词校验；这里只展示，不重算也不改数字
+        line += "\n" + llm_summary.strip()
+    return line
 
 
 def _risk_block(

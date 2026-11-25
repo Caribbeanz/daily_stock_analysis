@@ -350,6 +350,10 @@ class LlmTextCacheRow(AssistantBase):
     channel = Column(String(32), nullable=True)
     generated_at = Column(DateTime, nullable=True)
     consistency_check = Column(String(16), nullable=True)
+    #: 文案指纹：提示词版本 + 模型 + temperature；与决策 calc_version 分开（D-19）
+    fingerprint = Column(String(64), nullable=True)
+    #: 后端返回的用量（可追溯，不参与任何决策）
+    usage_json = Column(Text, nullable=True)
 
     __table_args__ = (
         UniqueConstraint("snapshot_id", "position", "code", name="uq_assistant_llm_text"),

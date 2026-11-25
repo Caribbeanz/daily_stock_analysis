@@ -175,6 +175,8 @@ python main.py --assistant-once         # 只跑一拍后退出，用于验收/�
 
 `--assistant` 不能与 `--serve/--webui` 同用；仅设 `ASSISTANT_ENABLED=true` 且启用 Web 时，
 Web/API scheduler 优先，助手不启动。助手日报渠道由 `NOTIFICATION_ASSISTANT_CHANNELS` 决定，留空沿用全部已配置渠道。
+LLM 文案层默认关闭（只润色措辞、不参与任何计算）；要启用见 `.env.example` 的 `ASSISTANT_LLM_*`，
+渠道不可用时自动回退规则模板，不影响日报生成与推送。
 
 > 不知道怎么访问？→ [云服务器 Web 界面访问指南](deploy-webui-cloud.md)
 

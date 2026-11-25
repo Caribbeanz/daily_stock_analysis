@@ -168,6 +168,9 @@ python main.py --assistant-once         # one tick then exit, for verification/t
 `ASSISTANT_ENABLED=true` is set and the Web service is enabled, the Web/API
 scheduler takes precedence and the assistant does not start. Its channels come
 from `NOTIFICATION_ASSISTANT_CHANNELS`; leaving it empty uses all configured channels.
+The LLM wording layer is off by default (it only rephrases and never computes anything);
+see `ASSISTANT_LLM_*` in `.env.example` to enable it. An unavailable provider falls back
+to rule-based text without blocking report generation or delivery.
 
 ---
 

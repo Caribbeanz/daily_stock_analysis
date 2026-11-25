@@ -655,8 +655,34 @@ class AssistantStore:
                 result.discard(row.code)
         return result
 
+    def load_llm_text(self, snapshot_id: str, position: str, code: str | None = None) -> dict | None:
+        """读回一份已缓存文案（含降级文案）；没有返回 ``None``。"""
+        with self.session() as sess:
+            row = sess.execute(
+                select(LlmTextCacheRow).where(
+                    LlmTextCacheRow.snapshot_id == snapshot_id,
+                    LlmTextCacheRow.position == position,
+                    LlmTextCacheRow.code.is_(code) if code is None else LlmTextCacheRow.code == code,
+                )
+            ).scalars().first()
+            if row is None:
+                return None
+            return {
+                "snapshot_id": row.snapshot_id,
+                "position": row.position,
+                "code": row.code,
+                "text": row.text,
+                "model": row.model or "",
+                "channel": row.channel or "",
+                "consistency": row.consistency_check or "",
+                "fingerprint": row.fingerprint or "",
+                "usage": json.loads(row.usage_json) if row.usage_json else {},
+                "generated_at": row.generated_at.isoformat() if row.generated_at else "",
+            }
+
     def save_llm_text(self, snapshot_id: str, position: str, text: str, *, code: str | None = None,
-                      model: str = "", channel: str = "", consistency: str = "") -> None:
+                      model: str = "", channel: str = "", consistency: str = "",
+                      fingerprint: str = "", usage: dict | None = None) -> None:
         """写 LLM 文案缓存；同快照同位置已存在则跳过（不覆盖）。"""
         with self.session() as sess:
             exists = sess.execute(
@@ -678,6 +704,8 @@ class AssistantStore:
                     channel=channel,
                     generated_at=datetime.now(),
                     consistency_check=consistency or None,
+                    fingerprint=fingerprint or None,
+                    usage_json=json.dumps(usage, ensure_ascii=False) if usage else None,
                 )
             )
 

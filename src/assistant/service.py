@@ -23,6 +23,7 @@ from typing import Any, Callable, Mapping, Optional
 
 from src.assistant.data.fetcher import DailyFetcher, ReferenceFetcher
 from src.assistant.data.storage import AssistantStore
+from src.assistant.llm import LlmTextSettings
 from src.assistant.mode import AssistantModeDecision, assistant_mode_decision
 from src.assistant.notify import make_sender, notify_non_trading
 from src.assistant.pipeline import AssistantPipeline, PipelineSettings
@@ -63,6 +64,8 @@ def build_runtime(
     service: Any = None,
     fetcher: Any = None,
     market_fetcher: Any = None,
+    llm: Any = None,
+    llm_settings: LlmTextSettings | None = None,
 ) -> AssistantRuntime:
     """按环境变量装配运行时；缺资金等必填项直接抛错，不猜默认值。"""
     environ: Mapping[str, str] = os.environ if env is None else env
@@ -81,6 +84,8 @@ def build_runtime(
         settings=settings,
         fetcher=daily_fetcher,
         market_fetcher=index_fetcher,
+        llm=llm,
+        llm_settings=llm_settings or LlmTextSettings.from_env(environ),
     )
     gate = TradingDayGate(
         action=schedule.non_trading_action,
