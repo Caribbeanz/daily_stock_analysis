@@ -17,6 +17,7 @@ from src.assistant.backtest_replay import (
     _drop_overlaps,
     _exit_levels,
     load_state,
+    market_views_from_index,
     replay,
     save_state,
 )
@@ -442,3 +443,69 @@ def test_drop_overlaps_keeps_untriggered_rows() -> None:
 
     assert [row.branch_id for row in accepted] == ["x"]
     assert dropped == 0
+
+
+# ---- 大盘注入（D-30）------------------------------------------------------
+def _index_series(count: int, *, start: float = 3000.0, step: float = 6.0,
+                  start_day: date = date(2026, 1, 5)) -> list[Bar]:
+    """构造一段单调上行的指数日线（MA20 在上方且向上 → 应为偏强档）。"""
+    out: list[Bar] = []
+    for i in range(count):
+        day = start_day + timedelta(days=i)
+        close = start + step * i
+        out.append(_bar(day, open_=close - 2, high=close + 3, low=close - 4, close=close))
+    return out
+
+
+class TestMarketViews:
+    def test_regime_computed_for_each_day(self) -> None:
+        bars = _index_series(60)
+        days = [bar.trade_date for bar in bars[-3:]]
+
+        views = market_views_from_index(bars, days, symbol="sh000001")
+
+        assert set(views) == set(days)
+        first = views[days[0]]
+        assert first.index_code == "sh000001"
+        assert first.regime, "有效档必须给出档位名，不能留空"
+        assert first.regime_degraded is False
+        assert first.pct_change > 0
+
+    def test_width_stays_unavailable(self) -> None:
+        """涨跌家数回放拿不到：宽度必须留空，别用 0 或 1 假装有数据。"""
+        bars = _index_series(60)
+
+        views = market_views_from_index(bars, [bars[-1].trade_date])
+
+        view = views[bars[-1].trade_date]
+        assert view.advance_ratio is None
+        assert view.width_degraded is True
+
+    def test_no_future_bars_leak(self) -> None:
+        """T 只用 ≤T 的日线：把 T 之后的暴跌接在后面，T 的档位不能变。"""
+        bars = _index_series(60)
+        day = bars[40].trade_date
+        crash = [
+            _bar(day + timedelta(days=i + 1), open_=1000.0, high=1000.0, low=900.0, close=900.0)
+            for i in range(19)
+        ]
+
+        plain = market_views_from_index(bars[:41], [day])
+        with_future = market_views_from_index(bars[:41] + crash, [day])
+
+        assert plain[day] == with_future[day]
+
+    def test_insufficient_bars_is_omitted_not_guessed(self) -> None:
+        bars = _index_series(10)
+
+        views = market_views_from_index(bars, [bars[-1].trade_date], min_bars=30)
+
+        assert views == {}, "根数不够就不放进去，由回放层记成大盘缺失"
+
+    def test_day_without_index_bar_is_omitted(self) -> None:
+        bars = _index_series(60)
+        missing = bars[-1].trade_date + timedelta(days=5)
+
+        views = market_views_from_index(bars, [missing])
+
+        assert missing not in views

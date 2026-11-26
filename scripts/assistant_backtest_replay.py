@@ -17,8 +17,10 @@
 - 若手头只有主项目的 ``stock_daily`` 表，用 ``--import-main-db`` 把对应标的的日线**复制**进
   L1 再回放（只读源库、只写 assistant 自己的表；脚本层桥接，助手包内不 import 主项目）。
 - **一次只跑一套参数**：参数网格请多次调用本脚本（避免组合爆炸），``--max-days`` 是规模护栏。
-- **大盘默认缺失**：不注入指数序列时 M1 环境档与「大盘 ≤ 警示」不触发，结果偏乐观，
-  报告里的 ``counters.market_missing_days`` 会写明。
+- **大盘靠 ``--index`` 注入**：给了指数符号（如 ``sh000001``）就按日算 M1 环境档并喂给守卫链；
+  没给则 ``market=None``，M1 与「大盘 ≤ 警示」都不触发，结果偏乐观，报告用
+  ``counters.market_missing_days`` 明写。宽度（涨跌家数）回放无法还原，一律留空，
+  对应的「市场宽度恶化」风险项不会触发——这一点也写进 ``not_modelled``。
 """
 
 from __future__ import annotations
@@ -35,6 +37,7 @@ if str(ROOT) not in sys.path:
 from src.assistant.backtest import RoundConfig  # noqa: E402
 from src.assistant.backtest_replay import (  # noqa: E402
     ReplayConfig,
+    market_views_from_index,
     ReplayState,
     load_state,
     replay,
@@ -51,6 +54,19 @@ from assistant_common import (  # noqa: E402 - 同目录脚本，直接 import
 )
 
 
+def _parse_overrides(items: list[str] | None) -> dict[str, object]:
+    out: dict[str, object] = {}
+    for item in items or []:
+        key, _, raw = item.partition("=")
+        if not key or not raw:
+            raise SystemExit(f"--override 需要 key=value，收到 {item!r}")
+        try:
+            out[key] = float(raw)
+        except ValueError:
+            out[key] = raw
+    return out
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="assistant 历史计划回放（只读 L1）")
     parser.add_argument("--db", default=None, help="SQLite 路径；缺省用助手默认库")
@@ -65,6 +81,9 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--max-hold", type=int, default=60, help="最长持有交易日")
     parser.add_argument("--min-closed", type=int, default=30, help="样本门槛：不足只报计数")
     parser.add_argument("--holding", action="append", help="起点持仓，形如 600000:1000，可多次")
+    parser.add_argument("--override", action="append", help="参数覆盖 key=value（只做对照实验用），可多次")
+    parser.add_argument("--index", default=None,
+                        help="大盘指数符号（如 sh000001）；给了才注入 M1 环境档，缺省不注入")
     parser.add_argument("--checkpoint", default=None, help="检查点路径（可续跑）")
     parser.add_argument("--resume", action="store_true", help="从检查点续跑")
     parser.add_argument("--import-main-db", default=None,
@@ -101,7 +120,7 @@ def main(argv: list[str] | None = None) -> int:
     config = ReplayConfig(
         lookback_bars=args.lookback,
         min_bars=args.min_bars,
-        params=ParamSet.build(Preset(args.preset)),
+        params=ParamSet.build(Preset(args.preset), overrides=_parse_overrides(args.override)),
         round_config=RoundConfig(
             cost_bps=args.cost_bps,
             max_hold_days=args.max_hold,
@@ -112,12 +131,21 @@ def main(argv: list[str] | None = None) -> int:
     )
     state = load_state(args.checkpoint) if (args.resume and args.checkpoint) else ReplayState()
 
+    market_by_day = None
+    if args.index:
+        index_bars = store.load_bars(args.index, end=args.end)
+        if not index_bars:
+            raise SystemExit(f"库里没有 {args.index} 的日线，先跑 assistant_ingest_history.py --index {args.index}")
+        market_by_day = market_views_from_index(index_bars, days, symbol=args.index)
+        print(f"大盘注入：{args.index} · 覆盖 {len(market_by_day)}/{len(days)} 个交易日")
+
     result = replay(
         days=days,
         bars_by_code=bars_by_code,
         config=config,
         state=state,
         checkpoint_path=args.checkpoint,
+        market_by_day=market_by_day,
     )
 
     stats = result.stats

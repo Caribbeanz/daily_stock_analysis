@@ -45,6 +45,7 @@ from src.assistant.backtest import PlanRound, RoundConfig, simulate_rounds, summ
 from src.assistant.config.overrides import ParamSet, default_param_set
 from src.assistant.domain import Bar, MarketView, PortfolioView, PositionView, StockView
 from src.assistant.engine.guard_chain import GuardChainInput, run_guard_chain
+from src.assistant.engine.market import market_line_from_bars
 from src.assistant.engine.stage import StageDebounceState
 from src.assistant.enums import Action, SourceTag
 from src.assistant.versioning import RuleFingerprint
@@ -54,6 +55,7 @@ __all__ = [
     "ReplayResult",
     "ReplayState",
     "load_state",
+    "market_views_from_index",
     "replay",
     "save_state",
 ]
@@ -65,6 +67,45 @@ _BUY_ACTIONS = frozenset({Action.BUY, Action.ADD, Action.PROBE})
 
 #: 快照生成时刻固定为收盘后（守卫链只把它写进结果，不参与判定）
 _GENERATED_AT = time(20, 0)
+
+
+def market_views_from_index(
+    index_bars: Sequence[Bar],
+    days: Sequence[date],
+    *,
+    symbol: str = "sh000001",
+    index_name: str = "上证指数",
+    min_bars: int = 30,
+) -> dict[date, MarketView]:
+    """按交易日算 M1 环境档，构造 ``{日期: MarketView}`` 供回放注入。
+
+    - **不碰未来**：每个 T 只用 ``trade_date <= T`` 的指数日线，不补点、不平滑。
+    - **不拿旧档冒充当日**：T 当天没有指数 K 线就不给（不能用上一交易日的档位顶上），
+      与个股「T 日无 K 线即跳过」同一条纪律。
+    - **算不出就不放**：数据不足 ``min_bars`` 根、或两因子都取不到有效档（落缓冲带且往前
+      也找不到有效档）时**不往字典里放**，由回放层如实记成「大盘缺失」，不猜档位。
+    - **宽度留空**：涨跌家数的历史序列回放拿不到，``advance_ratio=None``、
+      ``width_degraded=True``，对应的「市场宽度恶化」风险项因此不会触发（写进 `not_modelled`）。
+    """
+    out: dict[date, MarketView] = {}
+    ordered = sorted(index_bars, key=lambda bar: bar.trade_date)
+    for day in days:
+        upto = [bar for bar in ordered if bar.trade_date <= day]
+        if len(upto) < min_bars or upto[-1].trade_date != day:
+            continue
+        line = market_line_from_bars(upto, index_name=index_name)
+        if not line.available:
+            continue
+        out[day] = MarketView(
+            index_code=symbol,
+            index_name=line.index_name or index_name,
+            pct_change=line.pct_change or 0.0,
+            regime=line.regime,
+            regime_degraded=False,
+            advance_ratio=None,
+            width_degraded=True,
+        )
+    return out
 
 
 @dataclass(frozen=True)
