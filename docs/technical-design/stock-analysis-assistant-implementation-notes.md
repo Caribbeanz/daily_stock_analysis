@@ -26,12 +26,13 @@
 | C4 参数框架 | ✅ 三档预设 + 单项覆盖 + param_hash + 变更记录 | `src/assistant/config/` |
 | C5 发送接线 | ✅ 新增 `route_type=assistant_daily` + 去重键＝`snapshot_id` + 纯文本降级 | `src/assistant/notify.py` |
 | C5 LLM 文案层 | ✅ 三处用法（飞书 ② 段 / 个股一句话 / 大盘总结）；白名单、计数硬校验、降级、缓存，默认关闭 | `src/assistant/llm.py` |
-| C6 条件计划回测 | 🟡 回合模拟层已实现；缺「历史计划回放」驱动 | `src/assistant/backtest.py` |
+| C6 条件计划回测 | ✅ 回合模拟层 + 历史计划回放驱动（walk-forward、断点续跑、规模护栏） | `src/assistant/backtest.py` / `backtest_replay.py` |
 | C6 战法启停清单 | ✅ 15 条与 `strategies/*.yaml` 一一对应，启用 8 条进 `calc_version`（`rules-2.6.1`） | `src/assistant/strategies.py` |
 
-**没有做的部分**：`sector_strength` 进评分与 SEC-1（映射已就绪，但阈值需纸面回看后再定）、回测的历史计划回放驱动（D-24）、纸面回看调参（D-5/D-6）、adj_factor 正式来源（M15 兜底路径已实现但未启用）。
+**没有做的部分**：`sector_strength` 进评分与 SEC-1（映射已就绪，但阈值需纸面回看后再定）、纸面回看调参（D-5/D-6）、adj_factor 正式来源（M15 兜底路径已实现但未启用）。
 
-> 已收口（增量 14）：战法启停清单已进 `calc_version`（D-25），股票名称改由东财 F10 同一次请求带出（D-26）。
+> 已收口：增量 14 —— 战法启停清单进 `calc_version`（D-25）、股票名称由东财 F10 同一次请求带出（D-26）；
+> 增量 15 —— 历史计划回放驱动（D-24 → D-27）。
 
 ---
 
@@ -65,6 +66,7 @@ src/assistant/
 ├── stage_text.py           阶段打法/允许/禁止/切换的唯一出处（飞书 ⑤ 段与 Web 详情共用）
 ├── inbound.py              飞书入站四项：白名单/二次确认/生效时点/只读查询/笔记
 ├── backtest.py             条件计划回合模拟：触发/成交/出场/成本 + 胜率口径
+├── backtest_replay.py     历史计划回放驱动：逐日切片→守卫链→回合→统计（可续跑）
 ├── strategies.py           战法启停清单（§5.12.3）：静态登记 → calc_version
 ├── notify.py               发送接线：payload → 既有通知链（route_type / 去重键 / 纯文本降级）
 ├── config/
@@ -419,7 +421,7 @@ src/assistant/
   都不注册，现有机器人行为零变化（已回归 `tests/test_bot_*`）。
 - 入站命令懒加载 SQLite（`_inbound()` 在 `execute()` 内构造），机器人启动不被助手存储拖慢。
 
-### D-24 回测只做到「回合模拟层」，没有接历史计划回放
+### D-24 回测只做到「回合模拟层」，没有接历史计划回放（**已在增量 15 收口，见 D-27**）
 
 - 需求 §9.4.4 点名的缺口是「现有引擎不模拟条件单成交回合」，本增量补的正是这段：
   `backtest.py` 输入「某日的条件计划分支 + 该标的日线」，输出回合与统计，纯函数、无网络。
@@ -471,6 +473,38 @@ src/assistant/
   缓存会落在**当前工作目录**的 `cache/` 下（单测留垃圾文件、临时库互相污染）。现在内存库
   不落盘（`cache_path=None`），并新增 `industry_resolver` 注入点让单测完全不联网。
 
+### D-27 历史计划回放驱动（D-24 收口）：逐日切片的五条硬约束
+
+- 落点：`src/assistant/backtest_replay.py`（纯逻辑，不联网）+ `scripts/assistant_backtest_replay.py`
+  （批处理入口）。**回合口径一个字没改**：成交价、跳空、T+1、同日先止损、未闭合不计分母、
+  样本 ≥30 才给胜率，全部复用 `backtest.simulate_rounds` / `summarize_rounds`。
+- **① 不碰未来数据**：每天把 K 线截到 T 再进守卫链；传给守卫链的交易日历也只给到 T
+  （未来日历虽不含价格，也没必要提前泄露）。**T 日 K 线未发布就跳过该标的**
+  （`skipped_stale_bars`），绝不拿 T-1 的结论冒充 T 日。
+- **② 跨日状态必须累积**：阶段防抖（连续 N 日才切换）与「上一日趋势/建议」顺着日子传递，
+  否则每天都是「第一天」，防抖规则形同虚设。检查点里连同 `stages` / `previous` 一起存，
+  续跑后接着累积，不重置。
+- **③ 出场价来自计划结构，不自己造阈值**：计划分支本身只带触发价（§5.11 的失效条件是文字），
+  回放取「入场价下方最近支撑」作止损、「上方最近阻力」作止盈（§5.3 结构破坏口径）；
+  取不到就只剩 `max_hold_days` 强平，并在 `exit_rules_missing` 里计数——**不加百分比止损**，
+  那等于凭空造一条没经纸面回看的规则。
+- **④ 组合层约束用保守近似**：同一标的已有未平回合时，后续触发不再建仓
+  （`overlap_skipped`），避免同一段行情被重复计成多次暴露；资金曲线本身不建模，
+  固定的 `PortfolioView` 意味着「资金耗尽后不再买」这类约束缺失，已写进 `not_modelled`。
+- **⑤ 大盘缺失如实标记**：不注入指数序列时 `market=None`，M1 环境档与「大盘 ≤ 警示」
+  不会触发，结果偏乐观；`counters.market_missing_days` 按「真正跑过守卫链的日子」计数，
+  不把「没跑成的日子」也算进去。
+- 规模与续跑：一次运行只允许一套参数（参数网格请多次调用），`max_days` 截断并标
+  `truncated`；`checkpoint_every` 落盘、`last_day` 保证已回放过的交易日不重复跑。
+- 统计口径补了三个字段：`triggered` / `untriggered` / `open_positions`。原先
+  `summarize_rounds` 的 `open` 把「未触发」也算进去，会让人误以为有一堆持仓没平。
+- 真实数据实测（主库 `stock_daily` 经 `--import-main-db` 复制进 L1，601919 + 601818，
+  2025-10-08 ~ 2026-10-22，`max_days=200`）：200 个交易日、399 次守卫链、184 条计划、
+  164 个回合（触发 5、未触发 159），闭合 5 < 30 故只报计数不报胜率；`market_missing_days=200`
+  如实标注，`exit_rules_missing=92`（那些回踩买点下方没有支撑位，只剩 max_hold）。
+- 仍未做：参数网格并行、组合层资金曲线、分红、做 T、分级止损多档、大盘序列注入
+  （接口已预留 `market_by_day`，但没有可靠的离线指数源，不硬编）。
+
 ## 5. 验证
 
 ```bash
@@ -489,9 +523,14 @@ print(TradingDayGate().decide(datetime(2026,11,24,20,0)).as_dict())"
 
 # 真实联网冒烟（不进入 pytest 默认套件，需装 akshare）
 python scripts/assistant_fetch_smoke.py --codes 600000 000001 --years 3
+
+# 历史计划回放（只读 L1；--import-main-db 可把主库 stock_daily 复制进 L1）
+python scripts/assistant_backtest_replay.py --codes 601919 601818 \
+    --start 2025-10-08 --end 2026-10-22 --min-bars 60 --lookback 220 \
+    --import-main-db data/stock_analysis.db --checkpoint data/cache/replay.json
 ```
 
-当前结果：**508 passed**（助手 Python 测试）+ **6 passed**（`pages/assistant` 前端用例），`flake8` / `tsc` / `eslint` 均无告警（共享通知链的
+当前结果：**529 passed**（助手 Python 测试）+ **6 passed**（`pages/assistant` 前端用例），`flake8` / `tsc` / `eslint` 均无告警（共享通知链的
 历史告警数与改动前逐文件相同，见 D-18）。
 
 **2026-11-24 联网实测（akshare 1.19.5）**：
@@ -562,6 +601,7 @@ python scripts/assistant_fetch_smoke.py --codes 600000 000001 --years 3
 - 板块映射：`Ⅱ/Ⅲ/II/III` 后缀剥离、`SECUCODE` 推断（沪深北）、二级优先/一级后备/未命中不猜、内存与磁盘缓存与 TTL 过期、取数失败返回空；focus 模式只列涉及板块且按涨跌排序、无解析器或全部未映射时退回 market、market 模式不查映射、解析异常只降级
 - 飞书入站：白名单拦住写指令且不落库、关注/移除非确认不写、生效日（当日有快照→下一交易日）、确认超时作废、重复添加与移除不存在的提示、取消也留痕、笔记原文与检索、当日结论只读且群聊隐藏持仓字段、复盘含笔记且标注不构成新建议；命令层确认/取消/「关注 601919」无斜杠可命中、钩子异常不影响分发、既有 bot 命令未受影响
 - 条件计划回测：`price_lte`/`price_gte` 触发与成交价、跳空按开盘价、同日先止损、T+1 当日不可卖、到期强平、双边成本、卖出分支不建回合、股数为 0 只记触发、涨跌幅触发不猜；统计侧样本不足不报胜率、分阶段单桶不足只报计数、未闭合不计分母、`not_modelled` 如实列出
+- 历史计划回放：T 日无 K 线即跳过不猜、根数不足不判、守卫链日历只到当天、计划次日才可触发、止损取最近支撑/止盈取最近阻力、动作只认买入类、已持仓不重复建仓、未触发不被去重吃掉、跨日 stage 累积、max_days 截断、检查点往返与续跑不重复跑、坏检查点按从头开始、统计把未触发与未平仓拆开
 - 战法启停清单：清单与 `strategies/*.yaml` 一一对应且无重复、启用项必须有转写落点、不启用项必须写明 NG 原因、启用集合与 §5.12.3 逐条对齐、指纹默认带启用集合、启停变化改摘要、不启用项绝不进指纹、显式空清单与默认可区分、`RULES_VERSION` 已 bump
 - 股票名称：名称与行业共用一次 F10 请求、行业请求先到也能捕获名称、注入取数器只取一次、失败返回空串不猜、磁盘缓存往返、写行业行不抹掉已缓存名称；装配层「注入名优先 / 解析器名次之 / 异常退代码」
 - Web 页面：大盘页环境档与总结段、列表红涨绿跌与点行进入详情、空快照给人话提示、详情五区块与价位来源、配置页按注册表渲染并提示生效时点
@@ -587,5 +627,5 @@ python scripts/assistant_fetch_smoke.py --codes 600000 000001 --years 3
 3. **LLM 文案层**（§5.13）：只改措辞、不改数值；失败降级模板
 4. **配置落地**：五个 `ASSISTANT_*` + 资金键进 `src/config.py` / `config_registry` / 设置面板（D-11、D-12）
 5. **API + Web**（`api/v1/endpoints/assistant.py` + `pages/assistant/`）
-6. **回测扩展** + 纸面回看（D-5/D-6 阈值定稿后再接 `sector_strength` 进评分与 SEC-1）
+6. 纸面回看（D-5/D-6 阈值定稿）→ 再接 `sector_strength` 进评分与 SEC-1；回放已可用于出样本
 7. `adj_factor` 正式来源（M15）：现已有「同源 qfq/raw 比值推算」函数但默认不启用，待定是否作为长期路径
