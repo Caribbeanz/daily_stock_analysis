@@ -126,6 +126,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--refill", action="store_true", help="全量重取（默认只补缺）")
     parser.add_argument("--source", choices=["fetcher", "tencent"], default="fetcher",
                         help="取数通道：fetcher=产品同链路（需 akshare）；tencent=直连（前复权）")
+    parser.add_argument("--dividends", action="store_true",
+                        help="顺带取分红送转事件（除权日 / 每股派息 / 送转），供 --adjust total_return")
     parser.add_argument("--index", nargs="*", default=None,
                         help="顺带补指数日线（如 sh000001），按原符号存入 L1，供回放注入大盘")
     args = parser.parse_args(argv)
@@ -194,6 +196,27 @@ def main(argv: list[str] | None = None) -> int:
         print(f"  {symbol}: {rows} 行 · 来源 {result.source_tag.value}({result.source_name}) · "
               f"{result.bars[0].trade_date} ~ {result.bars[-1].trade_date}")
         filled += 1
+
+    if args.dividends:
+        from src.assistant.data.dividend import fetch_dividend_events  # noqa: PLC0415
+
+        print("补分红送转事件：")
+        got = 0
+        for code in codes:
+            try:
+                events = fetch_dividend_events(code)
+            except Exception as exc:  # noqa: BLE001 - 单只失败不影响其它标的
+                print(f"  {code}: 分红取数失败 {type(exc).__name__}: {exc}")
+                continue
+            if not events:
+                print(f"  {code}: 无实施分配记录")
+                continue
+            store.save_dividend_events(code, events)
+            span = f"{events[0].ex_date} ~ {events[-1].ex_date}"
+            cash = sum(e.cash_per_share for e in events)
+            print(f"  {code}: {len(events)} 次除权（{span}）· 累计每股派息 {cash:.3f} 元")
+            got += 1
+        print(f"  分红事件写入 {got} 只")
 
     print(f"完成：新写入 {filled} 只，跳过 {skipped} 只，失败 {failed} 只")
     return 0 if filled or skipped else 1

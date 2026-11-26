@@ -43,6 +43,7 @@ from typing import Any, Iterable, Mapping, Sequence
 
 from src.assistant.backtest import PlanRound, RoundConfig, simulate_rounds, summarize_rounds
 from src.assistant.config.overrides import ParamSet, default_param_set
+from src.assistant.data.dividend import DividendEvent, apply_total_return
 from src.assistant.domain import Bar, MarketView, PortfolioView, PositionView, StockView
 from src.assistant.engine.guard_chain import GuardChainInput, run_guard_chain
 from src.assistant.engine.market import market_line_from_bars
@@ -138,6 +139,11 @@ class ReplayConfig:
     #: 回放用的数据来源标签：库里看不出原始来源，默认 D1；只有 D3 会影响判定，
     #: 因此 D1/D2 在此等价。若明确知道历史数据曾降级，传 D3 让风险项如实触发。
     source_tag: SourceTag = SourceTag.D1
+    #: 价格口径：``raw`` = 不复权（与 L1 一致）；``total_return`` = 含分红再投
+    #: （前复权口径，除权日不再凭空下跌，股息按除权日价格再投）
+    adjust: str = "raw"
+    #: 红利税率：0 = 税前全额；持股 1 个月–1 年按 10%。只影响 ``total_return`` 口径
+    dividend_tax_rate: float = 0.0
     max_days: int | None = None
     progress_every: int = 20
     checkpoint_every: int = 20
@@ -147,6 +153,10 @@ class ReplayConfig:
             raise ValueError("lookback_bars 不能小于 min_bars")
         if self.min_bars < 2:
             raise ValueError("min_bars 至少为 2")
+        if self.adjust not in ("raw", "total_return"):
+            raise ValueError("adjust 只能是 raw 或 total_return")
+        if not 0 <= self.dividend_tax_rate < 1:
+            raise ValueError("dividend_tax_rate 必须落在 [0, 1)")
 
     def position(self, code: str, last_close: float = 0.0) -> PositionView:
         """起点持仓视图；没登记的标的一律按未持仓（不猜测）。"""
@@ -408,6 +418,7 @@ def replay(
     bars_by_code: Mapping[str, Sequence[Bar]],
     config: ReplayConfig | None = None,
     market_by_day: Mapping[date, MarketView] | None = None,
+    dividend_events: Mapping[str, Sequence[DividendEvent]] | None = None,
     state: ReplayState | None = None,
     checkpoint_path: str | Path | None = None,
 ) -> ReplayResult:
@@ -416,6 +427,9 @@ def replay(
     ``days`` 由调用方给（交易日历或库内 K 线日期都行），模块不自己猜；``bars_by_code``
     是**完整历史**（守卫链每天自己截到 T，模拟阶段要用 T 之后的行情）。
     传入 ``state`` 可续跑；给 ``checkpoint_path`` 会按 ``checkpoint_every`` 落盘。
+
+    ``dividend_events`` 只在 ``config.adjust == "total_return"`` 时生效：把不复权序列
+    折算成含分红序列（前复权），这样「除权日掉价」不再被当成下跌，股息也不会漏算。
     """
     cfg = config or ReplayConfig()
     work = state or ReplayState()
@@ -427,7 +441,25 @@ def replay(
     history: dict[str, list[Bar]] = {
         code: sorted(bars_by_code[code], key=lambda bar: bar.trade_date) for code in codes
     }
+    dividend_applied = dividend_skipped = dividend_missing = 0
+    dividend_cash = 0.0
+    if cfg.adjust == "total_return":
+        events_map = dividend_events or {}
+        for code in codes:
+            events = list(events_map.get(code) or ())
+            if not events:
+                dividend_missing += 1
+                continue
+            outcome = apply_total_return(history[code], events, tax_rate=cfg.dividend_tax_rate)
+            history[code] = list(outcome.bars)
+            dividend_applied += outcome.applied
+            dividend_skipped += outcome.skipped
+            dividend_cash += outcome.cash_per_share
     calc_version = RuleFingerprint(param_hash=cfg.params.param_hash).calc_version()
+    if cfg.adjust == "total_return":
+        work.bump("dividend_events_applied", dividend_applied)
+        work.bump("dividend_events_skipped", dividend_skipped)
+        work.bump("dividend_codes_without_events", dividend_missing)
 
     processed = 0
     plans_total = 0
@@ -523,10 +555,31 @@ def replay(
     stats["triggered"] = len(work.rounds) - untriggered
     stats["untriggered"] = untriggered
     stats["open_positions"] = len(work.rounds) - int(stats["closed"]) - untriggered
-    stats["not_modelled"] = list(stats.get("not_modelled") or []) + [
+    modeled = list(stats.get("not_modelled") or [])
+    if cfg.adjust == "total_return":
+        # 分红一旦进模型，就必须把「已建模」的和「仍未建模」的分开说清楚：
+        # 不做这一步，报告会继续挂着「分红再投未建模」，与结果自相矛盾。
+        modeled = [item for item in modeled if not item.startswith("分红再投")]
+        if cfg.dividend_tax_rate > 0:
+            modeled.append(
+                f"分红按除权日再投、按 {cfg.dividend_tax_rate:.0%} 红利税一次性扣除"
+                "（实际按持有期差别化：≤1 月 20%、1 月–1 年 10%、>1 年免征）"
+            )
+        else:
+            modeled.append("分红按除权日再投、税前全额（未计红利税，高估股息收益）")
+        if dividend_skipped:
+            modeled.append(f"{dividend_skipped} 次除权事件因缺前一交易日 K 线未能折算")
+        if dividend_missing:
+            modeled.append(f"{dividend_missing} 只标的没有分红事件记录（按无分红处理，可能低估）")
+    stats["not_modelled"] = modeled + [
         "组合层资金曲线与「资金耗尽不再买」约束",
         "大盘缺失日：M1 环境档与「大盘 ≤ 警示」风险不触发（见 market_missing_days）",
     ]
+    stats["adjust"] = cfg.adjust
+    stats["dividend_tax_rate"] = cfg.dividend_tax_rate
+    if cfg.adjust == "total_return":
+        stats["dividend_events_applied"] = dividend_applied
+        stats["dividend_cash_per_share_total"] = round(dividend_cash, 6)
     stats["calc_version"] = calc_version
     stats["trading_days_replayed"] = processed
     stats["plans"] = plans_total

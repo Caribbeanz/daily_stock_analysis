@@ -84,6 +84,10 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--override", action="append", help="参数覆盖 key=value（只做对照实验用），可多次")
     parser.add_argument("--index", default=None,
                         help="大盘指数符号（如 sh000001）；给了才注入 M1 环境档，缺省不注入")
+    parser.add_argument("--adjust", choices=["raw", "total_return"], default="raw",
+                        help="价格口径：raw=不复权（默认）；total_return=含分红再投（前复权）")
+    parser.add_argument("--dividend-tax", type=float, default=0.0,
+                        help="红利税率（0=税前；持股 1 月–1 年用 0.10），只影响 total_return")
     parser.add_argument("--checkpoint", default=None, help="检查点路径（可续跑）")
     parser.add_argument("--resume", action="store_true", help="从检查点续跑")
     parser.add_argument("--import-main-db", default=None,
@@ -121,6 +125,8 @@ def main(argv: list[str] | None = None) -> int:
         lookback_bars=args.lookback,
         min_bars=args.min_bars,
         params=ParamSet.build(Preset(args.preset), overrides=_parse_overrides(args.override)),
+        adjust=args.adjust,
+        dividend_tax_rate=args.dividend_tax,
         round_config=RoundConfig(
             cost_bps=args.cost_bps,
             max_hold_days=args.max_hold,
@@ -139,6 +145,17 @@ def main(argv: list[str] | None = None) -> int:
         market_by_day = market_views_from_index(index_bars, days, symbol=args.index)
         print(f"大盘注入：{args.index} · 覆盖 {len(market_by_day)}/{len(days)} 个交易日")
 
+    dividend_events = None
+    if config.adjust == "total_return":
+        dividend_events = store.load_dividend_events(list(bars_by_code))
+        covered = sum(1 for code in bars_by_code if dividend_events.get(code))
+        print(f"分红口径：含分红再投 · 事件覆盖 {covered}/{len(bars_by_code)} 只 · 税率 {args.dividend_tax:.0%}")
+        if not covered:
+            raise SystemExit(
+                "库里没有分红事件，先跑 assistant_ingest_history.py --dividends；"
+                "否则 total_return 与 raw 没有区别"
+            )
+
     result = replay(
         days=days,
         bars_by_code=bars_by_code,
@@ -146,6 +163,7 @@ def main(argv: list[str] | None = None) -> int:
         state=state,
         checkpoint_path=args.checkpoint,
         market_by_day=market_by_day,
+        dividend_events=dividend_events,
     )
 
     stats = result.stats

@@ -13,6 +13,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import uuid
 from contextlib import contextmanager
 from datetime import date, datetime
@@ -28,6 +29,7 @@ from src.assistant.config.overrides import ParamChange
 from src.assistant.data.models import (
     AssistantBase,
     ConditionalPlanRow,
+    DividendEventRow,
     DeliveryLogRow,
     HoldingConclusionRow,
     InboundLogRow,
@@ -47,8 +49,11 @@ from src.assistant.data.models import (
     UserNote,
     WatchlistRuntime,
 )
+from src.assistant.data.dividend import DividendEvent
 from src.assistant.domain import Bar, GuardChainResult
 from src.assistant.enums import SourceTag
+
+logger = logging.getLogger(__name__)
 
 
 class AppendOnlyViolation(RuntimeError):
@@ -87,8 +92,39 @@ class AssistantStore:
     # 建表
     # ------------------------------------------------------------------
     def create_all(self) -> None:
-        """仅创建本模块的表（不触碰主流程表）。"""
+        """仅创建本模块的表（不触碰主流程表）。
+
+        ``create_all`` 只建表、**不给已有表补列**，而 ``assistant_dividend_event`` 是早前
+        预留的表（当时只有 ``per_share``），老开发库直接写入会报「no column」。
+        这里对这张表做一次**追加列**迁移：只加缺的列，不删不改，非 SQLite 方言直接跳过。
+        """
         AssistantBase.metadata.create_all(self._engine)
+        self._ensure_dividend_columns()
+
+    def _ensure_dividend_columns(self) -> None:
+        from sqlalchemy import inspect, text
+
+        inspector = inspect(self._engine)
+        if "assistant_dividend_event" not in inspector.get_table_names():
+            return
+        existing = {col["name"] for col in inspector.get_columns("assistant_dividend_event")}
+        wanted = {
+            "cash_per_share": "FLOAT NOT NULL DEFAULT 0",
+            "bonus_per_share": "FLOAT NOT NULL DEFAULT 0",
+            "transfer_per_share": "FLOAT NOT NULL DEFAULT 0",
+            "plan": "VARCHAR(128)",
+            "updated_at": "DATETIME",
+        }
+        missing = {name: ddl for name, ddl in wanted.items() if name not in existing}
+        if not missing:
+            return
+        if self._engine.dialect.name != "sqlite":  # pragma: no cover - 当前只用 SQLite
+            logger.warning("表 assistant_dividend_event 缺列 %s，非 SQLite 请手动迁移", list(missing))
+            return
+        with self._engine.begin() as conn:
+            for name, ddl in missing.items():
+                conn.execute(text(f"ALTER TABLE assistant_dividend_event ADD COLUMN {name} {ddl}"))
+        logger.info("已为 assistant_dividend_event 补列：%s", list(missing))
 
     @contextmanager
     def session(self) -> Iterator[Session]:
@@ -179,6 +215,71 @@ class AssistantStore:
             )
             for row in rows
         ]
+
+    # ------------------------------------------------------------------
+    # 除权除息事件（原始数据；复权序列按 §3.3 不落库）
+    # ------------------------------------------------------------------
+    def save_dividend_events(self, code: str, events: Sequence[DividendEvent]) -> int:
+        """幂等写入某只标的的除权事件，返回写入行数。"""
+        if not events:
+            return 0
+        now = datetime.now()
+        rows = [
+            {
+                "code": code,
+                "ex_date": event.ex_date,
+                "cash_per_share": event.cash_per_share,
+                "bonus_per_share": event.bonus_per_share,
+                "transfer_per_share": event.transfer_per_share,
+                "plan": event.plan,
+                "record_date": event.record_date,
+                "source_tag": "D1",
+                "updated_at": now,
+            }
+            for event in events
+        ]
+        with self.session() as sess:
+            stmt = sqlite_insert(DividendEventRow).values(rows)
+            stmt = stmt.on_conflict_do_update(
+                index_elements=["code", "ex_date"],
+                set_={
+                    "cash_per_share": stmt.excluded.cash_per_share,
+                    "bonus_per_share": stmt.excluded.bonus_per_share,
+                    "transfer_per_share": stmt.excluded.transfer_per_share,
+                    "plan": stmt.excluded.plan,
+                    "record_date": stmt.excluded.record_date,
+                    "updated_at": stmt.excluded.updated_at,
+                },
+            )
+            sess.execute(stmt)
+        return len(rows)
+
+    def load_dividend_events(
+        self, codes: Sequence[str] | None = None
+    ) -> dict[str, list[DividendEvent]]:
+        """读取除权事件，返回 ``{代码: [事件...]}``（按除权日升序）。"""
+        with self.session() as sess:
+            stmt = select(DividendEventRow)
+            if codes is not None:
+                wanted = list(codes)
+                if not wanted:
+                    return {}
+                stmt = stmt.where(DividendEventRow.code.in_(wanted))
+            rows = list(sess.execute(stmt.order_by(DividendEventRow.ex_date.asc())).scalars().all())
+        out: dict[str, list[DividendEvent]] = {}
+        for row in rows:
+            out.setdefault(row.code, []).append(
+                DividendEvent(
+                    code=row.code,
+                    ex_date=row.ex_date,
+                    cash_per_share=row.cash_per_share or 0.0,
+                    bonus_per_share=row.bonus_per_share or 0.0,
+                    transfer_per_share=row.transfer_per_share or 0.0,
+                    plan=row.plan or "",
+                    record_date=row.record_date,
+                )
+            )
+        return out
 
     def last_trade_date(self, code: str) -> date | None:
         with self.session() as sess:

@@ -22,6 +22,7 @@ from src.assistant.backtest_replay import (
     save_state,
 )
 from src.assistant.config.overrides import default_param_set
+from src.assistant.data.dividend import DividendEvent
 from src.assistant.domain import Bar, KeyLevel
 from src.assistant.enums import Action, Stage, TriggerType
 from src.assistant.engine.stage import StageDebounceState
@@ -509,3 +510,64 @@ class TestMarketViews:
         views = market_views_from_index(bars, [missing])
 
         assert missing not in views
+
+
+class TestTotalReturnMode:
+    """含分红口径（D-31）：统计要自报口径，``not_modelled`` 不能自相矛盾。"""
+
+    @staticmethod
+    def _run(adjust: str, events=None, tax: float = 0.0):
+        from tests.assistant.helpers import make_bars, trending
+
+        bars = make_bars(trending(200))
+        days = [bar.trade_date for bar in bars][-6:]
+        return replay(
+            days=days,
+            bars_by_code={"600000": bars},
+            config=ReplayConfig(
+                min_bars=60, lookback_bars=120, progress_every=0,
+                adjust=adjust, dividend_tax_rate=tax,
+            ),
+            dividend_events=events,
+        )
+
+    def test_raw_mode_keeps_dividend_unmodelled(self) -> None:
+        result = self._run("raw")
+
+        assert result.stats["adjust"] == "raw"
+        assert any(item.startswith("分红再投") for item in result.stats["not_modelled"])
+        assert "dividend_events_applied" not in result.stats
+
+    def test_total_return_rewrites_not_modelled(self) -> None:
+        from tests.assistant.helpers import make_bars, trending
+
+        bars = make_bars(trending(200))
+        event = DividendEvent(code="600000", ex_date=bars[-80].trade_date, cash_per_share=1.0)
+        result = self._run("total_return", events={"600000": [event]})
+
+        assert result.stats["adjust"] == "total_return"
+        assert result.stats["dividend_events_applied"] == 1
+        modeled = result.stats["not_modelled"]
+        assert not any(item.startswith("分红再投与") for item in modeled)
+        assert any("税前全额" in item for item in modeled)
+
+    def test_tax_rate_recorded_in_not_modelled(self) -> None:
+        from tests.assistant.helpers import make_bars, trending
+
+        bars = make_bars(trending(200))
+        event = DividendEvent(code="600000", ex_date=bars[-80].trade_date, cash_per_share=1.0)
+        result = self._run("total_return", events={"600000": [event]}, tax=0.10)
+
+        assert result.stats["dividend_tax_rate"] == pytest.approx(0.10)
+        assert any("10% 红利税" in item for item in result.stats["not_modelled"])
+
+    def test_codes_without_events_are_counted(self) -> None:
+        result = self._run("total_return", events={})
+
+        assert result.counters["dividend_codes_without_events"] == 1
+        assert result.stats["dividend_events_applied"] == 0
+        assert any("没有分红事件记录" in item for item in result.stats["not_modelled"])
+
+    def test_rejects_unknown_adjust(self) -> None:
+        with pytest.raises(ValueError, match="adjust"):
+            ReplayConfig(adjust="qfq")

@@ -132,8 +132,12 @@ class SectorDaily(AssistantBase):
     )
 
 
-class DividendEvent(AssistantBase):
-    """L1 分红事件（adj_factor 不可得时的推算依据）。"""
+class DividendEventRow(AssistantBase):
+    """L1 除权除息事件（原始数据；**复权序列不落库**，按存储层硬约束 §3.3 第 3 条）。
+
+    比例一律为**每股**口径：接口给「每 10 股派 X 元 / 送 X 股 / 转 X 股」，入库前已除以 10。
+    回放把它折算成乘在除权日之前的因子（前复权），用于补上「股息没进收益、除权被当下跌」。
+    """
 
     __tablename__ = "assistant_dividend_event"
 
@@ -141,11 +145,17 @@ class DividendEvent(AssistantBase):
     code = Column(String(16), nullable=False)
     ex_date = Column(Date, nullable=False)
     record_date = Column(Date, nullable=True)
-    payout_date = Column(Date, nullable=True)
-    per_share = Column(Float, nullable=True)
+    cash_per_share = Column(Float, nullable=False, default=0.0)
+    bonus_per_share = Column(Float, nullable=False, default=0.0)
+    transfer_per_share = Column(Float, nullable=False, default=0.0)
+    plan = Column(String(128), nullable=True)
     source_tag = Column(String(4), nullable=False, default="D1")
+    updated_at = Column(DateTime, nullable=True)
 
-    __table_args__ = (UniqueConstraint("code", "ex_date", name="uq_assistant_dividend_event"),)
+    __table_args__ = (
+        UniqueConstraint("code", "ex_date", name="uq_assistant_dividend_event"),
+        Index("idx_assistant_dividend_code_date", "code", "ex_date"),
+    )
 
 
 class ValuationHist(AssistantBase):
