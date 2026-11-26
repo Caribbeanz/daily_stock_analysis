@@ -143,8 +143,24 @@ class _AkshareSource:
         raise NotImplementedError
 
 
+def _ak_fn(ak: Any, names: Sequence[str]) -> Any:
+    """按顺序找一个可用的 akshare 接口：**新版名字优先，旧版兜底**。
+
+    akshare 1.20.46 起把 ``stock_zh_a_hist`` 改名为 ``stock_zh_a_hist_em``、
+    ``stock_zh_a_daily`` 改名为 ``stock_zh_a_hist_sina``、
+    ``stock_zh_index_daily`` 改名为 ``index_zh_daily_sina``。
+    不锁版本就必须按「名字在不在」探测，而不是 try/except 网络异常——
+    否则限流/超时也会被当成「名字不对」而白换一轮。
+    """
+    for name in names:
+        fn = getattr(ak, name, None)
+        if callable(fn):
+            return fn
+    raise AttributeError(f"akshare 缺少接口：{' / '.join(names)}")
+
+
 class EastmoneySource(_AkshareSource):
-    """主源：东财日线（``stock_zh_a_hist``，``adjust=""``）。
+    """主源：东财日线（``stock_zh_a_hist_em``，``adjust=""``）；ETF 走 ``fund_etf_hist_em``。
 
     实测注意：``push2his`` 存在间歇限流与**空响应**，空表必须当失败。
     """
@@ -153,34 +169,59 @@ class EastmoneySource(_AkshareSource):
     tag = SourceTag.D1
 
     def fetch(self, code: str, start: date, end: date) -> Sequence[Mapping[str, Any]]:  # pragma: no cover
-        df = self._ak().stock_zh_a_hist(
-            symbol=to_plain_code(code),
-            period="daily",
-            start_date=start.strftime("%Y%m%d"),
-            end_date=end.strftime("%Y%m%d"),
-            adjust="",
-        )
+        ak = self._ak()
+        start_text, end_text = start.strftime("%Y%m%d"), end.strftime("%Y%m%d")
+        if is_fund_code(code):
+            fn = _ak_fn(ak, ("fund_etf_hist_em",))
+            df = fn(
+                symbol=to_plain_code(code),
+                period="daily",
+                start_date=start_text,
+                end_date=end_text,
+                adjust="",
+            )
+        else:
+            fn = _ak_fn(ak, ("stock_zh_a_hist_em", "stock_zh_a_hist"))
+            df = fn(
+                symbol=to_plain_code(code),
+                period="daily",
+                start_date=start_text,
+                end_date=end_text,
+                adjust="",
+            )
         return _records(df)
 
 
 class SinaSource(_AkshareSource):
-    """备源一：新浪日线（``stock_zh_a_daily``，``adjust=""``）。"""
+    """备源一：新浪日线（``stock_zh_a_hist_sina``，``adjust=""``）；ETF 走 ``fund_etf_hist_sina``。
+
+    新浪的 ETF 接口**不吃区间参数**（返回全历史），区间由调用方统一过滤，这里不自己截。
+    """
 
     name = "sina"
     tag = SourceTag.D2
 
     def fetch(self, code: str, start: date, end: date) -> Sequence[Mapping[str, Any]]:  # pragma: no cover
-        df = self._ak().stock_zh_a_daily(
-            symbol=to_market_symbol(code),
-            start_date=start.strftime("%Y%m%d"),
-            end_date=end.strftime("%Y%m%d"),
-            adjust="",
-        )
+        ak = self._ak()
+        if is_fund_code(code):
+            fn = _ak_fn(ak, ("fund_etf_hist_sina",))
+            df = fn(symbol=to_market_symbol(code))
+        else:
+            fn = _ak_fn(ak, ("stock_zh_a_hist_sina", "stock_zh_a_daily"))
+            df = fn(
+                symbol=to_market_symbol(code),
+                start_date=start.strftime("%Y%m%d"),
+                end_date=end.strftime("%Y%m%d"),
+                adjust="",
+            )
         return _records(df)
 
 
 class TencentSource(_AkshareSource):
-    """备源二：腾讯日线（``stock_zh_a_hist_tx``，无复权参数＝不复权）。"""
+    """备源二：腾讯日线（``stock_zh_a_hist_tx``，无复权参数＝不复权）。
+
+    实测这个接口**同时支持 ETF**（``sh512000``），只要代码前缀别猜错。
+    """
 
     name = "tencent"
     tag = SourceTag.D2
@@ -195,7 +236,7 @@ class TencentSource(_AkshareSource):
 
 
 class SinaIndexSource(_AkshareSource):
-    """指数历史（新浪 ``stock_zh_index_daily``，实测 8770 行可用）。"""
+    """指数历史（新浪 ``index_zh_daily_sina``，实测 8772 行可用）。"""
 
     name = "sina_index"
     tag = SourceTag.D1
@@ -203,8 +244,8 @@ class SinaIndexSource(_AkshareSource):
     def fetch(self, code: str, start: date, end: date) -> Sequence[Mapping[str, Any]]:  # pragma: no cover
         # 指数必须带市场前缀，绝不能走个股代码归一化：
         # ``sh000001``（上证指数 3548 点）与 ``sz000001``（平安银行 12 元）是两回事。
-        df = self._ak().stock_zh_index_daily(symbol=to_index_symbol(code))
-        return _records(df)
+        fn = _ak_fn(self._ak(), ("index_zh_daily_sina", "stock_zh_index_daily"))
+        return _records(fn(symbol=to_index_symbol(code)))
 
 
 def default_sources() -> tuple[DailySource, ...]:
@@ -376,14 +417,24 @@ def to_plain_code(code: str) -> str:
     return text
 
 
+def is_fund_code(code: str) -> bool:
+    """ETF / 场内基金：沪市 ``5xxxxx``，深市 ``15xxxx`` / ``16xxxx``。
+
+    只做号段判断、不看名字：ETF 与个股的取数接口不同（``fund_etf_*`` vs ``stock_zh_a_*``），
+    拿错接口会直接报错或返回空表，所以这一步必须确定。
+    """
+    plain = to_plain_code(code)
+    return plain.startswith("5") or plain.startswith(("15", "16"))
+
+
 def to_market_symbol(code: str) -> str:
-    """``600000`` → ``sh600000``（新浪/腾讯口径）。"""
+    """``600000`` / ``512000`` → ``sh600000`` / ``sh512000``（新浪/腾讯口径）。"""
     plain = to_plain_code(code)
     if len(plain) != 6 or not plain.isdigit():
         raise ValueError(f"无法识别的 A 股代码：{code!r}")
-    if plain.startswith("6"):
+    if plain.startswith(("6", "5", "9")):
         return f"sh{plain}"
-    if plain.startswith(("0", "3")):
+    if plain.startswith(("0", "1", "2", "3")):
         return f"sz{plain}"
     if plain.startswith(("4", "8")):
         return f"bj{plain}"

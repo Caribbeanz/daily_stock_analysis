@@ -10,9 +10,13 @@ import pytest
 
 from src.assistant.data.fetcher import (
     CircuitBreaker,
+    EastmoneySource,
     DailyFetcher,
     FetchError,
     ReferenceFetcher,
+    SinaIndexSource,
+    SinaSource,
+    is_fund_code,
     normalize_rows,
     post_adjusted_closes,
     to_index_symbol,
@@ -321,3 +325,100 @@ def test_reference_fetcher_degrades_on_empty() -> None:
     empty = FakeSource("sina_index", SourceTag.D1, rows=[])
     with pytest.raises(FetchError):
         ReferenceFetcher([empty]).fetch_index("sh000001", START, END)
+
+
+# ---- akshare 接口兼容层（新版改名 + ETF 通道）-----------------------------
+class _FakeAk:
+    """可编程的假 akshare：只提供被测接口，记录调用参数。"""
+
+    def __init__(self, *, names: Sequence[str], rows: Sequence[Mapping[str, Any]] | None = None) -> None:
+        self.calls: list[tuple[str, dict[str, Any]]] = []
+        self._rows = list(rows or rows_of([10.0, 10.5]))
+        for name in names:
+            setattr(self, name, self._make(name))
+
+    def _make(self, name: str):  # noqa: ANN202
+        def _fn(**kwargs: Any) -> Any:
+            self.calls.append((name, kwargs))
+            return list(self._rows)
+
+        return _fn
+
+
+def _source_with(ak: _FakeAk, cls):
+    source = cls()
+    source._ak = lambda: ak  # type: ignore[method-assign]
+    return source
+
+
+class TestAkshareCompat:
+    def test_market_symbol_covers_etf(self) -> None:
+        assert to_market_symbol("512000") == "sh512000"
+        assert to_market_symbol("159915") == "sz159915"
+        assert to_market_symbol("160632") == "sz160632"
+        assert to_market_symbol("601919") == "sh601919"
+
+    def test_is_fund_code(self) -> None:
+        assert is_fund_code("512000") and is_fund_code("159915") and is_fund_code("160632")
+        assert not is_fund_code("601919") and not is_fund_code("000725")
+
+    def test_eastmoney_prefers_new_interface_name(self) -> None:
+        ak = _FakeAk(names=("stock_zh_a_hist_em", "stock_zh_a_hist"))
+        source = _source_with(ak, EastmoneySource)
+
+        source.fetch("601919", START, END)
+
+        assert ak.calls[0][0] == "stock_zh_a_hist_em"
+        assert ak.calls[0][1]["symbol"] == "601919"
+        assert ak.calls[0][1]["adjust"] == ""
+
+    def test_eastmoney_falls_back_to_old_name(self) -> None:
+        ak = _FakeAk(names=("stock_zh_a_hist",))
+        source = _source_with(ak, EastmoneySource)
+
+        source.fetch("601919", START, END)
+
+        assert ak.calls[0][0] == "stock_zh_a_hist"
+
+    def test_eastmoney_etf_uses_fund_interface(self) -> None:
+        ak = _FakeAk(names=("stock_zh_a_hist_em", "fund_etf_hist_em"))
+        source = _source_with(ak, EastmoneySource)
+
+        source.fetch("512000", START, END)
+
+        assert ak.calls[0][0] == "fund_etf_hist_em"
+        assert ak.calls[0][1]["symbol"] == "512000"
+
+    def test_sina_etf_uses_fund_interface_without_range(self) -> None:
+        ak = _FakeAk(names=("stock_zh_a_hist_sina", "fund_etf_hist_sina"))
+        source = _source_with(ak, SinaSource)
+
+        source.fetch("512000", START, END)
+
+        name, kwargs = ak.calls[0]
+        assert name == "fund_etf_hist_sina"
+        assert kwargs == {"symbol": "sh512000"}, "新浪 ETF 接口不吃区间参数，别硬塞"
+
+    def test_sina_stock_prefers_new_name(self) -> None:
+        ak = _FakeAk(names=("stock_zh_a_hist_sina", "stock_zh_a_daily"))
+        source = _source_with(ak, SinaSource)
+
+        source.fetch("601919", START, END)
+
+        assert ak.calls[0][0] == "stock_zh_a_hist_sina"
+        assert ak.calls[0][1]["symbol"] == "sh601919"
+
+    def test_index_source_prefers_new_name(self) -> None:
+        ak = _FakeAk(names=("index_zh_daily_sina", "stock_zh_index_daily"))
+        source = _source_with(ak, SinaIndexSource)
+
+        source.fetch("sh000001", START, END)
+
+        assert ak.calls[0] == ("index_zh_daily_sina", {"symbol": "sh000001"})
+
+    def test_missing_interface_raises_clear_error(self) -> None:
+        ak = _FakeAk(names=())
+        source = _source_with(ak, EastmoneySource)
+
+        with pytest.raises(AttributeError, match="stock_zh_a_hist_em"):
+            source.fetch("601919", START, END)
