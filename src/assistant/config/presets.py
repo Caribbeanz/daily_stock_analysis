@@ -180,9 +180,12 @@ PARAM_SPECS: dict[str, ParamSpec] = {
     ),
     "box_width_max": ParamSpec(
         key="box_width_max", group=_S, label="箱体宽度上限", kind="ratio",
-        standard=0.12, loose=0.15, strict=0.10,
+        # D-6 回看定稿：初值 12% 时 60 日箱体只有 13% 的交易日成立，S5「无结构」占了 58%
+        # （实测中位箱宽 19.9%），调成 15% 后 S5 降到 39%、验证区间 33.5%，
+        # 计划条数 +16% 而意见切换率只 +1.9pp，是「更少误判为无结构」而不是更吵。
+        standard=0.15, loose=0.18, strict=0.12,
         minimum=0.08, maximum=0.20,
-        strictness="lower", provisional=True,
+        strictness="lower", provisional=False,
         description="(高-低)/低；超限则箱体不成立 → S5",
     ),
     "box_touch_min": ParamSpec(

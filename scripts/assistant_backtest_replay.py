@@ -25,9 +25,7 @@ from __future__ import annotations
 
 import argparse
 import json
-import sqlite3
 import sys
-from datetime import date, timedelta
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -43,82 +41,22 @@ from src.assistant.backtest_replay import (  # noqa: E402
 )
 from src.assistant.config.overrides import ParamSet  # noqa: E402
 from src.assistant.data.storage import AssistantStore  # noqa: E402
-from src.assistant.domain import Bar  # noqa: E402
 from src.assistant.enums import Preset  # noqa: E402
-
-
-def _parse_day(text: str) -> date:
-    try:
-        return date.fromisoformat(text)
-    except ValueError as exc:  # pragma: no cover - argparse 层
-        raise argparse.ArgumentTypeError(f"日期须为 YYYY-MM-DD：{text}") from exc
-
-
-def _parse_holdings(items: list[str] | None) -> dict[str, int]:
-    out: dict[str, int] = {}
-    for item in items or []:
-        code, _, shares = item.partition(":")
-        if not code or not shares.isdigit():
-            raise SystemExit(f"--holding 需要 代码:股数 形式，收到 {item!r}")
-        out[code] = int(shares)
-    return out
-
-
-def _import_from_main_db(source: Path, store: AssistantStore, codes: list[str], start: date | None,
-                         end: date | None) -> dict[str, int]:
-    """把主项目 ``stock_daily`` 的日线复制进助手 L1（只读源库，只写 assistant 表）。
-
-    助手包内不 import 主项目；这里用一条 SQL 做脚本级桥接，字段直接对应
-    ``Bar(trade_date, open, high, low, close, volume)``，不做任何价格加工。
-    """
-    if not source.is_file():
-        raise SystemExit(f"主库不存在：{source}")
-    imported: dict[str, int] = {}
-    placeholders = ",".join("?" for _ in codes)
-    sql = (
-        "SELECT code, date, open, high, low, close, volume FROM stock_daily "
-        f"WHERE code IN ({placeholders})"
-    )
-    params: list[object] = list(codes)
-    if start is not None:
-        sql += " AND date >= ?"
-        params.append(start.isoformat())
-    if end is not None:
-        sql += " AND date <= ?"
-        params.append(end.isoformat())
-    sql += " ORDER BY code, date"
-
-    source_conn = sqlite3.connect(f"file:{source}?mode=ro", uri=True)
-    try:
-        rows = source_conn.execute(sql, params).fetchall()
-    finally:
-        source_conn.close()
-
-    grouped: dict[str, list[Bar]] = {}
-    for code, day, open_, high, low, close, volume in rows:
-        if not all(isinstance(value, (int, float)) for value in (open_, high, low, close)):
-            continue
-        grouped.setdefault(str(code), []).append(
-            Bar(
-                trade_date=date.fromisoformat(str(day)),
-                open=float(open_),
-                high=float(high),
-                low=float(low),
-                close=float(close),
-                volume=float(volume or 0.0),
-            )
-        )
-    for code, bars in grouped.items():
-        imported[code] = store.save_bars(code, bars)
-    return imported
+from assistant_common import (  # noqa: E402 - 同目录脚本，直接 import
+    import_from_main_db,
+    load_bars_bundle,
+    parse_day,
+    parse_holdings,
+    warmup_start,
+)
 
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="assistant 历史计划回放（只读 L1）")
     parser.add_argument("--db", default=None, help="SQLite 路径；缺省用助手默认库")
     parser.add_argument("--codes", nargs="+", required=True, help="A 股代码")
-    parser.add_argument("--start", type=_parse_day, default=None, help="回放起始交易日")
-    parser.add_argument("--end", type=_parse_day, default=None, help="回放结束交易日")
+    parser.add_argument("--start", type=parse_day, default=None, help="回放起始交易日")
+    parser.add_argument("--end", type=parse_day, default=None, help="回放结束交易日")
     parser.add_argument("--preset", choices=[p.value for p in Preset], default=Preset.STANDARD.value)
     parser.add_argument("--lookback", type=int, default=260, help="每天喂给守卫链的 K 线根数")
     parser.add_argument("--min-bars", type=int, default=60, help="少于该根数不判")
@@ -136,28 +74,21 @@ def main(argv: list[str] | None = None) -> int:
 
     store = AssistantStore(args.db)
     store.create_all()
-    holdings = _parse_holdings(args.holding)
+    holdings = parse_holdings(args.holding)
 
-    warmup = timedelta(days=max(400, args.lookback * 2))
     if args.import_main_db:
-        imported = _import_from_main_db(
+        imported = import_from_main_db(
             Path(args.import_main_db), store, args.codes,
-            start=(args.start - warmup) if args.start else None,
+            start=warmup_start(args.start, args.lookback),
             end=args.end,
         )
         if not imported:
             raise SystemExit("主库里这些标的没有日线；检查代码或 --start/--end")
         print("已从主库导入：" + "，".join(f"{code} {rows} 行" for code, rows in sorted(imported.items())))
 
-    bars_by_code = {}
-    for code in args.codes:
-        bars = store.load_bars(
-            code,
-            start=(args.start - warmup) if args.start else None,
-            end=args.end,
-        )
-        if bars:
-            bars_by_code[code] = bars
+    bars_by_code = load_bars_bundle(
+        store, args.codes, start=args.start, end=args.end, lookback_bars=args.lookback
+    )
     if not bars_by_code:
         raise SystemExit("库内没有这些标的的 K 线，先跑取数（main.py --assistant 或取数冒烟脚本）")
 
