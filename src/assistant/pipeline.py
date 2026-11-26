@@ -31,6 +31,7 @@ from src.assistant.domain import (
     StockView,
 )
 from src.assistant.engine.guard_chain import GuardChainInput, run_guard_chain
+from src.assistant.data.sector_map import IndustryResolver
 from src.assistant.engine.market import market_line_from_bars
 from src.assistant.engine.sector import SectorStrength, sector_strength_from_bars
 from src.assistant.engine.stage import StageDebounceState
@@ -72,6 +73,17 @@ def _env_bool(raw: Any, *, default: bool) -> bool:
     return default
 
 
+def _env_mode(raw: Any, *, default: str) -> str:
+    """枚举值解析：非法值回默认值并告警（配置写错不该让 20:00 推送失败）。"""
+    text = str(raw or "").strip().lower()
+    if not text:
+        return default
+    if text in {"focus", "market"}:
+        return text
+    logger.warning("板块模式 %r 非法（需 focus | market），按默认值 %s 处理", raw, default)
+    return default
+
+
 def _env_int(raw: Any, *, default: int, minimum: int, maximum: int) -> int:
     """整数解析并夹到区间内；非法值回默认值。"""
     text = str(raw or "").strip()
@@ -94,8 +106,10 @@ class PipelineSettings:
     preset: Preset = Preset.STANDARD
     index_code: str = DEFAULT_INDEX_CODE
     history_years: int = DEFAULT_HISTORY_YEARS
-    #: 板块区：取当天最强 N 个 + 最弱 N 个行业板块（每个板块一发板块指数请求）
+    #: 板块区：focus＝只看持仓/自选所属板块（需求 §3.5.2）；market＝全市场强弱两端（兜底）
+    sector_mode: str = "focus"
     sector_enabled: bool = True
+    #: market 模式（或 focus 模式下无一只映射成功时的兜底）取最强/最弱各几个
     sector_top_n: int = 6
     sector_weak_n: int = 3
     #: 板块指数回看天数（够 20 日均线 + 5 日斜率 + 缓冲带回溯）
@@ -144,6 +158,7 @@ class PipelineSettings:
             cash_available=cash,
             preset=preset,
             index_code=(env.get("ASSISTANT_INDEX_CODE") or DEFAULT_INDEX_CODE).strip(),
+            sector_mode=_env_mode(env.get("ASSISTANT_SECTOR_MODE"), default="focus"),
             sector_enabled=_env_bool(env.get("ASSISTANT_SECTOR_ENABLED"), default=True),
             sector_top_n=_env_int(env.get("ASSISTANT_SECTOR_TOP_N"), default=6, minimum=0, maximum=20),
             sector_weak_n=_env_int(env.get("ASSISTANT_SECTOR_WEAK_N"), default=3, minimum=0, maximum=20),
@@ -222,6 +237,8 @@ class AssistantPipeline:
     _known_tags: dict[str, SourceTag] = field(default_factory=dict, repr=False)
     #: 同一天只取一次指数：同源投递与「二次渲染逐字相同」都依赖它
     _market_cache: dict[date, MarketLine] = field(default_factory=dict, repr=False)
+    #: 个股 → 板块解析器；None 时 focus 模式自动退回「市场强弱两端」（离线/测试）
+    industry_resolver: IndustryResolver | None = None
     #: 同一天只算一次板块：板块指数是逐板块请求，重复调用会拖慢 20:00 推送
     _sector_cache: dict[date, tuple[dict, ...]] = field(default_factory=dict, repr=False)
 
@@ -437,10 +454,13 @@ class AssistantPipeline:
             logger.warning("大盘快照写入失败（按未写入处理）：%s: %s", type(exc).__name__, exc)
 
     def sector_rows(self, day: date) -> tuple[dict, ...]:
-        """板块区数据：市场最强/最弱两端的行业板块 + 各自三档（D-20 剩余部分）。
+        """板块区数据：持仓/自选所属板块（focus）或市场强弱两端（market）+ 三档。
 
-        口径（需求 §4.6 / NG-6 / NG-7）：
+        口径（需求 §3.5.2 / §4.6 / NG-6 / NG-7）：
         - **只做行业板块**，概念板块本期默认关闭；
+        - ``focus`` 模式按 D-22 的个股→板块映射，只列**涉及板块**（持仓 ∪ 自选所属行业），
+          这才是需求要的「涉及板块处于什么结构位置」；一只都没映射上时退回 ``market``
+          并留日志，不静默变成空板块区；
         - 三档来自**板块指数日线**算出的 2×2，不用当日涨跌幅顶替；取不到序列时
           如实 ``degraded`` + ``中性``，不猜；
         - ``rs_t`` 是「板块当日涨跌 − 大盘当日涨跌」的单日差，只做展示分档；
@@ -470,7 +490,9 @@ class AssistantPipeline:
 
         market = self.market_line(day)
         market_pct = market.pct_change if market.available else None
-        picked = self._pick_sectors(overview.rows)
+        picked = self._focus_sectors(overview)
+        if not picked:
+            picked = self._pick_sectors(overview.rows)
         rows: list[dict] = []
         for sector in picked:
             bars = self._sector_bars(sector.sector_name, day)
@@ -501,6 +523,41 @@ class AssistantPipeline:
         result = tuple(rows)
         self._sector_cache[day] = result
         return result
+
+    def _focus_sectors(self, overview: Any) -> list[Any]:
+        """focus 模式：只取持仓/自选所属板块，按当日涨跌降序。
+
+        映射不上（或没注入解析器）就返回空，由调用方退回 ``market`` 两端——
+        宁可展示市场强弱，也不要给一个「空的涉及板块」或按名字硬凑的错板块。
+        """
+        if self.settings.sector_mode != "focus":
+            return []
+        if self.industry_resolver is None:
+            logger.info("未注入行业解析器，板块区退回「市场强弱两端」")
+            return []
+        boards = {row.sector_name: row.sector_code for row in overview.rows if row.sector_code}
+        codes = self.codes()
+        if not boards or not codes:
+            return []
+        try:
+            resolved = self.industry_resolver.resolve(codes, boards)
+        except Exception as exc:  # noqa: BLE001 - 映射失败只降级，不阻塞推送
+            logger.warning("板块映射失败，退回「市场强弱两端」：%s: %s", type(exc).__name__, exc)
+            return []
+        if not resolved:
+            logger.info("本次 %d 只标的都未映射到板块，退回「市场强弱两端」", len(codes))
+            return []
+        by_name = overview.by_name()
+        picked: list[Any] = []
+        seen: set[str] = set()
+        for ref in resolved.values():
+            row = by_name.get(ref.sector_name)
+            if row is None or row.sector_code in seen:
+                continue
+            seen.add(row.sector_code)
+            picked.append(row)
+        logger.info("涉及板块 %d 个（%d/%d 只标的映射成功）", len(picked), len(resolved), len(codes))
+        return sorted(picked, key=lambda row: row.pct_change, reverse=True)
 
     def _pick_sectors(self, rows: Sequence[Any]) -> list[Any]:
         """挑最强 N 个 + 最弱 N 个，按「强 → 弱」保持顺序。

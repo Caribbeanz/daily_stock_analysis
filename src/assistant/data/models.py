@@ -498,3 +498,44 @@ class StageStateRow(AssistantBase):
     pending_days = Column(Integer, nullable=False, default=0)
     as_of = Column(Date, nullable=True)               # 该状态对应的交易日
     updated_at = Column(DateTime, nullable=False)
+
+
+class NoteRow(AssistantBase):
+    """操作思路与心得（需求 §3.6.4）。
+
+    **严格边界**：不进评分、不进 `advice`、不进条件计划、不进回测输入；原文照存，
+    不做情绪打分、不提炼为信号。默认只在飞书入站写入（`source` 留扩展位）。
+    """
+
+    __tablename__ = "assistant_note"
+
+    note_id = Column(String(32), primary_key=True)
+    created_at = Column(DateTime, nullable=False)
+    user_id = Column(String(64), nullable=False, default="")
+    trade_date = Column(Date, nullable=False)
+    code = Column(String(16), nullable=True)          # 空＝组合/大盘心得
+    content = Column(Text, nullable=False)
+    source = Column(String(16), nullable=False, default="feishu")
+
+    __table_args__ = (Index("idx_assistant_note_date", "trade_date"),)
+
+
+class InboundLogRow(AssistantBase):
+    """飞书入站写操作审计（需求 §3.6.3）：时间 / user_id / 指令 / 解析结果 /
+    确认状态 / 生效日 / 操作前后清单，一条写入留一行。"""
+
+    __tablename__ = "assistant_inbound_log"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    created_at = Column(DateTime, nullable=False)
+    user_id = Column(String(64), nullable=False, default="")
+    command = Column(String(32), nullable=False, default="")
+    code = Column(String(16), nullable=True)
+    action = Column(String(16), nullable=True)
+    confirmed = Column(Boolean, nullable=False, default=False)
+    effective_date = Column(Date, nullable=True)
+    before_state = Column(Text, nullable=True)
+    after_state = Column(Text, nullable=True)
+    raw_text = Column(Text, nullable=True)
+
+    __table_args__ = (Index("idx_assistant_inbound_created", "created_at"),)

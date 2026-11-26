@@ -22,6 +22,7 @@ from pathlib import Path
 from typing import Any, Callable, Mapping, Optional
 
 from src.assistant.data.fetcher import DailyFetcher, ReferenceFetcher
+from src.assistant.data.sector_map import IndustryResolver
 from src.assistant.data.storage import AssistantStore
 from src.assistant.llm import LlmTextSettings
 from src.assistant.mode import AssistantModeDecision, assistant_mode_decision
@@ -76,6 +77,8 @@ def build_runtime(
 
     store = AssistantStore(db_path)
     store.create_all()  # additively creates assistant_* tables; never touches stock_daily
+    # 行业映射缓存与库同目录（db_path 可能是 str 或 None；None 时不落盘，只走内存）
+    data_dir = Path(db_path).parent if db_path is not None else Path("data")
     daily_fetcher = fetcher if fetcher is not None else DailyFetcher(store=store)
     index_fetcher = market_fetcher if market_fetcher is not None else ReferenceFetcher()
 
@@ -86,6 +89,10 @@ def build_runtime(
         market_fetcher=index_fetcher,
         llm=llm,
         llm_settings=llm_settings or LlmTextSettings.from_env(environ),
+        # 个股 → 板块映射（D-22）；缓存与库同放在 data/ 下，跨进程重启也省 17 次请求
+        industry_resolver=IndustryResolver(
+            cache_path=data_dir / "cache" / "assistant_industry_map.json"
+        ),
     )
     gate = TradingDayGate(
         action=schedule.non_trading_action,

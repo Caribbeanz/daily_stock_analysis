@@ -1,0 +1,238 @@
+# -*- coding: utf-8 -*-
+"""个股 → 行业板块映射（D-22，需求 §3.5.2 Tab A 下「涉及板块」）。
+
+为什么单独一个模块：板块区要展示的是「**持仓/自选所属**板块处于什么结构位置」，而板块
+强度来自同花顺。两家对同一只股票给的行业名并不完全相同：
+
+- 东财 F10（`RPT_F10_CORETHEME_BOARDTYPE`）给三级行业，且带罗马数字后缀：``银行`` / ``银行Ⅱ``
+  / ``股份制银行Ⅲ``；
+- 同花顺板块名不带后缀，且大致相当于**二级**（``银行`` / ``白酒`` / ``电池`` / ``保险``）。
+
+所以这里做两件事：① 取东财三级行业 ② 按「二级 → 一级 → 三级」顺序、去掉 ``Ⅱ/Ⅲ`` 后缀后与
+同花顺板块名精确匹配。匹配不上的标的**如实算未映射**（需求 SEC-3 `unmapped_holdings`），
+不猜、不按名字相似度硬凑——板块错配会直接误导个股判断。
+
+数据源可用性（2026-11-26 实测）：东财 `push2` 系列被风控，而 `datacenter-web` 的 F10 接口正常，
+因此这里走 datacenter-web，不碰 push2。
+"""
+
+from __future__ import annotations
+
+import json
+import logging
+import re
+import time
+from dataclasses import dataclass
+from datetime import datetime
+from pathlib import Path
+from typing import Callable, Mapping, Sequence
+
+__all__ = [
+    "DEFAULT_INDUSTRY_CACHE",
+    "IndustryResolver",
+    "SectorRef",
+    "normalize_industry_name",
+    "to_secucode",
+]
+
+logger = logging.getLogger(__name__)
+
+#: 行业缓存落盘位置（`data/` 已被 .gitignore 忽略）
+DEFAULT_INDUSTRY_CACHE = Path("data/cache/assistant_industry_map.json")
+
+_EM_URL = "https://datacenter-web.eastmoney.com/api/data/v1/get"
+#: 匹配优先级：同花顺板块更接近东财二级，二级优先；三级过窄、一级过粗，作后备
+_LEVEL_ORDER = ("2", "1", "3")
+_SUFFIX = re.compile(r"(Ⅱ|Ⅲ|Ⅱ|Ⅲ|II|III|Ⅰ|I)$")
+
+
+def normalize_industry_name(name: str) -> str:
+    """去掉东财的三级后缀与空白，得到可与同花顺板块名比较的裸名。"""
+    cleaned = (name or "").strip()
+    cleaned = _SUFFIX.sub("", cleaned).strip()
+    return cleaned
+
+
+def to_secucode(code: str) -> str:
+    """A 股代码 → 东财 ``SECUCODE``（``600000.SH`` / ``000001.SZ``）。"""
+    text = (code or "").strip().upper()
+    if "." in text:
+        return text
+    if text.startswith(("6", "5", "9")):
+        return f"{text}.SH"
+    if text.startswith(("0", "2", "3")):
+        return f"{text}.SZ"
+    if text.startswith(("4", "8")):
+        return f"{text}.BJ"
+    return f"{text}.SH"
+
+
+@dataclass(frozen=True)
+class SectorRef:
+    """一只标的对应的板块（同花顺口径），带上匹配依据便于排查。"""
+
+    code: str
+    sector_name: str
+    sector_code: str
+    matched_level: str
+    raw_industry: str
+
+    def as_dict(self) -> dict[str, str]:
+        return {
+            "code": self.code,
+            "sector_name": self.sector_name,
+            "sector_code": self.sector_code,
+            "matched_level": self.matched_level,
+            "raw_industry": self.raw_industry,
+        }
+
+
+class IndustryResolver:
+    """个股 → 行业板块解析器（内存 + 可选磁盘缓存，失败不抛给主流程）。"""
+
+    def __init__(
+        self,
+        *,
+        fetch_industries: Callable[[str], Sequence[tuple[str, str]]] | None = None,
+        cache_path: Path | None = DEFAULT_INDUSTRY_CACHE,
+        ttl_hours: float = 12.0,
+        timeout: float = 8.0,
+        clock: Callable[[], float] | None = None,
+    ) -> None:
+        self._fetch = fetch_industries or self._fetch_from_eastmoney
+        self.cache_path = cache_path
+        self.ttl_seconds = max(0.0, ttl_hours) * 3600
+        self.timeout = timeout
+        self._clock = clock or time.time
+        self._memory: dict[str, tuple[float, list[tuple[str, str]]]] = {}
+        self._disk: dict[str, dict] | None = None
+        self._disk_dirty = False
+
+    # ------------------------------------------------------------------
+    # 对外
+    # ------------------------------------------------------------------
+    def industries(self, code: str) -> list[tuple[str, str]]:
+        """返回 ``[(board_level, industry_name), ...]``；取不到返回空列表（不编造）。"""
+        now = self._clock()
+        hit = self._memory.get(code)
+        if hit and (self.ttl_seconds <= 0 or now - hit[0] < self.ttl_seconds):
+            return list(hit[1])
+
+        disk = self._load_disk().get(code)
+        if disk and self.ttl_seconds > 0:
+            age = now - float(disk.get("ts") or 0)
+            if age < self.ttl_seconds:
+                rows = [(str(lvl), str(name)) for lvl, name in disk.get("rows") or []]
+                self._memory[code] = (now, rows)
+                return list(rows)
+
+        try:
+            rows = [(str(level), str(name)) for level, name in self._fetch(code) if name]
+        except Exception as exc:  # noqa: BLE001 - 单只失败只算未映射
+            logger.warning("个股 %s 行业取数失败：%s: %s", code, type(exc).__name__, exc)
+            return []
+        self._memory[code] = (now, rows)
+        self._store_disk(code, rows, now)
+        return list(rows)
+
+    def resolve(self, codes: Sequence[str], boards: Mapping[str, str]) -> dict[str, SectorRef]:
+        """把代码映射到同花顺板块；``boards`` 是 ``板块名 → 板块代码``。
+
+        一个板块名匹配不上就换下一个候选层级，全不中即视为未映射（不出现在返回值里）。
+        """
+        resolved: dict[str, SectorRef] = {}
+        for code in codes:
+            rows = self.industries(code)
+            if not rows:
+                continue
+            by_level: dict[str, list[str]] = {}
+            for level, name in rows:
+                by_level.setdefault(level, []).append(name)
+            for level in _LEVEL_ORDER:
+                for raw in by_level.get(level, []):
+                    name = normalize_industry_name(raw)
+                    sector_code = boards.get(name)
+                    if sector_code:
+                        resolved[code] = SectorRef(
+                            code=code,
+                            sector_name=name,
+                            sector_code=sector_code,
+                            matched_level=level,
+                            raw_industry=raw,
+                        )
+                        break
+                if code in resolved:
+                    break
+            if code not in resolved:
+                logger.info("个股 %s 的行业未能匹配到同花顺板块：%s（按未映射处理）", code, rows)
+        return resolved
+
+    # ------------------------------------------------------------------
+    # 数据源
+    # ------------------------------------------------------------------
+    def _fetch_from_eastmoney(self, code: str) -> list[tuple[str, str]]:
+        import requests  # noqa: PLC0415 - 仅真实取数时需要
+
+        params = {
+            "reportName": "RPT_F10_CORETHEME_BOARDTYPE",
+            "columns": "ALL",
+            "filter": f'(SECUCODE="{to_secucode(code)}")',
+            "pageNumber": 1,
+            "pageSize": 60,
+            "source": "HSF10",
+            "client": "PC",
+        }
+        response = requests.get(
+            _EM_URL,
+            params=params,
+            timeout=self.timeout,
+            headers={
+                "User-Agent": "Mozilla/5.0",
+                "Referer": "https://emweb.securities.eastmoney.com/",
+            },
+        )
+        response.raise_for_status()
+        payload = response.json()
+        if not payload.get("success"):
+            raise RuntimeError(f"东财 F10 返回失败：{payload.get('message')}")
+        rows = ((payload.get("result") or {}).get("data")) or []
+        return [
+            (str(row.get("BOARD_LEVEL")), str(row.get("BOARD_NAME")))
+            for row in rows
+            if row.get("BOARD_TYPE") == "行业"
+        ]
+
+    # ------------------------------------------------------------------
+    # 磁盘缓存
+    # ------------------------------------------------------------------
+    def _load_disk(self) -> dict[str, dict]:
+        if self._disk is not None:
+            return self._disk
+        self._disk = {}
+        if self.cache_path and self.cache_path.is_file():
+            try:
+                raw = json.loads(self.cache_path.read_text(encoding="utf-8"))
+                if isinstance(raw, dict):
+                    self._disk = {str(k): v for k, v in raw.items() if isinstance(v, dict)}
+            except (OSError, ValueError) as exc:
+                logger.warning("行业缓存读不出来，按空缓存处理：%s", exc)
+        return self._disk
+
+    def _store_disk(self, code: str, rows: Sequence[tuple[str, str]], now: float) -> None:
+        if not self.cache_path:
+            return
+        cache = self._load_disk()
+        cache[code] = {
+            "ts": now,
+            "updated_at": datetime.fromtimestamp(now).isoformat(timespec="seconds"),
+            "rows": [[level, name] for level, name in rows],
+        }
+        self._disk_dirty = True
+        try:
+            self.cache_path.parent.mkdir(parents=True, exist_ok=True)
+            self.cache_path.write_text(
+                json.dumps(cache, ensure_ascii=False, indent=2), encoding="utf-8", newline="\n"
+            )
+            self._disk_dirty = False
+        except OSError as exc:  # 缓存写失败不影响本次结果
+            logger.warning("行业缓存写入失败（不影响本次映射）：%s", exc)

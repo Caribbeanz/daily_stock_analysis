@@ -184,6 +184,18 @@ board index often publishes one day later than the overview, in which case the p
 "(as of MM-DD)" — that is a label, not a failure. Concept boards are out of scope (requirement NG-6),
 and the panel lists market-wide strong/weak ends rather than the sectors you actually hold (D-22).
 
+Feishu inbound (optional, requires `FEISHU_STREAM_ENABLED`): send `/关注 601919` to the bot
+(it echoes first and only writes after you reply "确认"; `ASSISTANT_INBOUND_ALLOWED_USERS` is the
+write whitelist, empty means all writes are refused), `/笔记 ...` for notes, `/今日 600000` for the
+day's conclusion and `/复盘` for the after-close recap. Writes only touch input config and notes —
+the current snapshot is never recomputed; the reply tells you the effective date.
+
+Feishu inbound (optional, requires `FEISHU_STREAM_ENABLED`): send `/关注 601919` to the bot
+(it echoes first and only writes after you reply "确认"; `ASSISTANT_INBOUND_ALLOWED_USERS` is the
+write whitelist, empty means all writes are refused), `/笔记 ...` for notes, `/今日 600000` for the
+day's conclusion and `/复盘` for the after-close recap. Writes only touch input config and notes —
+the current snapshot is never recomputed; the reply tells you the effective date.
+
 The assistant also exposes its own API: 8 read-only snapshot endpoints
 (`/api/v1/assistant/snapshot|market|sectors|holdings|holding/{code}|plans/{code}|risks|llm_text`)
 and 5 configuration endpoints (`/api/v1/assistant/params` plus `preset`/`override`/`funds`).

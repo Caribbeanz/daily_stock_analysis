@@ -30,8 +30,10 @@ from src.assistant.data.models import (
     ConditionalPlanRow,
     DeliveryLogRow,
     HoldingConclusionRow,
+    InboundLogRow,
     LlmTextCacheRow,
     MarketSnapshotRow,
+    NoteRow,
     ParamOverrideRow,
     PortfolioSettingRow,
     RiskSignalRow,
@@ -614,6 +616,119 @@ class AssistantStore:
                 )
                 written += 1
             return written
+
+    # ------------------------------------------------------------------
+    # 飞书入站：笔记与写操作审计（需求 §3.6.3 / §3.6.4）
+    # ------------------------------------------------------------------
+    def save_note(
+        self,
+        content: str,
+        *,
+        trade_date: date,
+        user_id: str = "",
+        code: str | None = None,
+        source: str = "feishu",
+    ) -> str:
+        """存一条笔记（原文照存，不做任何解析或打分）；返回 ``note_id``。"""
+        text = (content or "").strip()
+        if not text:
+            raise ValueError("笔记内容不能为空")
+        note_id = f"N{uuid.uuid4().hex[:12]}"
+        with self.session() as sess:
+            sess.add(
+                NoteRow(
+                    note_id=note_id,
+                    created_at=datetime.now(),
+                    user_id=user_id,
+                    trade_date=trade_date,
+                    code=(code or None),
+                    content=text,
+                    source=source,
+                )
+            )
+        return note_id
+
+    def list_notes(
+        self,
+        *,
+        trade_date: date | None = None,
+        code: str | None = None,
+        limit: int = 20,
+    ) -> list[dict]:
+        """按日期/标的检索笔记（新→旧）。"""
+        with self.session() as sess:
+            stmt = select(NoteRow)
+            if trade_date is not None:
+                stmt = stmt.where(NoteRow.trade_date == trade_date)
+            if code:
+                stmt = stmt.where(NoteRow.code == code)
+            rows = sess.execute(
+                stmt.order_by(NoteRow.created_at.desc()).limit(max(1, limit))
+            ).scalars().all()
+            return [
+                {
+                    "note_id": row.note_id,
+                    "created_at": row.created_at.isoformat(timespec="seconds"),
+                    "user_id": row.user_id,
+                    "trade_date": row.trade_date.isoformat(),
+                    "code": row.code,
+                    "content": row.content,
+                    "source": row.source,
+                }
+                for row in rows
+            ]
+
+    def log_inbound(
+        self,
+        *,
+        user_id: str,
+        command: str,
+        action: str | None = None,
+        code: str | None = None,
+        confirmed: bool = False,
+        effective_date: date | None = None,
+        before_state: Sequence[str] | None = None,
+        after_state: Sequence[str] | None = None,
+        raw_text: str | None = None,
+    ) -> None:
+        """写操作留痕（需求 §3.6.3）：确认与未确认都要留，便于回溯谁在什么时候改了什么。"""
+        with self.session() as sess:
+            sess.add(
+                InboundLogRow(
+                    created_at=datetime.now(),
+                    user_id=user_id,
+                    command=command,
+                    code=code,
+                    action=action,
+                    confirmed=confirmed,
+                    effective_date=effective_date,
+                    before_state=json.dumps(sorted(before_state or []), ensure_ascii=False),
+                    after_state=json.dumps(sorted(after_state or []), ensure_ascii=False),
+                    raw_text=(raw_text or "")[:500] or None,
+                )
+            )
+
+    def list_inbound_log(self, limit: int = 20) -> list[dict]:
+        with self.session() as sess:
+            rows = sess.execute(
+                select(InboundLogRow).order_by(InboundLogRow.id.desc()).limit(max(1, limit))
+            ).scalars().all()
+            return [
+                {
+                    "id": row.id,
+                    "created_at": row.created_at.isoformat(timespec="seconds"),
+                    "user_id": row.user_id,
+                    "command": row.command,
+                    "code": row.code,
+                    "action": row.action,
+                    "confirmed": bool(row.confirmed),
+                    "effective_date": row.effective_date.isoformat() if row.effective_date else None,
+                    "before_state": json.loads(row.before_state) if row.before_state else [],
+                    "after_state": json.loads(row.after_state) if row.after_state else [],
+                    "raw_text": row.raw_text,
+                }
+                for row in rows
+            ]
 
     # ------------------------------------------------------------------
     # 跨日阶段防抖状态（需求 §5.14.2「连续 N 日」）

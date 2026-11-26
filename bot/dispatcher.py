@@ -121,6 +121,27 @@ class CommandDispatcher:
         # 回调函数：获取帮助命令的命令列表
         self._help_command_getter: Optional[Callable] = None
 
+        # 无斜杠文本钩子：命令未命中时、自然语言路由之前依次尝试。
+        # 默认空列表，现有行为零变化；助手入站的「确认 / 取消 / 关注 600000」用它。
+        self._text_matchers: List[Callable[[BotMessage], Optional[BotResponse]]] = []
+
+    def register_text_matcher(
+        self, matcher: Callable[[BotMessage], Optional[BotResponse]]
+    ) -> None:
+        """注册无斜杠文本钩子（命中返回响应，不命中返回 None 交给后面的路由）。"""
+        self._text_matchers.append(matcher)
+
+    def _try_text_matchers(self, message: BotMessage) -> Optional[BotResponse]:
+        for matcher in self._text_matchers:
+            try:
+                result = matcher(message)
+            except Exception as exc:  # noqa: BLE001 - 钩子异常不该拖垮消息处理
+                logger.warning("[Dispatcher] 文本钩子执行失败: %s", exc)
+                continue
+            if result is not None:
+                return result
+        return None
+
     def register(self, command: BotCommand) -> None:
         """
         注册命令
@@ -297,6 +318,9 @@ class CommandDispatcher:
             return early_response
 
         if cmd_name is None:
+            matched = self._try_text_matchers(message)
+            if matched is not None:
+                return matched
             nl_result = self._try_nl_routing_sync(message)
             if nl_result is not None:
                 return nl_result
@@ -334,7 +358,10 @@ class CommandDispatcher:
             return early_response
 
         if cmd_name is None:
-            # Not a command — try natural language routing before falling back
+            # Not a command — 先过无斜杠文本钩子（确认/取消这类），再走自然语言路由
+            matched = self._try_text_matchers(message)
+            if matched is not None:
+                return matched
             nl_result = await self._try_nl_routing(message)
             if nl_result is not None:
                 return nl_result
@@ -757,6 +784,16 @@ def get_dispatcher() -> CommandDispatcher:
         from bot.commands import ALL_COMMANDS
         for command_class in ALL_COMMANDS:
             _dispatcher.register_class(command_class)
+
+        # 股票分析助手入站（需求 §3.6）：仅 ASSISTANT_ENABLED=true 时挂上去，
+        # 默认不改变现有机器人的命令表与文本路由行为。
+        if getattr(config, 'assistant_enabled', False):
+            try:
+                from bot.commands.assistant import register_assistant_inbound
+
+                register_assistant_inbound(_dispatcher)
+            except Exception as exc:  # noqa: BLE001 - 入站装不上不该让机器人起不来
+                logger.warning("[Dispatcher] 助手入站命令注册失败：%s", exc)
 
         logger.info(f"[Dispatcher] 初始化完成，已注册 {len(_dispatcher._commands)} 个命令")
 
