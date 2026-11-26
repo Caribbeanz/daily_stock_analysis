@@ -406,6 +406,34 @@ def test_drop_overlaps_keeps_first_entry() -> None:
     assert dropped == 1
 
 
+def test_overlap_is_scoped_per_code() -> None:
+    """去重必须按标的分组：A 的持仓不能挡住 B 的入场（早年漏了这个过滤，
+    10 只 × 460 天只剩 10 笔成交）。"""
+    open_a = PlanRound(code="600000", branch_id="a", entry_date=DAY0, closed=False)
+    new_b = PlanRound(
+        code="000001",
+        branch_id="b",
+        entry_date=DAY0 + timedelta(days=1),
+        exit_date=DAY0 + timedelta(days=4),
+        closed=True,
+    )
+
+    accepted, dropped = _drop_overlaps([new_b], [open_a])
+
+    assert dropped == 0
+    assert accepted == [new_b]
+
+
+def test_same_code_open_position_blocks_reentry() -> None:
+    open_a = PlanRound(code="600000", branch_id="a", entry_date=DAY0, closed=False)
+    later_a = PlanRound(code="600000", branch_id="b", entry_date=DAY0 + timedelta(days=2), closed=True)
+
+    accepted, dropped = _drop_overlaps([later_a], [open_a])
+
+    assert dropped == 1
+    assert accepted == []
+
+
 def test_drop_overlaps_keeps_untriggered_rows() -> None:
     """未触发（entry=None）不代表持仓，不能被去重逻辑吃掉。"""
     untriggered = PlanRound(code="600000", branch_id="x", closed=False, note="有效期内未触发")

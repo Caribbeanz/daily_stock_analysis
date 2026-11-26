@@ -326,10 +326,13 @@ def _plan_rows(result: Any, day: date) -> list[dict[str, Any]]:
 
 
 def _drop_overlaps(rounds: Iterable[PlanRound], taken: list[PlanRound]) -> tuple[list[PlanRound], int]:
-    """同一标的已有未平仓回合时，后面的触发不再建仓（组合层约束的保守近似）。
+    """**同一标的**已有未平仓回合时，后面的触发不再建仓（组合层约束的保守近似）。
 
-    返回 ``(可接受的新回合, 被跳过的条数)``。按入场日排序，逐条与已接受回合比较时间区间，
-    重叠即判「当时已有持仓」，不重复计一次暴露。
+    返回 ``(可接受的新回合, 被跳过的条数)``。按入场日排序，逐条与**该标的**已接受的回合
+    比较时间区间，重叠即判「当时已有持仓」，不重复计一次暴露。
+
+    注意必须按 ``code`` 分组：不同标的各占各的仓位，早年实现漏了这个过滤，
+    结果一只标的的持仓会把整个组合的后续入场全部挡掉（10 只 × 460 天只成交 10 笔）。
     """
     accepted: list[PlanRound] = []
     dropped = 0
@@ -337,15 +340,16 @@ def _drop_overlaps(rounds: Iterable[PlanRound], taken: list[PlanRound]) -> tuple
         if row.entry_date is None:  # 未触发/卖出分支：不影响仓位，原样保留
             accepted.append(row)
             continue
+        same_code = [other for other in list(taken) + accepted if other.code == row.code]
         busy = any(
             other.entry_date
             and other.closed
             and other.exit_date
             and other.entry_date <= row.entry_date <= other.exit_date
-            for other in list(taken) + accepted
+            for other in same_code
         ) or any(
             other.entry_date and not other.closed and other.entry_date <= row.entry_date
-            for other in list(taken) + accepted
+            for other in same_code
         )
         if busy:
             dropped += 1
