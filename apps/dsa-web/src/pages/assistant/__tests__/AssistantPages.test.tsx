@@ -173,6 +173,39 @@ describe('助手 Web 页面', () => {
     expect(screen.getByText(/板块数据未接入/)).toBeTruthy();
   });
 
+  it('板块表给强度、相对大盘与「截至」标注', async () => {
+    vi.mocked(assistantApi.sectors).mockResolvedValue({
+      data_date: SNAPSHOT.data_date,
+      snapshot_id: SNAPSHOT.snapshot_id,
+      calc_version: SNAPSHOT.calc_version,
+      sector_snapshot: [
+        {
+          sector_code: '881169',
+          sector_name: '贵金属',
+          pct_change: 4.22,
+          sector_strength: '偏强',
+          rs_label: '强于大盘',
+          rs_t: 4.21,
+          up_count: 14,
+          down_count: 0,
+          lead_stock: '招金黄金',
+          as_of: '2026-11-25',
+          degraded: true,
+        },
+      ],
+    });
+    renderWithRouter(<Index />);
+
+    await waitFor(() => expect(screen.getByText('贵金属')).toBeTruthy());
+    expect(screen.getByText('偏强')).toBeTruthy();
+    expect(screen.getByText('强于大盘')).toBeTruthy();
+    expect(screen.getByText('14/0')).toBeTruthy();
+    expect(screen.getByText('招金黄金')).toBeTruthy();
+    // 板块指数晚一天发布：必须标出截止日，不把 T-1 档位说成今天
+    expect(screen.getByText('（截至 11-25）')).toBeTruthy();
+    expect(screen.getByText(/当日指数尚未发布/)).toBeTruthy();
+  });
+
   it('个股列表红涨绿跌、点行进入详情', async () => {
     renderWithRouter(<Index />);
     await waitFor(() => expect(screen.getByText('大盘与板块')).toBeTruthy());

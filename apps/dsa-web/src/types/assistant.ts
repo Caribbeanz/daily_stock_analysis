@@ -135,6 +135,10 @@ export type AssistantSectorSnapshot = {
   up_count: number | null;
   down_count: number | null;
   lead_stock: string | null;
+  /** 板块指数序列最后一根的交易日；可能早于快照日（同花顺板块指数晚一天发布） */
+  as_of: string | null;
+  /** 数据降级：序列不足 / 指数滞后。降级只影响置信度，档位不变 */
+  degraded: boolean;
 };
 
 export type AssistantParamSpec = {

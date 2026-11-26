@@ -19,13 +19,14 @@
 | C5 飞书渲染 | ✅ 七段图标化文本 + 两档密度 + T 日复盘 | `src/assistant/render/` |
 | C5 Web 独立页面 | ✅ `/assistant` 单条路由（不套 `<Shell>`），Tab A 大盘/板块 + Tab B 列表 + 详情 + 配置 | `apps/dsa-web/src/pages/assistant/` |
 | C5 卡片与区块 | ✅ 卡片八项固定顺序 + 详情五区块，全部只读快照、前端不重算 | `pages/assistant/components/` |
+| C5 板块快照 | ✅ 行业板块一览 + 逐板块指数日线判三档，`rs_t` 只做展示 | `src/assistant/engine/sector.py` |
 | C3 决策引擎 | ✅ 守卫链 / 阶段 / 阶段门 / 评分 / 风险 / 条件计划 | `src/assistant/engine/` |
 | C4 参数框架 | ✅ 三档预设 + 单项覆盖 + param_hash + 变更记录 | `src/assistant/config/` |
 | C5 发送接线 | ✅ 新增 `route_type=assistant_daily` + 去重键＝`snapshot_id` + 纯文本降级 | `src/assistant/notify.py` |
 | C5 LLM 文案层 | ✅ 三处用法（飞书 ② 段 / 个股一句话 / 大盘总结）；白名单、计数硬校验、降级、缓存，默认关闭 | `src/assistant/llm.py` |
 | C6 验证回测 | ⬜ 未开始（纸面回看 / 条件计划回测） | — |
 
-**没有做的部分**：板块数据接入（Tab A 板块区如实空着）、飞书入站、回测扩展、战法启停清单接入 `calc_version`、adj_factor 正式来源（M15 兜底路径已实现但未启用）、股票名称来源（现用代码兜底）。
+**没有做的部分**：个股 ↔ 板块映射（板块区现展示市场强弱两端，见 D-22）、飞书入站、回测扩展、战法启停清单接入 `calc_version`、adj_factor 正式来源（M15 兜底路径已实现但未启用）、股票名称来源（现用代码兜底）。
 
 ---
 
@@ -46,6 +47,7 @@ src/assistant/
 │   ├── scoring.py         技术面主导评分 + 决策表 + 档位缓冲
 │   ├── risk.py            风险 7 类 / 三级联动 / 同类合并
 │   ├── market.py          M1 大盘环境（指数日线 → 涨跌 + 2×2 档位）
+│   ├── sector.py          板块强度三档（板块指数日线 → 2×2；rs_t 仅展示）
 │   ├── plan.py            条件计划（阶段模板 + 同向过滤 + 股数 + 硬上限）
 │   └── guard_chain.py     守卫链 S0→S6 主入口（留痕 GuardTrace）
 ├── versioning.py           calc_version 指纹（规则集 + 参数 + 分数带）
@@ -131,6 +133,9 @@ src/assistant/
 | §6.2 卡片固定顺序 | `pages/assistant/components/blocks.tsx` | 操作意见→趋势→位置→关键价位→理由→风险→仓位→做 T 计划，顺序写死在组件里 |
 | §6.2 列表与红涨绿跌 | `components/HoldingTable.tsx` + `format.ts` | 列按 §6.3；涨红跌绿、=0 灰；价格不复权 |
 | §5.13.3 第 3 处 LLM | `llm.py::_fallback_market` + `pipeline.payload` | 大盘总结走同一套校验；`sum(by_advice) != total` 时不输出总结段 |
+| §4.6 硬约束：单日不得判档 | `engine/sector.py::sector_strength_from_bars` | 三档只吃板块指数**多日序列**；当日涨跌幅只用来算 `rs_t`，两者不混用 |
+| §4.6 硬约束：`rs_t` 不进评分 | 同上 + `_pick_sectors` | `rs_t` 与 `rs_label` 只落库展示，不回传评分/建议；板块不给换股建议（NG-7） |
+| §5.10 降级口径 | `sector.py` 的 `degraded` / `as_of` | 序列不足、指数滞后、缓冲带无历史档 → 中性 + degraded + 注明截止日，档位不擅自改 |
 | §8.2 配置 API | `config/service.py` + 端点 | 切档/覆盖/回滚/资金写 L4，append-only 留痕，下一次快照生效 |
 | §5.16.4 参数生效语义 | `config/overrides.py::resolve_effective_date` | 当日未生成快照则当日生效；已生成则顺延到下一交易日 |
 
@@ -335,14 +340,18 @@ src/assistant/
 - 每日调用上限是**进程内软限制**（重启归零）；硬上限依赖「同快照同位置只生成一次」的
   缓存与每日快照数量。仓库目前没有按 $/token 的成本预算机制，本增量不假装做了金额封顶。
 
-### D-20 大盘已落库、板块仍缺（**部分收口**）
+### D-20 大盘与板块快照均已落库（**已收口**）
 
 - 大盘：`pipeline._persist_market` 在快照生成后写 `assistant_market_snapshot`
   （指数 / 涨跌 / 三档 / 两因子 / degraded）。数据不可用或写表异常时**不写行**，
   `/market` 继续返回 `available:false`，页面写「大盘数据缺失」，不编造档位。
-- 板块：管线还没有板块强度数据源（M1 的宽度/风格/相对大盘需要另一套取数），
-  因此 `assistant_sector_snapshot` 仍为空，Tab A 板块区如实写「未接入」。
-  等板块取数接入后只需补写表，页面与 API 不用改。
+- 板块：`pipeline._persist_sectors` 写 `assistant_sector_snapshot`（行业板块，按当日
+  涨幅取最强 N + 最弱 N，N 默认 6/3）。数据源只有同花顺一家（东财 `push2` 系列被风控、
+  雪球要 token），取不到即不写行，页面写「未接入」，**不拿空档凑数**。
+- 板块表补 `as_of` / `degraded` 两列：同花顺**板块一览有当日涨跌幅，板块指数日线却晚
+  一天发布**（2026-11-26 实测：一览“贵金属 +4.22%”，指数末根停在 11-25）。若用序列
+  自算当日差，`rs_t` 会得到 −3.35（方向反了）。因此 `rs_t` **只认一览的当日涨跌幅**，
+  三档只认序列，滞后就标 `as_of` + `degraded`，页面写「（截至 11-25）」。
 - 另：`/params/funds` 是方案 §8.2 之外的补充端点——配置页必须能保存资金（D-12），
   否则「只推 env」无法做到「页面改参数」。
 
@@ -357,6 +366,20 @@ src/assistant/
 - 代价：`create_all` 不会给老库补列，**本地开发库需重建**（同 D-13 的处理方式）；
   生产尚无助手库，无迁移负担。
 - 关键价位的来源说明（`source`）一并落库，页面不自己编「这是箱体上沿」。
+
+### D-22 个股 ↔ 板块映射未接入，板块区展示的是「市场强弱两端」
+
+- 需求 §3.5.2 说 Tab A 下板块区展示**涉及板块**（持仓/自选所属行业）的结构位置，并按
+  `#sector-{sector_code}` 与详情页 5b 双向跳转；风险 SEC-1/SEC-3 也要按持仓所属板块判。
+- 本增量缺的正是这一步映射：东财 `stock_individual_info_em`（`push2`）被风控、
+  雪球 `stock_individual_basic_info_xq` 要 `xq_a_token`；唯一可用的反查是遍历各板块
+  成分股（近百次请求/天），性价比与稳定性都不合适。
+- 因此现在落库的是**全市场行业板块的最强/最弱两端**（`ASSISTANT_SECTOR_TOP_N` /
+  `_WEAK_N` 可调），不是「涉及板块」。页面文案与表头都按「板块（行业）」写，
+  不暗示它是持仓所属板块；`sector_strength` 也**没有**接进评分与 SEC-1（否则会用错的
+  板块判个股风险）。
+- 待映射数据源可用时再做：① 板块映射落 L4（`code → sector_code`）② 按持仓所属板块
+  选板 ③ 接 `sector_strength` 进评分层与 SEC-1 ④ 详情页 5b 锚点跳转。
 
 ## 5. 验证
 
@@ -378,7 +401,7 @@ print(TradingDayGate().decide(datetime(2026,11,24,20,0)).as_dict())"
 python scripts/assistant_fetch_smoke.py --codes 600000 000001 --years 3
 ```
 
-当前结果：**382 passed**（助手 Python 测试）+ **5 passed**（`pages/assistant` 前端用例），`flake8` / `tsc` / `eslint` 均无告警。，`flake8` 无告警（`src/assistant`、`tests/assistant`；共享通知链的
+当前结果：**405 passed**（助手 Python 测试）+ **6 passed**（`pages/assistant` 前端用例），`flake8` / `tsc` / `eslint` 均无告警（共享通知链的
 历史告警数与改动前逐文件相同，见 D-18）。
 
 **2026-11-24 联网实测（akshare 1.19.5）**：
@@ -445,6 +468,7 @@ python scripts/assistant_fetch_smoke.py --codes 600000 000001 --years 3
 - 复盘：触发/未触发/跳空/无法判定四类判定、缺行情不猜、无 T-1 快照明确说明
 - 大盘一句：四象限闭合、Q2/Q3 中性、缓冲带沿用历史档、无历史/序列不足/NaN 降级、取数失败降级、同日缓存、滞后指数标注日期
 - 大盘快照落库：可用时写行（含两因子与 degraded）、不可用/空序列时不写、重复写跳过、写表异常不影响当日结论
+- 板块：四象限三档与闭合、短序列不判档、NaN 降级、缓冲带沿用历史档、`rs_t` 只认当日涨跌幅（序列自算会反向）、指数滞后标 degraded+截止日、选板取强弱两端且跳过缺代码、同日缓存、开关关闭与取数失败都返回空集、落库幂等、读回按写入顺序（不按代码打散）
 - Web 页面：大盘页环境档与总结段、列表红涨绿跌与点行进入详情、空快照给人话提示、详情五区块与价位来源、配置页按注册表渲染并提示生效时点
 - 大盘文案：关闭时走规则模板、不可用时不编档位、动作词被拒、提示词含 market_snapshot、计数不一致时不输出总结段
 - 服务装配：总开关与参数解析、gate/dispatcher/pipeline 接线、20:00 投一次、同时点二次判重复、取数前时点不投、`run_loop` 中断退出

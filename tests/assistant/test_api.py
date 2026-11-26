@@ -141,6 +141,38 @@ class TestReadApi:
         assert body["market_snapshot"]["market_regime"] == "偏弱"
         assert body["market_snapshot"]["regime_cells"] == "below+not_up"
 
+    def test_sectors_served_with_degraded_flag(self, client) -> None:
+        """板块表落库后 `/sectors` 原样返回；滞后与降级如实透出，不在这里重算。"""
+        http, store, sid = client
+        assert http.get("/api/v1/assistant/sectors", params={"snapshot_id": sid}).json()["sector_snapshot"] == []
+
+        store.save_sector_snapshots(
+            sid,
+            [
+                {
+                    "sector_code": "881169",
+                    "sector_name": "贵金属",
+                    "pct_change": 4.22,
+                    "sector_strength": "偏强",
+                    "rs_label": "强于大盘",
+                    "rs_t": 4.21,
+                    "up_count": 14,
+                    "down_count": 0,
+                    "lead_stock": "招金黄金",
+                    "as_of": date(2026, 11, 25),
+                    "degraded": True,
+                }
+            ],
+        )
+        body = http.get("/api/v1/assistant/sectors", params={"snapshot_id": sid}).json()
+
+        triple(body, sid)
+        row = body["sector_snapshot"][0]
+        assert row["sector_name"] == "贵金属"
+        assert row["sector_strength"] == "偏强"
+        assert row["as_of"] == "2026-11-25"
+        assert row["degraded"] is True
+
     def test_detail_carries_stage_block_and_stock_text(self, client) -> None:
         """第 3 区块的打法/允许/禁止由后端给，前端不拼文案；个股文案只读缓存。"""
         http, store, sid = client

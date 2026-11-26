@@ -636,6 +636,39 @@ class ReferenceFetcher:
                                attempts=tuple(attempts) + (f"{source.name}: ok",), dropped=dropped)
         raise FetchError(symbol, attempts)
 
+    def fetch_sector_index(self, name: str, start: date, end: date) -> tuple[Bar, ...]:
+        """取板块指数日线（同花顺 ``stock_board_industry_index_ths``）。
+
+        板块三档要求**多日序列**（需求 §4.6：单日涨跌幅不得判档），一览表只有当日值，
+        因此这里按板块名单独取指数日线。
+
+        返回空元组 = 「这次取不到」（网络失败 / 板块无指数 / 区间内无数据），三者对
+        三档判定是同一件事——调用方按 ``degraded`` 处理，**不猜档位**。
+        """
+        if not name:
+            return ()
+        if start > end:
+            raise ValueError(f"起始日 {start} 晚于结束日 {end}")
+        import akshare as ak  # noqa: PLC0415
+
+        try:
+            frame = ak.stock_board_industry_index_ths(
+                symbol=name,
+                start_date=start.strftime("%Y%m%d"),
+                end_date=end.strftime("%Y%m%d"),
+            )
+            raw = _records(frame)
+        except Exception as exc:  # noqa: BLE001 - 单板块失败只降级该板块
+            logger.warning("板块指数 %s 取数失败：%s: %s", name, type(exc).__name__, exc)
+            return ()
+        if not raw:
+            return ()
+        bars, dropped = normalize_rows(raw, source_tag=SourceTag.D1)
+        kept = tuple(bar for bar in bars if start <= bar.trade_date <= end)
+        if dropped:
+            logger.debug("板块指数 %s 丢弃 %d 行无效数据", name, dropped)
+        return kept
+
     def fetch_sectors(self) -> SectorOverview:  # pragma: no cover - 真实依赖
         """同花顺行业板块一览：汇总（涨跌幅/涨跌家数/领涨股）+ 名称→代码映射。
 

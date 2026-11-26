@@ -78,37 +78,54 @@ export const MarketPanel: React.FC<{
       <SectionCard title="板块" subtitle="SECTORS">
         {sectors.length === 0 ? (
           <p className="text-sm text-secondary-text">
-            板块数据未接入：管线尚未写入板块快照，这里不做推断。
+            板块数据未接入：本次未取到板块快照（或已关闭），这里不做推断。
           </p>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="text-left text-xs text-secondary-text">
-                  <th className="py-2 pr-3 font-normal">板块</th>
-                  <th className="py-2 pr-3 font-normal">涨跌</th>
-                  <th className="py-2 pr-3 font-normal">强度</th>
-                  <th className="py-2 pr-3 font-normal">相对大盘</th>
-                  <th className="py-2 pr-3 font-normal">涨/跌家数</th>
-                  <th className="py-2 font-normal">领涨</th>
-                </tr>
-              </thead>
-              <tbody>
-                {sectors.map((sector) => (
-                  <tr key={sector.sector_code} className="border-t border-border/40">
-                    <td className="py-2 pr-3 text-foreground">{sector.sector_name || sector.sector_code}</td>
-                    <td className={`py-2 pr-3 ${pctClass(sector.pct_change)}`}>{pctText(sector.pct_change)}</td>
-                    <td className="py-2 pr-3 text-secondary-text">{sector.sector_strength || '--'}</td>
-                    <td className={`py-2 pr-3 ${pctClass(sector.rs_t)}`}>{pctText(sector.rs_t)}</td>
-                    <td className="py-2 pr-3 text-secondary-text">
-                      {sector.up_count ?? '--'}/{sector.down_count ?? '--'}
-                    </td>
-                    <td className="py-2 text-secondary-text">{sector.lead_stock || '--'}</td>
+          <>
+            {sectors.some((sector) => sector.degraded) ? (
+              <p className="mb-2 text-xs text-secondary-text">
+                强度按板块指数日线判定；标注「截至」的行表示当日指数尚未发布，档位沿用上一交易日。
+              </p>
+            ) : null}
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="text-left text-xs text-secondary-text">
+                    <th className="py-2 pr-3 font-normal">板块</th>
+                    <th className="py-2 pr-3 font-normal">涨跌</th>
+                    <th className="py-2 pr-3 font-normal">强度</th>
+                    <th className="py-2 pr-3 font-normal">相对大盘</th>
+                    <th className="py-2 pr-3 font-normal">涨/跌家数</th>
+                    <th className="py-2 font-normal">领涨</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody>
+                  {sectors.map((sector) => (
+                    <tr key={sector.sector_code} className="border-t border-border/40">
+                      <td className="py-2 pr-3 text-foreground">{sector.sector_name || sector.sector_code}</td>
+                      <td className={`py-2 pr-3 ${pctClass(sector.pct_change)}`}>{pctText(sector.pct_change)}</td>
+                      <td className="py-2 pr-3 text-secondary-text">
+                        {sector.sector_strength || '--'}
+                        {sector.degraded && sector.as_of ? (
+                          <span className="ml-1 text-xs">（截至 {sector.as_of.slice(5)}）</span>
+                        ) : null}
+                      </td>
+                      <td className={`py-2 pr-3 ${pctClass(sector.rs_t)}`}>
+                        {pctText(sector.rs_t)}
+                        {sector.rs_label ? (
+                          <span className="ml-1 text-xs text-secondary-text">{sector.rs_label}</span>
+                        ) : null}
+                      </td>
+                      <td className="py-2 pr-3 text-secondary-text">
+                        {sector.up_count ?? '--'}/{sector.down_count ?? '--'}
+                      </td>
+                      <td className="py-2 text-secondary-text">{sector.lead_stock || '--'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </>
         )}
       </SectionCard>
     </div>

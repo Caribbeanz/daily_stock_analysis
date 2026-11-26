@@ -17,7 +17,7 @@ import uuid
 from contextlib import contextmanager
 from datetime import date, datetime
 from pathlib import Path
-from typing import Iterator, Sequence
+from typing import Any, Iterator, Mapping, Sequence
 
 from sqlalchemy import create_engine, delete, func, select
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
@@ -550,10 +550,14 @@ class AssistantStore:
             return True
 
     def snapshot_sectors(self, snapshot_id: str) -> list[dict]:
+        """按**写入顺序**读回：调用方按「最强 → 最弱」写，页面就按这个顺序展示。
+
+        不用 ``sector_code`` 排序——那会把最强和最弱按代码打散，看着像随机顺序。
+        """
         with self.session() as sess:
             rows = sess.execute(
                 select(SectorSnapshotRow).where(SectorSnapshotRow.snapshot_id == snapshot_id)
-                .order_by(SectorSnapshotRow.sector_code.asc())
+                .order_by(SectorSnapshotRow.id.asc())
             ).scalars().all()
             return [
                 {
@@ -566,9 +570,50 @@ class AssistantStore:
                     "up_count": row.up_count,
                     "down_count": row.down_count,
                     "lead_stock": row.lead_stock,
+                    "as_of": row.as_of.isoformat() if row.as_of else None,
+                    "degraded": bool(row.degraded),
                 }
                 for row in rows
             ]
+
+    def save_sector_snapshots(self, snapshot_id: str, rows: Sequence[Mapping[str, Any]]) -> int:
+        """批量写板块快照；同一 ``snapshot_id`` 已有行则跳过（幂等，不改写历史）。
+
+        返回实际写入行数。``rows`` 为空不写——「宁缺不造」：取数失败时宁可让
+        ``/sectors`` 返回空列表，也不覆盖成一批中性档。
+        """
+        if not rows:
+            return 0
+        with self.session() as sess:
+            exists = sess.execute(
+                select(SectorSnapshotRow.id).where(SectorSnapshotRow.snapshot_id == snapshot_id).limit(1)
+            ).first()
+            if exists is not None:
+                return 0
+            written = 0
+            for row in rows:
+                code = str(row.get("sector_code") or "").strip()
+                if not code:
+                    # 没有板块代码的行无法做锚点与历史聚合，跳过并计数（由调用方记 degraded）
+                    continue
+                sess.add(
+                    SectorSnapshotRow(
+                        snapshot_id=snapshot_id,
+                        sector_code=code,
+                        sector_name=str(row.get("sector_name") or ""),
+                        pct_change=row.get("pct_change"),
+                        sector_strength=row.get("sector_strength"),
+                        rs_label=row.get("rs_label"),
+                        rs_t=row.get("rs_t"),
+                        up_count=row.get("up_count"),
+                        down_count=row.get("down_count"),
+                        lead_stock=str(row.get("lead_stock") or ""),
+                        as_of=row.get("as_of"),
+                        degraded=bool(row.get("degraded")),
+                    )
+                )
+                written += 1
+            return written
 
     # ------------------------------------------------------------------
     # 跨日阶段防抖状态（需求 §5.14.2「连续 N 日」）

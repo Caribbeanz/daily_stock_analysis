@@ -27,7 +27,7 @@ import re
 from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeout
 from dataclasses import dataclass, field
 from datetime import date, datetime
-from typing import Any, Callable, Mapping, Optional
+from typing import Any, Callable, Mapping, Optional, Sequence
 
 from src.assistant.render.icons import strip_markdown
 
@@ -51,6 +51,9 @@ BANNED_PROMISE = ("必涨", "必跌", "稳赚", "保本", "翻倍")
 BANNED_ACTION = ("加仓", "减仓", "清仓", "建仓", "买入", "卖出", "几成仓", "建议总仓位")
 SELL_WORDS = ("减仓", "清仓", "卖出")
 BUY_WORDS = ("加仓", "建仓", "买入", "试探")
+
+#: 送进提示词的板块条数上限：总结段是「一段话」，不是板块清单
+LLM_SECTOR_LIMIT = 8
 
 SYSTEM_PROMPT = (
     "你是股票分析助手的文案整理器，只能把给定的结构化快照改写成通顺中文。"
@@ -145,6 +148,7 @@ def build_whitelist(
     *,
     market: Any = None,
     code: str | None = None,
+    sectors: Sequence[Mapping[str, Any]] | None = None,
 ) -> dict:
     """从已固化快照里挑字段；**不传原始行情、新闻原文、历史 LLM 文本或未来数据**。"""
     keys = ("data_date", "snapshot_id", "calc_version")
@@ -180,6 +184,15 @@ def build_whitelist(
             key: getattr(market, key, None)
             for key in ("index_name", "pct_change", "regime", "available")
         }
+    if sectors:
+        # 只给已固化的板块字段；不带原始行情，也不带 90 个板块的全量（避免把总结段撑成清单）
+        payload["sector_snapshot"] = [
+            {
+                key: row.get(key)
+                for key in ("sector_name", "pct_change", "sector_strength", "rs_t", "rs_label")
+            }
+            for row in list(sectors)[:LLM_SECTOR_LIMIT]
+        ]
     by_advice: dict[str, int] = {}
     for row in conclusions:
         advice = str(row.get("advice") or "未给")
@@ -377,6 +390,7 @@ class LlmTextService:
         *,
         market: Any = None,
         code: str | None = None,
+        sectors: Sequence[Mapping[str, Any]] | None = None,
     ) -> TextOutcome:
         """取文案：缓存优先 → 预算/白名单 → 生成 → 校验 → 缓存；失败一律模板降级。"""
         snapshot_id = str(content.get("snapshot_id") or "")
@@ -413,7 +427,7 @@ class LlmTextService:
             reason = "disabled" if not self.settings.enabled else "budget_exhausted"
             return self._save_fallback(snapshot_id, position, code, fallback, reason)
 
-        whitelist = build_whitelist(content, market=market, code=code)
+        whitelist = build_whitelist(content, market=market, code=code, sectors=sectors)
         if position in ("summary", "market") and not _counts_consistent(whitelist):
             # 需求 §4.2：大盘总结段额外硬校验 sum(counts) == total，不等则不输出并报数据异常
             logger.error("快照 %s 的分类计数与实际标的不一致，本次不输出总结段", snapshot_id)

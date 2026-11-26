@@ -296,11 +296,36 @@ class TestMarketText:
         assert '"market_snapshot"' in backend.calls[0]["prompt"]
         assert "偏弱" in backend.calls[0]["prompt"]
 
+    def test_prompt_carries_sector_snapshot(self) -> None:
+        """方案 §6.4 输入契约：大盘板块总结要带已固化的板块快照。"""
+        backend = FakeBackend(text="上证指数涨 0.27%，环境偏弱，自选 1 只。")
+        llm, _ = service(backend, enabled=True)
+
+        outcome = llm.text(
+            "market",
+            content(),
+            market=self.market(),
+            sectors=[
+                {
+                    "sector_name": "贵金属",
+                    "pct_change": 4.22,
+                    "sector_strength": "偏强",
+                    "rs_t": 4.21,
+                    "rs_label": "强于大盘",
+                }
+            ],
+        )
+
+        assert outcome.source == "llm"
+        prompt = backend.calls[0]["prompt"]
+        assert "sector_snapshot" in prompt
+        assert "贵金属" in prompt
+
     def test_counts_mismatch_outputs_nothing(self, monkeypatch) -> None:
         """§4.2：sum(counts) != total 时不输出总结段，也不写缓存。"""
         import src.assistant.llm as llm_module
 
-        def broken(content_, *, market=None, code=None):  # noqa: ANN001
+        def broken(content_, *, market=None, code=None, sectors=None):  # noqa: ANN001
             return {
                 "data_date": DAY.isoformat(),
                 "snapshot_id": "20261125-abc",

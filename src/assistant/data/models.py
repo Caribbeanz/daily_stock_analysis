@@ -341,6 +341,10 @@ class SectorSnapshotRow(AssistantBase):
     up_count = Column(Integer, nullable=True)
     down_count = Column(Integer, nullable=True)
     lead_stock = Column(String(32), nullable=True)
+    #: 板块指数序列最后一根的交易日（可能早于快照日：同花顺板块指数晚一天发布）
+    as_of = Column(Date, nullable=True)
+    #: 数据降级（序列不足 / 指数滞后 / 缓冲带无历史档）——降级只改置信度，不改档位
+    degraded = Column(Boolean, nullable=False, default=False)
 
     __table_args__ = (Index("idx_assistant_sector_snapshot", "snapshot_id"),)
 

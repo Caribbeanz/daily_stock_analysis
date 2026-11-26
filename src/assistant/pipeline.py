@@ -32,6 +32,7 @@ from src.assistant.domain import (
 )
 from src.assistant.engine.guard_chain import GuardChainInput, run_guard_chain
 from src.assistant.engine.market import market_line_from_bars
+from src.assistant.engine.sector import SectorStrength, sector_strength_from_bars
 from src.assistant.engine.stage import StageDebounceState
 from src.assistant.enums import Preset, SourceTag, Stage
 from src.assistant.llm import LlmTextService, LlmTextSettings, TextOutcome
@@ -58,6 +59,32 @@ class PipelineError(RuntimeError):
     """装配链无法产出（无标的 / 全部取数失败 / 全部数据不足）。"""
 
 
+def _env_bool(raw: Any, *, default: bool) -> bool:
+    """宽松布尔解析：未设/空串用默认值，非法值也回默认值并留日志（配置项不该炸主流程）。"""
+    text = str(raw or "").strip().lower()
+    if not text:
+        return default
+    if text in {"1", "true", "yes", "on", "y"}:
+        return True
+    if text in {"0", "false", "no", "off", "n"}:
+        return False
+    logger.warning("布尔配置值 %r 非法，按默认值 %s 处理", raw, default)
+    return default
+
+
+def _env_int(raw: Any, *, default: int, minimum: int, maximum: int) -> int:
+    """整数解析并夹到区间内；非法值回默认值。"""
+    text = str(raw or "").strip()
+    if not text:
+        return default
+    try:
+        value = int(float(text))
+    except ValueError:
+        logger.warning("整数配置值 %r 非法，按默认值 %s 处理", raw, default)
+        return default
+    return max(minimum, min(maximum, value))
+
+
 @dataclass(frozen=True)
 class PipelineSettings:
     """装配层运行参数（**资金类不进三档预设**，属用户填写的固定金额）。"""
@@ -67,6 +94,12 @@ class PipelineSettings:
     preset: Preset = Preset.STANDARD
     index_code: str = DEFAULT_INDEX_CODE
     history_years: int = DEFAULT_HISTORY_YEARS
+    #: 板块区：取当天最强 N 个 + 最弱 N 个行业板块（每个板块一发板块指数请求）
+    sector_enabled: bool = True
+    sector_top_n: int = 6
+    sector_weak_n: int = 3
+    #: 板块指数回看天数（够 20 日均线 + 5 日斜率 + 缓冲带回溯）
+    sector_lookback_days: int = 200
 
     def __post_init__(self) -> None:
         if self.total_capital <= 0:
@@ -111,6 +144,9 @@ class PipelineSettings:
             cash_available=cash,
             preset=preset,
             index_code=(env.get("ASSISTANT_INDEX_CODE") or DEFAULT_INDEX_CODE).strip(),
+            sector_enabled=_env_bool(env.get("ASSISTANT_SECTOR_ENABLED"), default=True),
+            sector_top_n=_env_int(env.get("ASSISTANT_SECTOR_TOP_N"), default=6, minimum=0, maximum=20),
+            sector_weak_n=_env_int(env.get("ASSISTANT_SECTOR_WEAK_N"), default=3, minimum=0, maximum=20),
         )
 
 
@@ -186,6 +222,8 @@ class AssistantPipeline:
     _known_tags: dict[str, SourceTag] = field(default_factory=dict, repr=False)
     #: 同一天只取一次指数：同源投递与「二次渲染逐字相同」都依赖它
     _market_cache: dict[date, MarketLine] = field(default_factory=dict, repr=False)
+    #: 同一天只算一次板块：板块指数是逐板块请求，重复调用会拖慢 20:00 推送
+    _sector_cache: dict[date, tuple[dict, ...]] = field(default_factory=dict, repr=False)
 
     # ------------------------------------------------------------------
     # 对外入口
@@ -242,6 +280,7 @@ class AssistantPipeline:
             notes="" if not skipped else "跳过：" + "；".join(f"{c}({r})" for c, r in skipped),
         )
         self._persist_market(snapshot_id, day)
+        self._persist_sectors(snapshot_id, day)
         content = self.store.snapshot_content(snapshot_id)
         if content is None:  # pragma: no cover
             raise PipelineError(f"快照 {snapshot_id} 写入后读不回")
@@ -299,10 +338,19 @@ class AssistantPipeline:
         market: Any = None,
         code: str | None = None,
     ) -> TextOutcome:
-        """文案层入口（个股一句话 / 飞书摘要）；缓存命中不会重复调后端。"""
+        """文案层入口（个股一句话 / 飞书摘要 / 大盘总结）；缓存命中不会重复调后端。
+
+        大盘类文案带上**已落库**的板块快照（方案 §6.4 输入契约），读的是快照真值而不是
+        现算——否则同一快照换个时点重跑，总结段会换一段话。
+        """
         if self.llm is None:
             self.llm = LlmTextService(self.store, self.llm_settings or LlmTextSettings.from_env())
-        return self.llm.text(position, content, market=market, code=code)
+        sectors = None
+        if position in ("summary", "market"):
+            snapshot_id = str(content.get("snapshot_id") or "")
+            if snapshot_id:
+                sectors = self.store.snapshot_sectors(snapshot_id)
+        return self.llm.text(position, content, market=market, code=code, sectors=sectors)
 
     def market_line(self, day: date) -> MarketLine:
         """② 段的大盘一句：指数日线 → 涨跌 + M1 环境档（D-16）。
@@ -387,6 +435,106 @@ class AssistantPipeline:
             )
         except Exception as exc:  # noqa: BLE001 - 大盘表异常不阻塞当日结论
             logger.warning("大盘快照写入失败（按未写入处理）：%s: %s", type(exc).__name__, exc)
+
+    def sector_rows(self, day: date) -> tuple[dict, ...]:
+        """板块区数据：市场最强/最弱两端的行业板块 + 各自三档（D-20 剩余部分）。
+
+        口径（需求 §4.6 / NG-6 / NG-7）：
+        - **只做行业板块**，概念板块本期默认关闭；
+        - 三档来自**板块指数日线**算出的 2×2，不用当日涨跌幅顶替；取不到序列时
+          如实 ``degraded`` + ``中性``，不猜；
+        - ``rs_t`` 是「板块当日涨跌 − 大盘当日涨跌」的单日差，只做展示分档；
+        - 只描述结构，不给换股/由板块推导个股买卖的建议。
+
+        取数失败或总开关关闭返回空元组，``/sectors`` 与页面据此写「未接入」。
+        """
+        if not self.settings.sector_enabled:
+            return ()
+        cached = self._sector_cache.get(day)
+        if cached is not None:
+            return cached
+        if self.market_fetcher is None:
+            self._sector_cache[day] = ()
+            return ()
+
+        try:
+            overview = self.market_fetcher.fetch_sectors()
+        except Exception as exc:  # noqa: BLE001 - 板块失败不能带走当日结论
+            logger.warning("板块一览取数失败，板块区按未接入处理：%s: %s", type(exc).__name__, exc)
+            self._sector_cache[day] = ()
+            return ()
+        if not overview.rows:
+            logger.warning("板块一览为空（%s），板块区按未接入处理", overview.note or "无数据")
+            self._sector_cache[day] = ()
+            return ()
+
+        market = self.market_line(day)
+        market_pct = market.pct_change if market.available else None
+        picked = self._pick_sectors(overview.rows)
+        rows: list[dict] = []
+        for sector in picked:
+            bars = self._sector_bars(sector.sector_name, day)
+            strength: SectorStrength = sector_strength_from_bars(
+                bars,
+                # rs_t 只认当日：板块一览有当日涨跌幅，板块指数序列可能还停在昨天
+                pct_change=sector.pct_change,
+                market_pct=market_pct,
+                as_of_day=day,
+            )
+            if strength.note:
+                logger.info("板块 %s：%s", sector.sector_name, strength.note)
+            rows.append(
+                {
+                    "sector_code": sector.sector_code,
+                    "sector_name": sector.sector_name,
+                    "pct_change": sector.pct_change,
+                    "sector_strength": strength.strength,
+                    "rs_label": strength.rs_label,
+                    "rs_t": strength.rs_t,
+                    "up_count": sector.up_count,
+                    "down_count": sector.down_count,
+                    "lead_stock": sector.lead_stock,
+                    "as_of": strength.as_of,
+                    "degraded": strength.degraded,
+                }
+            )
+        result = tuple(rows)
+        self._sector_cache[day] = result
+        return result
+
+    def _pick_sectors(self, rows: Sequence[Any]) -> list[Any]:
+        """挑最强 N 个 + 最弱 N 个，按「强 → 弱」保持顺序。
+
+        缺代码的板块不选：没有代码就没有 `#sector-{code}` 锚点，也没法沉淀历史。
+        """
+        candidates = [row for row in rows if getattr(row, "sector_code", "")]
+        ordered = sorted(candidates, key=lambda row: row.pct_change, reverse=True)
+        top_n = max(0, self.settings.sector_top_n)
+        weak_n = max(0, self.settings.sector_weak_n)
+        picked: list[Any] = list(ordered[:top_n])
+        if weak_n and len(ordered) > top_n:
+            for row in ordered[-weak_n:]:
+                if not any(row.sector_code == item.sector_code for item in picked):
+                    picked.append(row)
+        return picked
+
+    def _sector_bars(self, name: str, day: date) -> tuple[Bar, ...]:
+        try:
+            return self.market_fetcher.fetch_sector_index(
+                name, day - timedelta(days=self.settings.sector_lookback_days), day
+            )
+        except Exception as exc:  # noqa: BLE001 - 单板块失败只降级该行
+            logger.warning("板块指数 %s 取数异常：%s: %s", name, type(exc).__name__, exc)
+            return ()
+
+    def _persist_sectors(self, snapshot_id: str, day: date) -> None:
+        """板块快照落库；空集不写（`/sectors` 返回空列表，页面写「未接入」）。"""
+        try:
+            rows = self.sector_rows(day)
+            if rows:
+                self.store.save_sector_snapshots(snapshot_id, rows)
+        except Exception as exc:  # noqa: BLE001 - 板块表异常不阻塞当日结论
+            logger.warning("板块快照写入失败（按未写入处理）：%s: %s", type(exc).__name__, exc)
 
     def _params(self) -> ParamSet:
         if self.params is not None:

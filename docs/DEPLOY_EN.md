@@ -177,6 +177,13 @@ Tab B holdings list, `?code=600000` for detail, `?view=settings` for parameters.
 exists yet the page says "available after 20:00 on trading days" instead of failing; run
 `--assistant-once` once before opening it.
 
+The sector panel shows the day's N strongest + N weakest **industry** boards
+(`ASSISTANT_SECTOR_TOP_N` / `ASSISTANT_SECTOR_WEAK_N`, default 6/3). The overview call supplies the
+daily change and advance/decline counts; the board index history decides the strength bucket. The
+board index often publishes one day later than the overview, in which case the page appends
+"(as of MM-DD)" — that is a label, not a failure. Concept boards are out of scope (requirement NG-6),
+and the panel lists market-wide strong/weak ends rather than the sectors you actually hold (D-22).
+
 The assistant also exposes its own API: 8 read-only snapshot endpoints
 (`/api/v1/assistant/snapshot|market|sectors|holdings|holding/{code}|plans/{code}|risks|llm_text`)
 and 5 configuration endpoints (`/api/v1/assistant/params` plus `preset`/`override`/`funds`).
