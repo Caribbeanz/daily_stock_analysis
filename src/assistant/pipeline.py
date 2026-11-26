@@ -600,7 +600,8 @@ class AssistantPipeline:
         return ParamSet.build(self.settings.preset, overrides=self.store.current_overrides())
 
     def _calc_version(self, params: ParamSet) -> str:
-        # 战法启停清单在 §5.12 接入后填进 strategy_ids；现在为空即「全部启用的默认集」
+        # 战法启停清单的唯一真值在 strategies.py（§5.12.3），由 RuleFingerprint 默认带上；
+        # 清单变化本身就是规则变更，须同时 bump RULES_VERSION
         return RuleFingerprint(param_hash=params.param_hash).calc_version()
 
     def codes(self) -> tuple[str, ...]:
@@ -630,13 +631,28 @@ class AssistantPipeline:
             views.append(
                 StockView(
                     code=code,
-                    name=self.names.get(code, code),
+                    name=self._display_name(code),
                     bars=bars,
                     position=position,
                     source_tag=tag,
                 )
             )
         return views
+
+    def _display_name(self, code: str) -> str:
+        """展示用简称（D-14）：注入的 ``names`` 优先，其次行业解析器同一份 F10 缓存，
+        最后退回代码。名称只影响展示，取不到不编造、也不阻塞结论。"""
+        injected = self.names.get(code)
+        if injected:
+            return injected
+        if self.industry_resolver is None:
+            return code
+        try:
+            resolved = self.industry_resolver.name(code)
+        except Exception as exc:  # noqa: BLE001 - 名称失败只退代码
+            logger.warning("个股 %s 名称解析失败（退回代码）：%s: %s", code, type(exc).__name__, exc)
+            return code
+        return resolved or code
 
     def _bars(
         self, code: str, day: date, warnings: list[str], skipped: list[tuple[str, str]]

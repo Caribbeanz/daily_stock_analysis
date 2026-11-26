@@ -27,8 +27,11 @@
 | C5 发送接线 | ✅ 新增 `route_type=assistant_daily` + 去重键＝`snapshot_id` + 纯文本降级 | `src/assistant/notify.py` |
 | C5 LLM 文案层 | ✅ 三处用法（飞书 ② 段 / 个股一句话 / 大盘总结）；白名单、计数硬校验、降级、缓存，默认关闭 | `src/assistant/llm.py` |
 | C6 条件计划回测 | 🟡 回合模拟层已实现；缺「历史计划回放」驱动 | `src/assistant/backtest.py` |
+| C6 战法启停清单 | ✅ 15 条与 `strategies/*.yaml` 一一对应，启用 8 条进 `calc_version`（`rules-2.6.1`） | `src/assistant/strategies.py` |
 
-**没有做的部分**：`sector_strength` 进评分与 SEC-1（映射已就绪，但阈值需纸面回看后再定）、回测的历史计划回放驱动（D-24）、纸面回看调参（D-5/D-6）、战法启停清单接入 `calc_version`、adj_factor 正式来源（M15 兜底路径已实现但未启用）、股票名称来源（现用代码兜底）。
+**没有做的部分**：`sector_strength` 进评分与 SEC-1（映射已就绪，但阈值需纸面回看后再定）、回测的历史计划回放驱动（D-24）、纸面回看调参（D-5/D-6）、adj_factor 正式来源（M15 兜底路径已实现但未启用）。
+
+> 已收口（增量 14）：战法启停清单已进 `calc_version`（D-25），股票名称改由东财 F10 同一次请求带出（D-26）。
 
 ---
 
@@ -62,6 +65,7 @@ src/assistant/
 ├── stage_text.py           阶段打法/允许/禁止/切换的唯一出处（飞书 ⑤ 段与 Web 详情共用）
 ├── inbound.py              飞书入站四项：白名单/二次确认/生效时点/只读查询/笔记
 ├── backtest.py             条件计划回合模拟：触发/成交/出场/成本 + 胜率口径
+├── strategies.py           战法启停清单（§5.12.3）：静态登记 → calc_version
 ├── notify.py               发送接线：payload → 既有通知链（route_type / 去重键 / 纯文本降级）
 ├── config/
 │   ├── presets.py          45 项参数注册表 + 三档
@@ -112,7 +116,7 @@ src/assistant/
 | FR-8.7 ④ 时区归一 | `scheduling/gate.py::now` | naive 按配置时区补全，aware 转本地；已测 UTC 20:00 → 次日 04:00 |
 | B50 ③ 重启不重投 | `data/storage.py`（`assistant_delivery_log`） | 台账持久化，进程重启后仍能判 `duplicate` |
 | §2.3 取数后才生成且才推送 | `scheduling/runner.py` | `now < fetch_time` 不生成当日快照；**早于取数的时点一律不投递**（仅 20:00 推送） |
-| §2.5 三元组 `calc_version` | `versioning.py` | 规则集版本 + `param_hash` + 决策表分数带；`temperature` 不入版本（只改措辞） |
+| §2.5 三元组 `calc_version` | `versioning.py` + `strategies.py` | 规则集版本 + `param_hash` + 决策表分数带 + 启用战法清单；`temperature` 与展示名称不入版本 |
 | B50 ③ 当日快照只生成一次 | `pipeline.py::ensure_snapshot` | 按「快照日 T + param_hash + calc_version」查已有快照直接复用 |
 | §5.14.2 连续 N 日防抖 | `data/models.py::StageStateRow` + `pipeline.py` | 防抖状态落库，跨进程/跨日可用（否则每天都是「首次判定」） |
 | §4.6.2 来源如实标注 | `pipeline.py::_worst_tag` | 主源失败降级到 D2 时必须标 D2；快照级取最差 |
@@ -430,6 +434,43 @@ src/assistant/
   组合仓位联动），避免读者把这些当成已覆盖。
 - 需求 §9.4.5 的使用边界照旧：回测结果只作方案验证记录，**不进评分、不进卡片、不进推送**。
 
+### D-25 战法启停清单：静态常量 + 进 `calc_version`，不做运行期开关
+
+- 需求 §5.12.3 要求「逐战法最终启停清单在 c 阶段核对 `instructions` 后登记进
+  `calc_version` 与附录 C」。落地为 `src/assistant/strategies.py` 的
+  `STRATEGY_REGISTRY`：**15 条与 `strategies/*.yaml` 一一对应**，8 条启用、7 条不启用。
+- 每条启用项必须写 `transposed_into`（落到哪个需求小节 / 哪个引擎模块），每条不启用项
+  必须写 `note`（违反哪条 NG）。测试断言这两点，避免「说启用了但找不到落点」。
+- **为什么是常量而不是配置项**：启停变化会改变阶段/计划/风险口径，属规则变更，
+  按 §5.12.5 第 8 条要走变更记录（附录 C）并 bump `RULES_VERSION`；做成运行期开关会让
+  同一天的两份快照可能按两套战法映射产出，回测不可比。
+- `RULES_VERSION` 由 `rules-2.6.0` → `rules-2.6.1`：指纹里从「空清单」变成 8 条，
+  摘要必然变化，不 bump 会让旧快照被 `find_snapshot` 当成同规则命中，等于用旧结论冒充新规则。
+- 兼容性：`RuleFingerprint(strategy_ids=...)` 仍可显式传值（回测复现、单测用）；
+  `build_calc_version(..., strategy_ids=())` 表示「显式不带战法口径」，与默认清单**不同**，
+  这条差异也有测试钉住，避免以后误把「空」当默认。
+- 代码侧没有改 `engine/` 任何判定：这轮只把「已经在用的规则」登记清楚，不引入新规则，
+  所以纸面结论与增量 13 一致。
+
+### D-26 股票名称走东财 F10 同一次请求（D-14 收口）
+
+- 现状：`IndustryResolver` 为板块映射请求 `RPT_F10_CORETHEME_BOARDTYPE`，该响应每行都带
+  `SECURITY_NAME_ABBR`（2026-11-26 实测 `600000.SH` → `浦发银行`），此前被丢弃，
+  导致推送/页面只能显示代码。
+- 改法：`_fetch_from_eastmoney` 顺手把简称写入内存与磁盘缓存（与行业行同一个
+  `{ts, updated_at, rows, name}` 条目，写行业行时保留已有 `name`），新增 `name(code)`
+  三级查找（内存 → 磁盘 → 取数）。**不新增请求**：先用板块映射再用名称时命中同一份缓存；
+  反过来先用名称时也只发一次。
+- 展示层 `pipeline._display_name` 三级兜底「注入的 `names` → 解析器 → 代码」，异常只退代码；
+  名称**不进**评分、不进 `calc_version`、不进 LLM 白名单（避免模型拿名称编故事）。
+- 实测：`name('600000')` 首次 0.32s，换实例走磁盘 0.003s；12 只样本行业映射仍是 11 命中，
+  未映射的那只（`002594`）名称照常能拿到——名称与映射是两条独立字段。
+- 仍缺：退市/更名后的简称以 F10 为准（TTL 12h），不做本地改名校验；北交所个别标的
+  F10 无该字段时如实退回代码。
+- 顺带修掉一处路径缺陷：`build_runtime(db_path=":memory:")` 时 `Path(":memory:").parent` 是 `.`，
+  缓存会落在**当前工作目录**的 `cache/` 下（单测留垃圾文件、临时库互相污染）。现在内存库
+  不落盘（`cache_path=None`），并新增 `industry_resolver` 注入点让单测完全不联网。
+
 ## 5. 验证
 
 ```bash
@@ -450,7 +491,7 @@ print(TradingDayGate().decide(datetime(2026,11,24,20,0)).as_dict())"
 python scripts/assistant_fetch_smoke.py --codes 600000 000001 --years 3
 ```
 
-当前结果：**482 passed**（助手 Python 测试）+ **6 passed**（`pages/assistant` 前端用例），`flake8` / `tsc` / `eslint` 均无告警（共享通知链的
+当前结果：**508 passed**（助手 Python 测试）+ **6 passed**（`pages/assistant` 前端用例），`flake8` / `tsc` / `eslint` 均无告警（共享通知链的
 历史告警数与改动前逐文件相同，见 D-18）。
 
 **2026-11-24 联网实测（akshare 1.19.5）**：
@@ -521,6 +562,8 @@ python scripts/assistant_fetch_smoke.py --codes 600000 000001 --years 3
 - 板块映射：`Ⅱ/Ⅲ/II/III` 后缀剥离、`SECUCODE` 推断（沪深北）、二级优先/一级后备/未命中不猜、内存与磁盘缓存与 TTL 过期、取数失败返回空；focus 模式只列涉及板块且按涨跌排序、无解析器或全部未映射时退回 market、market 模式不查映射、解析异常只降级
 - 飞书入站：白名单拦住写指令且不落库、关注/移除非确认不写、生效日（当日有快照→下一交易日）、确认超时作废、重复添加与移除不存在的提示、取消也留痕、笔记原文与检索、当日结论只读且群聊隐藏持仓字段、复盘含笔记且标注不构成新建议；命令层确认/取消/「关注 601919」无斜杠可命中、钩子异常不影响分发、既有 bot 命令未受影响
 - 条件计划回测：`price_lte`/`price_gte` 触发与成交价、跳空按开盘价、同日先止损、T+1 当日不可卖、到期强平、双边成本、卖出分支不建回合、股数为 0 只记触发、涨跌幅触发不猜；统计侧样本不足不报胜率、分阶段单桶不足只报计数、未闭合不计分母、`not_modelled` 如实列出
+- 战法启停清单：清单与 `strategies/*.yaml` 一一对应且无重复、启用项必须有转写落点、不启用项必须写明 NG 原因、启用集合与 §5.12.3 逐条对齐、指纹默认带启用集合、启停变化改摘要、不启用项绝不进指纹、显式空清单与默认可区分、`RULES_VERSION` 已 bump
+- 股票名称：名称与行业共用一次 F10 请求、行业请求先到也能捕获名称、注入取数器只取一次、失败返回空串不猜、磁盘缓存往返、写行业行不抹掉已缓存名称；装配层「注入名优先 / 解析器名次之 / 异常退代码」
 - Web 页面：大盘页环境档与总结段、列表红涨绿跌与点行进入详情、空快照给人话提示、详情五区块与价位来源、配置页按注册表渲染并提示生效时点
 - 大盘文案：关闭时走规则模板、不可用时不编档位、动作词被拒、提示词含 market_snapshot、计数不一致时不输出总结段
 - 服务装配：总开关与参数解析、gate/dispatcher/pipeline 接线、20:00 投一次、同时点二次判重复、取数前时点不投、`run_loop` 中断退出
@@ -544,5 +587,5 @@ python scripts/assistant_fetch_smoke.py --codes 600000 000001 --years 3
 3. **LLM 文案层**（§5.13）：只改措辞、不改数值；失败降级模板
 4. **配置落地**：五个 `ASSISTANT_*` + 资金键进 `src/config.py` / `config_registry` / 设置面板（D-11、D-12）
 5. **API + Web**（`api/v1/endpoints/assistant.py` + `pages/assistant/`）
-6. **战法启停清单**接入 `calc_version`（§5.12）；**回测扩展** + 纸面回看
+6. **回测扩展** + 纸面回看（D-5/D-6 阈值定稿后再接 `sector_strength` 进评分与 SEC-1）
 7. `adj_factor` 正式来源（M15）：现已有「同源 qfq/raw 比值推算」函数但默认不启用，待定是否作为长期路径

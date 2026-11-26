@@ -128,6 +128,84 @@ class TestResolve:
         assert calls == ["600000"]
 
 
+class TestNames:
+    """D-14：名称与行业共用一次 F10 请求，取不到只退回代码。"""
+
+    def test_name_comes_from_industry_request(self) -> None:
+        resolver = IndustryResolver(cache_path=None)
+        calls: list[str] = []
+
+        def fake_f10(code: str) -> list[dict]:
+            calls.append(code)
+            return [
+                {"BOARD_TYPE": "行业", "BOARD_LEVEL": "1", "BOARD_NAME": "银行"},
+                {"BOARD_TYPE": "概念", "BOARD_LEVEL": "1", "BOARD_NAME": "蚂蚁金服概念"},
+            ]
+
+        resolver._get_f10 = fake_f10  # noqa: SLF001 - 只替换网络那一层
+
+        assert resolver.name("600000") == ""  # 该行没带 SECURITY_NAME_ABBR
+        assert resolver.industries("600000") == [("1", "银行")]
+        assert calls == ["600000"], "名称与行业必须共用一次请求"
+
+    def test_name_captured_alongside_industries(self) -> None:
+        resolver = IndustryResolver(cache_path=None)
+        resolver._get_f10 = lambda code: [  # noqa: SLF001
+            {
+                "BOARD_TYPE": "行业",
+                "BOARD_LEVEL": "1",
+                "BOARD_NAME": "银行",
+                "SECURITY_NAME_ABBR": "浦发银行",
+            }
+        ]
+
+        assert resolver.industries("600000") == [("1", "银行")]
+        assert resolver.name("600000") == "浦发银行"
+
+    def test_name_uses_injected_fetcher(self) -> None:
+        calls: list[str] = []
+        resolver = IndustryResolver(
+            fetch_name=lambda code: calls.append(code) or "浦发银行",
+            cache_path=None,
+        )
+
+        assert resolver.name("600000") == "浦发银行"
+        assert resolver.name("600000") == "浦发银行"
+        assert calls == ["600000"], "同一 TTL 内只取一次"
+
+    def test_name_failure_is_empty_not_guessed(self) -> None:
+        def boom(code: str) -> str:
+            raise RuntimeError("boom")
+
+        resolver = IndustryResolver(fetch_name=boom, cache_path=None)
+
+        assert resolver.name("600000") == ""
+
+    def test_name_survives_disk_roundtrip(self, tmp_path) -> None:
+        path = tmp_path / "map.json"
+        first = IndustryResolver(fetch_name=lambda code: "浦发银行", cache_path=path)
+        first.name("600000")
+
+        assert json.loads(path.read_text(encoding="utf-8"))["600000"]["name"] == "浦发银行"
+
+        def boom(code: str) -> str:
+            raise AssertionError("命中磁盘缓存不该再取数")
+
+        second = IndustryResolver(fetch_name=boom, cache_path=path)
+        assert second.name("600000") == "浦发银行"
+
+    def test_industry_write_keeps_cached_name(self, tmp_path) -> None:
+        """先拿到名称、后写行业行时不能把名称抹掉（两个缓存字段一起落盘）。"""
+        path = tmp_path / "map.json"
+        resolver = IndustryResolver(cache_path=path)
+        resolver._remember_name("600000", "浦发银行", resolver._clock())  # noqa: SLF001
+        resolver._store_disk("600000", [("1", "银行")], resolver._clock())  # noqa: SLF001
+
+        entry = json.loads(path.read_text(encoding="utf-8"))["600000"]
+        assert entry["name"] == "浦发银行"
+        assert entry["rows"] == [["1", "银行"]]
+
+
 class _Overview:
     def __init__(self, rows: tuple[SectorRow, ...]) -> None:
         self._rows = rows

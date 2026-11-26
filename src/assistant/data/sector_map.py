@@ -14,6 +14,10 @@
 
 数据源可用性（2026-11-26 实测）：东财 `push2` 系列被风控，而 `datacenter-web` 的 F10 接口正常，
 因此这里走 datacenter-web，不碰 push2。
+
+同一个 F10 响应里还带 ``SECURITY_NAME_ABBR``（实测 600000 → 浦发银行），所以顺手承担
+D-14 的股票名称来源：**不额外发请求**，名称随板块映射一起缓存（TTL 同 12h）。
+名称只用于展示，不参与任何判定；取不到时由调用方退回代码，不编造。
 """
 
 from __future__ import annotations
@@ -88,23 +92,31 @@ class SectorRef:
 
 
 class IndustryResolver:
-    """个股 → 行业板块解析器（内存 + 可选磁盘缓存，失败不抛给主流程）。"""
+    """个股 → 行业板块解析器（内存 + 可选磁盘缓存，失败不抛给主流程）。
+
+    同时是 D-14 的**名称来源**：默认取数路径会在同一次 F10 请求里捕获
+    ``SECURITY_NAME_ABBR``，因此 `name()` 与 `industries()` 共用一份缓存，不重复联网。
+    """
 
     def __init__(
         self,
         *,
         fetch_industries: Callable[[str], Sequence[tuple[str, str]]] | None = None,
+        fetch_name: Callable[[str], str] | None = None,
         cache_path: Path | None = DEFAULT_INDUSTRY_CACHE,
         ttl_hours: float = 12.0,
         timeout: float = 8.0,
         clock: Callable[[], float] | None = None,
     ) -> None:
         self._fetch = fetch_industries or self._fetch_from_eastmoney
+        #: 名称单独取数入口（仅测试/特殊源用）；None 表示「跟着行业请求一起拿」
+        self._fetch_name = fetch_name
         self.cache_path = cache_path
         self.ttl_seconds = max(0.0, ttl_hours) * 3600
         self.timeout = timeout
         self._clock = clock or time.time
         self._memory: dict[str, tuple[float, list[tuple[str, str]]]] = {}
+        self._names: dict[str, tuple[float, str]] = {}
         self._disk: dict[str, dict] | None = None
         self._disk_dirty = False
 
@@ -124,6 +136,8 @@ class IndustryResolver:
             if age < self.ttl_seconds:
                 rows = [(str(lvl), str(name)) for lvl, name in disk.get("rows") or []]
                 self._memory[code] = (now, rows)
+                if disk.get("name"):
+                    self._names[code] = (now, str(disk["name"]))
                 return list(rows)
 
         try:
@@ -134,6 +148,42 @@ class IndustryResolver:
         self._memory[code] = (now, rows)
         self._store_disk(code, rows, now)
         return list(rows)
+
+    def name(self, code: str) -> str:
+        """股票简称（D-14）。取不到返回空串，由调用方退回代码，**不编造**。
+
+        缓存顺序：内存 → 磁盘 → 取数。默认取数路径与 :meth:`industries` 共用一次 F10
+        请求，所以先用行业（板块映射）再用名称时不会多打一次网络。
+        """
+        now = self._clock()
+        if self._fresh(self._names.get(code)):
+            return self._names[code][1]
+
+        disk = self._load_disk().get(code)
+        if disk and disk.get("name") and self._fresh((float(disk.get("ts") or 0), "")):
+            text = str(disk["name"]).strip()
+            self._names[code] = (now, text)
+            return text
+
+        if self._fetch_name is None:
+            # 默认路径：一次 F10 请求同时拿行业与名称（捕获在 _fetch_from_eastmoney 里）
+            self.industries(code)
+            hit = self._names.get(code)
+            return hit[1] if hit and self._fresh(hit) else ""
+
+        try:
+            fetched = (self._fetch_name(code) or "").strip()
+        except Exception as exc:  # noqa: BLE001 - 名称拿不到只退回代码
+            logger.warning("个股 %s 名称取数失败：%s: %s", code, type(exc).__name__, exc)
+            return ""
+        if fetched:
+            self._remember_name(code, fetched, now)
+        return fetched
+
+    def _fresh(self, hit: tuple[float, str] | None) -> bool:
+        if not hit:
+            return False
+        return self.ttl_seconds <= 0 or self._clock() - hit[0] < self.ttl_seconds
 
     def resolve(self, codes: Sequence[str], boards: Mapping[str, str]) -> dict[str, SectorRef]:
         """把代码映射到同花顺板块；``boards`` 是 ``板块名 → 板块代码``。
@@ -171,6 +221,25 @@ class IndustryResolver:
     # 数据源
     # ------------------------------------------------------------------
     def _fetch_from_eastmoney(self, code: str) -> list[tuple[str, str]]:
+        rows = self._get_f10(code)
+        name = next(
+            (
+                str(row.get("SECURITY_NAME_ABBR")).strip()
+                for row in rows
+                if row.get("SECURITY_NAME_ABBR")
+            ),
+            "",
+        )
+        if name:
+            # 同一份响应里就有名称（D-14），顺手缓存，避免为展示再多打一次请求
+            self._remember_name(code, name, self._clock())
+        return [
+            (str(row.get("BOARD_LEVEL")), str(row.get("BOARD_NAME")))
+            for row in rows
+            if row.get("BOARD_TYPE") == "行业"
+        ]
+
+    def _get_f10(self, code: str) -> list[dict]:
         import requests  # noqa: PLC0415 - 仅真实取数时需要
 
         params = {
@@ -195,12 +264,7 @@ class IndustryResolver:
         payload = response.json()
         if not payload.get("success"):
             raise RuntimeError(f"东财 F10 返回失败：{payload.get('message')}")
-        rows = ((payload.get("result") or {}).get("data")) or []
-        return [
-            (str(row.get("BOARD_LEVEL")), str(row.get("BOARD_NAME")))
-            for row in rows
-            if row.get("BOARD_TYPE") == "行业"
-        ]
+        return ((payload.get("result") or {}).get("data")) or []
 
     # ------------------------------------------------------------------
     # 磁盘缓存
@@ -219,15 +283,42 @@ class IndustryResolver:
         return self._disk
 
     def _store_disk(self, code: str, rows: Sequence[tuple[str, str]], now: float) -> None:
-        if not self.cache_path:
-            return
         cache = self._load_disk()
+        entry = cache.get(code) or {}
         cache[code] = {
             "ts": now,
             "updated_at": datetime.fromtimestamp(now).isoformat(timespec="seconds"),
             "rows": [[level, name] for level, name in rows],
+            # 名称与行业同一次请求拿到，写行时不能把它抹掉
+            "name": entry.get("name") or self._name_of(code),
         }
+        self._persist(cache)
+
+    def _remember_name(self, code: str, name: str, now: float) -> None:
+        """缓存股票简称：内存 + 磁盘（保留已有行业行，不触发额外请求）。"""
+        text = (name or "").strip()
+        if not text:
+            return
+        self._names[code] = (now, text)
+        if not self.cache_path:
+            return
+        cache = self._load_disk()
+        entry = dict(cache.get(code) or {})
+        entry.setdefault("ts", now)
+        entry["name"] = text
+        entry.setdefault("rows", [])
+        cache[code] = entry
+        self._persist(cache)
+
+    def _name_of(self, code: str) -> str:
+        hit = self._names.get(code)
+        return hit[1] if hit else ""
+
+    def _persist(self, cache: Mapping[str, dict]) -> None:
+        self._disk = dict(cache)
         self._disk_dirty = True
+        if not self.cache_path:
+            return
         try:
             self.cache_path.parent.mkdir(parents=True, exist_ok=True)
             self.cache_path.write_text(

@@ -9,6 +9,7 @@ from datetime import date, datetime, timedelta
 import pytest
 
 from src.assistant.config.overrides import ParamSet
+from src.assistant.data.sector_map import IndustryResolver
 from src.assistant.data.storage import AssistantStore
 from src.assistant.enums import Preset, SourceTag
 from src.assistant.pipeline import (
@@ -19,6 +20,8 @@ from src.assistant.pipeline import (
 )
 from src.assistant.scheduling.delivery import MultiSlotDispatcher, MemoryDeliveryLedger
 from src.assistant.scheduling.config import FirePoint, ScheduleEntry, EntryKind
+from src.assistant.strategies import enabled_strategy_ids
+from src.assistant.versioning import build_calc_version
 from tests.assistant.helpers import make_bars, trending
 
 # 2026-11-27 是周五
@@ -167,6 +170,64 @@ def test_calc_version_covers_rules_and_params(store: AssistantStore) -> None:
     content = make_pipeline(store).ensure_snapshot(DAY).content
     assert content["calc_version"].startswith("cv1-")
     assert len(content["calc_version"]) <= 32
+
+
+def test_calc_version_matches_strategy_ledger(store: AssistantStore) -> None:
+    """§5.12.3：战法启停清单进指纹，否则两套映射会撞成同一版本。"""
+    seed(store, "600000", trending())
+    store.append_watchlist("600000", "add")
+    content = make_pipeline(store).ensure_snapshot(DAY).content
+    params = ParamSet.build(Preset.STANDARD)
+
+    assert content["calc_version"] == build_calc_version(
+        params.param_hash, strategy_ids=enabled_strategy_ids()
+    )
+
+
+# ---- 展示名称（D-14） ------------------------------------------------------
+def _pipeline_with_names(store: AssistantStore, **kwargs) -> AssistantPipeline:
+    return AssistantPipeline(
+        store=store,
+        settings=settings(),
+        clock=lambda: datetime(2026, 11, 27, 18, 0),
+        trading_days=lambda start, end: None,
+        **kwargs,
+    )
+
+
+def test_name_from_resolver_reaches_snapshot(store: AssistantStore) -> None:
+    seed(store, "600000", trending())
+    store.append_watchlist("600000", "add")
+    resolver = IndustryResolver(fetch_name=lambda code: "浦发银行", cache_path=None)
+
+    content = _pipeline_with_names(store, industry_resolver=resolver).ensure_snapshot(DAY).content
+
+    assert content["conclusions"][0]["name"] == "浦发银行"
+
+
+def test_injected_names_win_over_resolver(store: AssistantStore) -> None:
+    seed(store, "600000", trending())
+    store.append_watchlist("600000", "add")
+    resolver = IndustryResolver(fetch_name=lambda code: "浦发银行", cache_path=None)
+
+    content = _pipeline_with_names(
+        store, industry_resolver=resolver, names={"600000": "注入名"}
+    ).ensure_snapshot(DAY).content
+
+    assert content["conclusions"][0]["name"] == "注入名"
+
+
+def test_name_falls_back_to_code(store: AssistantStore) -> None:
+    seed(store, "600000", trending())
+    store.append_watchlist("600000", "add")
+
+    class _NoName:
+        def name(self, code: str) -> str:
+            raise RuntimeError("boom")
+
+    content = _pipeline_with_names(store, industry_resolver=_NoName()).ensure_snapshot(DAY).content
+
+    assert content["conclusions"][0]["name"] == "600000"
 
 
 # ---- 取数与降级 ------------------------------------------------------------

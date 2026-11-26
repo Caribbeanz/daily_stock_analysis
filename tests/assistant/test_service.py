@@ -32,6 +32,19 @@ class FakeService:
         return self.ok
 
 
+class _OfflineResolver:
+    """离线解析器替身：板块映射固定「银行」，名称固定「浦发银行」（D-14/D-22）。"""
+
+    def name(self, code: str) -> str:
+        return "浦发银行" if code == "600000" else ""
+
+    def industries(self, code: str) -> list[tuple[str, str]]:
+        return [("1", "银行")] if code == "600000" else []
+
+    def resolve(self, codes, boards):  # noqa: ANN001, ANN202
+        return {}
+
+
 class TestAssistantModeDecision:
     def test_no_request_stays_in_main_flow(self) -> None:
         decision = assistant_mode_decision(
@@ -88,6 +101,22 @@ class TestBuildRuntime:
         assert runtime.pipeline.market_fetcher is not None
         assert runtime.scheduler.config is runtime.schedule
 
+    def test_memory_db_writes_no_cache_dir(self, tmp_path, monkeypatch) -> None:
+        """`:memory:` 库不能把缓存写到当前工作目录（旧的 `Path(':memory:').parent` 缺陷）。"""
+        monkeypatch.chdir(tmp_path)
+
+        runtime = build_runtime(env=BASE_ENV, db_path=":memory:")
+
+        assert runtime.pipeline.industry_resolver.cache_path is None
+        assert not (tmp_path / "cache").exists()
+
+    def test_resolver_can_be_injected(self) -> None:
+        stub = _OfflineResolver()
+
+        runtime = build_runtime(env=BASE_ENV, db_path=":memory:", industry_resolver=stub)
+
+        assert runtime.pipeline.industry_resolver is stub
+
     def test_custom_env_reaches_schedule_and_pipeline(self) -> None:
         runtime = build_runtime(
             env={
@@ -107,7 +136,13 @@ class TestBuildRuntime:
 class TestTickThroughRuntime:
     @staticmethod
     def runtime(service: FakeService):
-        runtime = build_runtime(env=BASE_ENV, db_path=":memory:", service=service)
+        # 注入离线解析器：名称与板块映射都是「展示/取数」层，单测不联网（D-14）
+        runtime = build_runtime(
+            env=BASE_ENV,
+            db_path=":memory:",
+            service=service,
+            industry_resolver=_OfflineResolver(),
+        )
         bars = make_bars(trending(150))
         day = bars[-1].trade_date
         runtime.store.save_bars("600000", bars)
@@ -125,6 +160,16 @@ class TestTickThroughRuntime:
         assert result.generated is True
         assert service.calls[0]["route_type"] == "assistant_daily"
         assert service.calls[0]["dedup_key"].startswith(day.strftime("%Y%m%d"))
+
+    def test_snapshot_carries_stock_name(self) -> None:
+        """D-14：名称经装配层进快照，推送与页面不再只显示代码。"""
+        runtime, day = self.runtime(FakeService())
+
+        run_once(runtime, now=datetime.combine(day, time(20, 0)))
+
+        content = runtime.store.snapshot_content(runtime.store.latest_snapshot()["snapshot_id"])
+        assert content is not None
+        assert content["conclusions"][0]["name"] == "浦发银行"
 
     def test_second_tick_same_slot_is_duplicate(self) -> None:
         service = FakeService()

@@ -58,6 +58,19 @@ class AssistantRuntime:
         return self.scheduler.tick(now)
 
 
+def _data_dir(db_path: str | Path | None) -> Path | None:
+    """缓存落盘目录：跟随库文件所在目录；内存库返回 ``None``（只走内存，不落盘）。
+
+    ``Path(":memory:").parent`` 是 ``.``，直接拿它拼缓存路径会在**当前工作目录**下
+    长出 ``cache/``，测试与临时库都会留垃圾文件，因此内存库单独处理。
+    """
+    if db_path is None:
+        return Path("data")
+    if str(db_path) in (":memory:", ""):
+        return None
+    return Path(db_path).parent
+
+
 def build_runtime(
     *,
     env: Optional[Mapping[str, str]] = None,
@@ -67,8 +80,13 @@ def build_runtime(
     market_fetcher: Any = None,
     llm: Any = None,
     llm_settings: LlmTextSettings | None = None,
+    industry_resolver: Any = None,
 ) -> AssistantRuntime:
-    """按环境变量装配运行时；缺资金等必填项直接抛错，不猜默认值。"""
+    """按环境变量装配运行时；缺资金等必填项直接抛错，不猜默认值。
+
+    ``industry_resolver`` 可注入替身（离线测试用）：它同时承担个股 → 板块映射与
+    股票简称来源（D-14），不注入时按库目录落盘缓存、真实联网。
+    """
     environ: Mapping[str, str] = os.environ if env is None else env
     settings = PipelineSettings.from_env(environ)
     schedule = parse_env_config(environ)
@@ -77,8 +95,9 @@ def build_runtime(
 
     store = AssistantStore(db_path)
     store.create_all()  # additively creates assistant_* tables; never touches stock_daily
-    # 行业映射缓存与库同目录（db_path 可能是 str 或 None；None 时不落盘，只走内存）
-    data_dir = Path(db_path).parent if db_path is not None else Path("data")
+    # 行业映射缓存与库同目录；内存库不落盘（_data_dir 返回 None）
+    data_dir = _data_dir(db_path)
+    industry_cache = (data_dir / "cache" / "assistant_industry_map.json") if data_dir else None
     daily_fetcher = fetcher if fetcher is not None else DailyFetcher(store=store)
     index_fetcher = market_fetcher if market_fetcher is not None else ReferenceFetcher()
 
@@ -89,10 +108,11 @@ def build_runtime(
         market_fetcher=index_fetcher,
         llm=llm,
         llm_settings=llm_settings or LlmTextSettings.from_env(environ),
-        # 个股 → 板块映射（D-22）；缓存与库同放在 data/ 下，跨进程重启也省 17 次请求
-        industry_resolver=IndustryResolver(
-            cache_path=data_dir / "cache" / "assistant_industry_map.json"
-        ),
+        # 个股 → 板块映射（D-22）+ 股票简称（D-14）；缓存与库同放在 data/ 下，
+        # 跨进程重启也省 17 次请求
+        industry_resolver=industry_resolver
+        if industry_resolver is not None
+        else IndustryResolver(cache_path=industry_cache),
     )
     gate = TradingDayGate(
         action=schedule.non_trading_action,

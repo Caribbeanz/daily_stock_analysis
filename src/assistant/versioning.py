@@ -7,7 +7,8 @@
 - 规则集版本（本文件的 ``RULES_VERSION``，规则改动须手动 bump）
 - 参数指纹 ``param_hash``（45 项参数 + 单项覆盖的哈希，已包含四个维度权重）
 - 决策表分数带 ``SCORE_BANDS``（数值改了但参数没动，也必须变版本）
-- 启停的战法清单 ``strategy_ids``（§5.12 战法启停直接影响阶段与计划）
+- 启停的战法清单 ``strategy_ids``（§5.12 战法启停直接影响阶段与计划；清单唯一真值在
+  :mod:`src.assistant.strategies`，默认取其中 ``enabled`` 的条目）
 - LLM 文案层的 ``temperature``（只影响措辞——**不进** ``calc_version``，见下）
 
 关于 ``temperature``：需求明确「LLM 只做措辞、不改结论」，措辞温度变化不改变
@@ -27,12 +28,15 @@ from dataclasses import dataclass, field
 from typing import Any, Mapping, Sequence
 
 from src.assistant.engine.scoring import SCORE_BANDS
+from src.assistant.strategies import enabled_strategy_ids
 
 __all__ = ["RULES_VERSION", "RuleFingerprint", "build_calc_version"]
 
 #: 规则集版本。**任何会改变 advice / 阶段 / 计划 / 风险判定口径的代码改动都要 bump**。
 #: 约定：``rules-<需求版本>.<序号>``，便于和需求文档版本对齐。
-RULES_VERSION = "rules-2.6.0"
+#: 2.6.1：战法启停清单（§5.12.3）正式进入指纹——同一套参数在补入清单前后摘要必然不同，
+#: 因此必须 bump，否则新旧快照会被误判成「同一规则」。
+RULES_VERSION = "rules-2.6.1"
 
 #: 摘要位数（``cv1-`` 前缀 4 字符 + 10 位 = 14，远小于列宽 32）
 _DIGEST_LEN = 10
@@ -44,7 +48,7 @@ class RuleFingerprint:
 
     param_hash: str
     rules_version: str = RULES_VERSION
-    strategy_ids: Sequence[str] = ()
+    strategy_ids: Sequence[str] = field(default_factory=enabled_strategy_ids)
     score_bands: Sequence[Sequence[Any]] = field(default=SCORE_BANDS)
 
     def as_dict(self) -> dict[str, Any]:
@@ -69,12 +73,17 @@ class RuleFingerprint:
 def build_calc_version(
     param_hash: str,
     *,
-    strategy_ids: Sequence[str] = (),
+    strategy_ids: Sequence[str] | None = None,
     rules_version: str = RULES_VERSION,
 ) -> str:
-    """便捷入口：由参数指纹与战法清单生成 ``calc_version``。"""
+    """便捷入口：由参数指纹与战法清单生成 ``calc_version``。
+
+    ``strategy_ids=None`` 表示「按 :mod:`src.assistant.strategies` 的启用清单」，
+    而不是「空清单」——空清单会让指纹漏掉战法口径，回测时无法区分两套映射。
+    """
+    ids = enabled_strategy_ids() if strategy_ids is None else tuple(strategy_ids)
     return RuleFingerprint(
-        param_hash=param_hash, rules_version=rules_version, strategy_ids=tuple(strategy_ids)
+        param_hash=param_hash, rules_version=rules_version, strategy_ids=ids
     ).calc_version()
 
 
