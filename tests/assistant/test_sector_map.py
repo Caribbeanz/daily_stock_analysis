@@ -81,6 +81,37 @@ class TestResolve:
 
         assert resolver.resolve(["002594"], {"银行": "881155"}) == {}
 
+    def test_alias_maps_same_industry_with_different_wording(self) -> None:
+        """东财「煤炭开采」= 同花顺「煤炭开采加工」：走显式别名表，不靠相似度。"""
+        calls: list[str] = []
+        resolver = _resolver(
+            {"600188": [("1", "煤炭"), ("2", "煤炭开采"), ("3", "动力煤")]}, calls
+        )
+
+        ref = resolver.resolve(["600188"], {"煤炭开采加工": "881105"})["600188"]
+
+        assert ref.sector_name == "煤炭开采加工"  # 存同花顺名，回放才能按名字取序列
+        assert ref.sector_code == "881105"
+        assert ref.matched_level == "2"
+        assert ref.raw_industry == "煤炭开采"  # 东财原名保留，便于核对
+
+    def test_exact_name_wins_over_alias(self) -> None:
+        calls: list[str] = []
+        resolver = _resolver({"600188": [("2", "煤炭开采")]}, calls)
+
+        ref = resolver.resolve(
+            ["600188"], {"煤炭开采": "999999", "煤炭开采加工": "881105"}
+        )["600188"]
+
+        assert ref.sector_code == "999999"
+
+    def test_alias_does_not_guess_beyond_the_table(self) -> None:
+        """别名表没写的一律不猜：错误映射比未映射更危险。"""
+        calls: list[str] = []
+        resolver = _resolver({"000001": [("2", "汽车零部件")]}, calls)
+
+        assert resolver.resolve(["000001"], {"汽车零部件加工": "881999"}) == {}
+
     def test_fetch_failure_is_empty(self) -> None:
         calls: list[str] = []
         resolver = _resolver({}, calls)

@@ -39,6 +39,7 @@ from src.assistant.data.models import (
     ParamOverrideRow,
     PortfolioSettingRow,
     RiskSignalRow,
+    SectorDaily,
     SectorSnapshotRow,
     Snapshot,
     StageStateRow,
@@ -94,12 +95,41 @@ class AssistantStore:
     def create_all(self) -> None:
         """仅创建本模块的表（不触碰主流程表）。
 
-        ``create_all`` 只建表、**不给已有表补列**，而 ``assistant_dividend_event`` 是早前
-        预留的表（当时只有 ``per_share``），老开发库直接写入会报「no column」。
-        这里对这张表做一次**追加列**迁移：只加缺的列，不删不改，非 SQLite 方言直接跳过。
+        ``create_all`` 只建表、**不给已有表补列**，而 ``assistant_dividend_event`` /
+        ``assistant_sector_daily`` 都是早前预留的表（当时没有分红明细、也没有板块指数
+        OHLC），老开发库直接写入会报「no column」。这里对这两张表做一次**追加列**迁移：
+        只加缺的列，不删不改，非 SQLite 方言直接跳过。
         """
         AssistantBase.metadata.create_all(self._engine)
         self._ensure_dividend_columns()
+        self._ensure_sector_columns()
+
+    def _ensure_sector_columns(self) -> None:
+        """给 ``assistant_sector_daily`` 补板块指数 OHLC（老库建表时只有当日涨跌）。"""
+        from sqlalchemy import inspect, text
+
+        inspector = inspect(self._engine)
+        if "assistant_sector_daily" not in inspector.get_table_names():
+            return
+        existing = {col["name"] for col in inspector.get_columns("assistant_sector_daily")}
+        wanted = {
+            "open": "FLOAT",
+            "high": "FLOAT",
+            "low": "FLOAT",
+            "close": "FLOAT",
+            "volume": "FLOAT",
+            "amount": "FLOAT",
+        }
+        missing = {name: ddl for name, ddl in wanted.items() if name not in existing}
+        if not missing:
+            return
+        if self._engine.dialect.name != "sqlite":  # pragma: no cover - 当前只用 SQLite
+            logger.warning("表 assistant_sector_daily 缺列 %s，非 SQLite 请手动迁移", list(missing))
+            return
+        with self._engine.begin() as conn:
+            for name, ddl in missing.items():
+                conn.execute(text(f"ALTER TABLE assistant_sector_daily ADD COLUMN {name} {ddl}"))
+        logger.info("已为 assistant_sector_daily 补列：%s", list(missing))
 
     def _ensure_dividend_columns(self) -> None:
         from sqlalchemy import inspect, text
@@ -215,6 +245,153 @@ class AssistantStore:
             )
             for row in rows
         ]
+
+    # ------------------------------------------------------------------
+    # L1 板块指数日线（回放要按板块序列复算三档，光有当日涨跌幅不够）
+    # ------------------------------------------------------------------
+    def save_sector_bars(
+        self,
+        sector_code: str,
+        sector_name: str,
+        bars: Sequence[Bar],
+        *,
+        source_tag: str = "D1",
+    ) -> int:
+        """幂等写入板块指数日线，返回写入行数。
+
+        **必须给板块代码**：表唯一键是 ``(sector_code, trade_date)``，没有代码的板块
+        写进去会互相覆盖成同一个空代码——宁可不写并抛错，也不留一份无法区分的数据。
+        """
+        code = (sector_code or "").strip()
+        if not code:
+            raise ValueError(f"板块 {sector_name!r} 没有代码，无法写入板块日线（唯一键缺一半）")
+        if not bars:
+            return 0
+        rows = [
+            {
+                "sector_code": code,
+                "sector_name": sector_name or "",
+                "trade_date": bar.trade_date,
+                "open": bar.open,
+                "high": bar.high,
+                "low": bar.low,
+                "close": bar.close,
+                "volume": bar.volume,
+                "amount": bar.amount,
+                "source_tag": source_tag,
+            }
+            for bar in bars
+        ]
+        with self.session() as sess:
+            stmt = sqlite_insert(SectorDaily).values(rows)
+            stmt = stmt.on_conflict_do_update(
+                index_elements=["sector_code", "trade_date"],
+                set_={
+                    "sector_name": stmt.excluded.sector_name,
+                    "open": stmt.excluded.open,
+                    "high": stmt.excluded.high,
+                    "low": stmt.excluded.low,
+                    "close": stmt.excluded.close,
+                    "volume": stmt.excluded.volume,
+                    "amount": stmt.excluded.amount,
+                    "source_tag": stmt.excluded.source_tag,
+                },
+            )
+            sess.execute(stmt)
+        return len(rows)
+
+    def load_sector_bars(
+        self,
+        sector_code: str,
+        *,
+        start: date | None = None,
+        end: date | None = None,
+    ) -> list[Bar]:
+        """按日期升序读取某板块的指数日线；没有 OHLC 的老行（只有当日涨跌）**不返回**。
+
+        这不是丢数据：没有收盘价就算不出 20 日均线与 5 日斜率，硬塞 0 会让三档失真；
+        调用方按「该板块序列缺失」处理，与取数失败同一路径。
+        """
+        with self.session() as sess:
+            stmt = select(SectorDaily).where(
+                SectorDaily.sector_code == sector_code, SectorDaily.close.is_not(None)
+            )
+            if start is not None:
+                stmt = stmt.where(SectorDaily.trade_date >= start)
+            if end is not None:
+                stmt = stmt.where(SectorDaily.trade_date <= end)
+            rows = list(sess.execute(stmt.order_by(SectorDaily.trade_date.asc())).scalars().all())
+        return [
+            Bar(
+                trade_date=row.trade_date,
+                open=row.open if row.open is not None else row.close,
+                high=row.high if row.high is not None else row.close,
+                low=row.low if row.low is not None else row.close,
+                close=row.close,
+                volume=row.volume or 0.0,
+                amount=row.amount or 0.0,
+                source_tag=SourceTag(row.source_tag) if row.source_tag else SourceTag.D1,
+            )
+            for row in rows
+        ]
+
+    def load_sector_bars_by_name(
+        self, *, start: date | None = None, end: date | None = None
+    ) -> dict[str, list[Bar]]:
+        """``{板块名: 板块指数日线}``，一次读完供回放按名字取序列。
+
+        同一板块名若对应多个代码（同花顺偶有重名），**取行数最多的那个**并留日志：
+        回放的映射是按板块名给的，重名时猜错会让三档整体偏移。
+        """
+        with self.session() as sess:
+            stmt = select(SectorDaily).where(SectorDaily.close.is_not(None))
+            if start is not None:
+                stmt = stmt.where(SectorDaily.trade_date >= start)
+            if end is not None:
+                stmt = stmt.where(SectorDaily.trade_date <= end)
+            rows = list(sess.execute(stmt.order_by(SectorDaily.trade_date.asc())).scalars().all())
+
+        grouped: dict[str, dict[str, list[SectorDaily]]] = {}
+        for row in rows:
+            name = row.sector_name or ""
+            if not name:
+                continue
+            grouped.setdefault(name, {}).setdefault(row.sector_code, []).append(row)
+
+        out: dict[str, list[Bar]] = {}
+        for name, by_code in grouped.items():
+            code = max(by_code, key=lambda key: len(by_code[key]))
+            if len(by_code) > 1:
+                logger.warning(
+                    "板块名 %r 对应多个代码 %s，按行数较多的 %s 取序列",
+                    name,
+                    "/".join(sorted(by_code)),
+                    code,
+                )
+            out[name] = [
+                Bar(
+                    trade_date=row.trade_date,
+                    open=row.open if row.open is not None else row.close,
+                    high=row.high if row.high is not None else row.close,
+                    low=row.low if row.low is not None else row.close,
+                    close=row.close,
+                    volume=row.volume or 0.0,
+                    amount=row.amount or 0.0,
+                    source_tag=SourceTag(row.source_tag) if row.source_tag else SourceTag.D1,
+                )
+                for row in by_code[code]
+            ]
+        return out
+
+    def sector_code_map(self) -> dict[str, str]:
+        """``{板块名: 板块代码}``（只收有板块指数日线的板块），供离线映射用。"""
+        with self.session() as sess:
+            rows = sess.execute(
+                select(SectorDaily.sector_name, SectorDaily.sector_code)
+                .where(SectorDaily.close.is_not(None))
+                .distinct()
+            ).all()
+        return {str(name): str(code) for name, code in rows if name and code}
 
     # ------------------------------------------------------------------
     # 除权除息事件（原始数据；复权序列按 §3.3 不落库）

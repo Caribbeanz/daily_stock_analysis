@@ -693,6 +693,13 @@ class ReferenceFetcher:
         板块三档要求**多日序列**（需求 §4.6：单日涨跌幅不得判档），一览表只有当日值，
         因此这里按板块名单独取指数日线。
 
+        **要防「整年静默缺失」**：该接口内部按 ``{year}.js`` 逐年下载，某年请求失败时
+        它**自己 ``continue`` 掉、不抛异常**，于是返回一份看不出缺口的序列
+        （2026-11-27 实测：2023–2026 一次性请求，银行少 2023 年 31 根、
+        生物制品少 2024 年 242 根，接口却返回成功）。所以这里先整体请求一次，再按
+        「结果里一根都没有的年份」逐年补一次，补不到就写日志并按缺失处理——
+        宁可在报告里标 degraded，也不要一份自洽却缺一年的序列。
+
         返回空元组 = 「这次取不到」（网络失败 / 板块无指数 / 区间内无数据），三者对
         三档判定是同一件事——调用方按 ``degraded`` 处理，**不猜档位**。
         """
@@ -700,6 +707,34 @@ class ReferenceFetcher:
             return ()
         if start > end:
             raise ValueError(f"起始日 {start} 晚于结束日 {end}")
+        bars = self._fetch_sector_index_year(name, start, end)
+        collected: dict[date, Bar] = {bar.trade_date: bar for bar in bars}
+        # 整年静默缺失才补：先按区间整体请求（正常情况只打一次），再按「结果里没有的年份」
+        # 逐年重试。无条件分年会让每个板块打 4×4 次请求，反而容易被限流。
+        covered = {bar.trade_date.year for bar in bars}
+        for year in range(start.year, end.year + 1):
+            if year in covered:
+                continue
+            seg_start = max(start, date(year, 1, 1))
+            seg_end = min(end, date(year, 12, 31))
+            for attempt in range(2):
+                if attempt:
+                    time.sleep(0.5)
+                seg = self._fetch_sector_index_year(name, seg_start, seg_end)
+                if seg:
+                    for bar in seg:
+                        collected[bar.trade_date] = bar
+                    break
+            else:
+                logger.warning(
+                    "板块指数 %s 的 %d 年取不到（接口按年分文件、失败会静默跳过），该段按缺失处理",
+                    name,
+                    year,
+                )
+        return tuple(sorted(collected.values(), key=lambda bar: bar.trade_date))
+
+    def _fetch_sector_index_year(self, name: str, start: date, end: date) -> tuple[Bar, ...]:
+        """单年区间取板块指数；失败返回空元组（由调用方重试/计缺失）。"""
         import akshare as ak  # noqa: PLC0415
 
         try:

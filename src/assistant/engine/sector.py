@@ -29,6 +29,9 @@ from typing import Sequence
 from src.assistant.domain import Bar
 
 __all__ = [
+    "STRENGTH_NEUTRAL",
+    "STRENGTH_STRONG",
+    "STRENGTH_WEAK",
     "SectorStrength",
     "SectorStrengthParams",
     "rs_label_from_gap",

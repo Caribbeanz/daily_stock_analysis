@@ -112,7 +112,12 @@ class IndexDaily(AssistantBase):
 
 
 class SectorDaily(AssistantBase):
-    """L1 板块行情（涨跌幅 / 涨跌家数 / 领涨股）。"""
+    """L1 板块行情（板块指数 OHLC + 涨跌幅 / 涨跌家数 / 领涨股）。
+
+    板块三档要求**多日序列**，所以光有 ``pct_change`` 不够：2026-11-27 起补
+    ``open/high/low/close/volume/amount``，回放才能按板块指数日线逐日复算三档
+    （老库由 ``create_all`` 里的追加列迁移补齐，不用手改）。
+    """
 
     __tablename__ = "assistant_sector_daily"
 
@@ -120,6 +125,12 @@ class SectorDaily(AssistantBase):
     sector_code = Column(String(16), nullable=False)
     sector_name = Column(String(64), nullable=False, default="")
     trade_date = Column(Date, nullable=False)
+    open = Column(Float, nullable=True)
+    high = Column(Float, nullable=True)
+    low = Column(Float, nullable=True)
+    close = Column(Float, nullable=True)
+    volume = Column(Float, nullable=True)
+    amount = Column(Float, nullable=True)
     pct_change = Column(Float, nullable=True)
     up_count = Column(Integer, nullable=True)
     down_count = Column(Integer, nullable=True)

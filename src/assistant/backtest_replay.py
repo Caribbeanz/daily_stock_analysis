@@ -36,6 +36,7 @@ from __future__ import annotations
 
 import json
 import logging
+from bisect import bisect_right
 from dataclasses import dataclass, field
 from datetime import date, datetime, time
 from pathlib import Path
@@ -44,9 +45,15 @@ from typing import Any, Iterable, Mapping, Sequence
 from src.assistant.backtest import PlanRound, RoundConfig, simulate_rounds, summarize_rounds
 from src.assistant.config.overrides import ParamSet, default_param_set
 from src.assistant.data.dividend import DividendEvent, apply_total_return
-from src.assistant.domain import Bar, MarketView, PortfolioView, PositionView, StockView
+from src.assistant.domain import Bar, MarketView, PortfolioView, PositionView, SectorView, StockView
 from src.assistant.engine.guard_chain import GuardChainInput, run_guard_chain
 from src.assistant.engine.market import market_line_from_bars
+from src.assistant.engine.sector import (
+    SectorStrengthParams,
+    STRENGTH_STRONG,
+    STRENGTH_WEAK,
+    sector_strength_from_bars,
+)
 from src.assistant.engine.stage import StageDebounceState
 from src.assistant.enums import Action, SourceTag
 from src.assistant.versioning import RuleFingerprint
@@ -55,10 +62,12 @@ __all__ = [
     "ReplayConfig",
     "ReplayResult",
     "ReplayState",
+    "SectorSeries",
     "load_state",
     "market_views_from_index",
     "replay",
     "save_state",
+    "sector_view_for_day",
 ]
 
 logger = logging.getLogger(__name__)
@@ -107,6 +116,92 @@ def market_views_from_index(
             width_degraded=True,
         )
     return out
+
+
+@dataclass(frozen=True)
+class SectorSeries:
+    """一个板块的指数日线 + 逐日涨跌，供回放按日切片（一次建索引，避免每天重扫）。"""
+
+    name: str
+    code: str
+    bars: tuple[Bar, ...]
+    pct: Mapping[date, float]
+    dates: tuple[date, ...]
+
+    @classmethod
+    def build(cls, name: str, code: str, bars: Sequence[Bar]) -> "SectorSeries":
+        ordered = tuple(sorted(bars, key=lambda bar: bar.trade_date))
+        return cls(
+            name=name,
+            code=code,
+            bars=ordered,
+            pct=_pct_by_day(ordered),
+            dates=tuple(bar.trade_date for bar in ordered),
+        )
+
+    def upto(self, day: date) -> tuple[Bar, ...]:
+        """``trade_date <= day`` 的前缀（回放不允许看未来，§9.4.3）。"""
+        return self.bars[: bisect_right(self.dates, day)]
+
+
+def _pct_by_day(bars: Sequence[Bar]) -> dict[date, float]:
+    """逐日涨跌幅（百分点）；前一根收盘非正的日子直接不给值，不插值。"""
+    out: dict[date, float] = {}
+    for prev, cur in zip(bars, bars[1:]):
+        if prev.close > 0:
+            out[cur.trade_date] = (cur.close / prev.close - 1) * 100
+    return out
+
+
+def sector_view_for_day(
+    series: SectorSeries,
+    day: date,
+    index_pct: Mapping[date, float],
+    *,
+    depth: int = 10,
+    params: SectorStrengthParams | None = None,
+) -> SectorView | None:
+    """板块序列 → 当日 ``SectorView``（三档 + 当日 rs_t + 近 N 日相对强度）。
+
+    与实盘 :meth:`AssistantPipeline._sector_context` 同口径，两处差异如实写在这里：
+
+    1. **当日涨跌幅由序列自算**：回放没有板块一览的历史，``pct_change`` 只能取板块指数
+       「今收 / 昨收 − 1」；实盘用的是板块一览的当日涨跌幅。两者通常一致，尾差来自
+       指数与一览的取整/口径，报告里单独注明。
+    2. **当日序列缺失就不给 rs_t**：板块指数若还停在 T−1（实盘见过晚一天发布），
+       ``pct_change`` 与 ``rs_t`` 都留空、``degraded=True``，**不拿昨天的差冒充今天**；
+       三档仍按 T−1 的序列判（§5.10：降级只注记 + 降置信度，不改档）。
+    """
+    upto = series.upto(day)
+    if not upto:
+        return None
+    pct_today = series.pct.get(day)
+    strength = sector_strength_from_bars(
+        upto,
+        pct_change=pct_today,
+        market_pct=index_pct.get(day),
+        as_of_day=day,
+        params=params,
+    )
+    history: list[float] = []
+    for bar_day in series.dates[: len(upto)][-depth:]:
+        base = index_pct.get(bar_day)
+        if base is None or bar_day not in series.pct:
+            continue
+        history.append(round(series.pct[bar_day] - base, 4))
+    if history and strength.rs_t is not None:
+        # 末位用当日 rs_t 覆盖：它已按「当日板块涨跌 − 当日大盘涨跌」算过，口径同实盘
+        history[-1] = round(float(strength.rs_t), 4)
+    return SectorView(
+        sector_code=series.code,
+        sector_name=series.name,
+        # 当日板块 K 线未出时这里只能是 0：真正判档与判风险都不用 pct_change，不会误判成「平盘」
+        pct_change=float(pct_today or 0.0),
+        strength=strength.strength,
+        rs_t=strength.rs_t,
+        history_rs_t=tuple(history),
+        degraded=strength.degraded,
+    )
 
 
 @dataclass(frozen=True)
@@ -419,6 +514,10 @@ def replay(
     config: ReplayConfig | None = None,
     market_by_day: Mapping[date, MarketView] | None = None,
     dividend_events: Mapping[str, Sequence[DividendEvent]] | None = None,
+    sector_by_code: Mapping[str, str] | None = None,
+    sector_bars_by_name: Mapping[str, Sequence[Bar]] | None = None,
+    sector_code_by_name: Mapping[str, str] | None = None,
+    index_bars: Sequence[Bar] | None = None,
     state: ReplayState | None = None,
     checkpoint_path: str | Path | None = None,
 ) -> ReplayResult:
@@ -430,6 +529,12 @@ def replay(
 
     ``dividend_events`` 只在 ``config.adjust == "total_return"`` 时生效：把不复权序列
     折算成含分红序列（前复权），这样「除权日掉价」不再被当成下跌，股息也不会漏算。
+
+    ``sector_by_code`` / ``sector_bars_by_name`` 把板块层接进回放：前者是「代码 → 板块名」，
+    后者是「板块名 → 板块指数日线」。给了之后每天按 ≤T 的板块序列复算三档与 rs_t，
+    评分里的 ``sector_adj_up/down`` 与风险里的 SEC-1 才真正会动——在此之前板块分恒为 0。
+    ``index_bars`` 只用于算「大盘当日涨跌」（rs_t 的减项），缺省时退回 ``market_by_day``
+    的涨跌幅（M1 档算不出来、没进字典的日子就没有减项）。
     """
     cfg = config or ReplayConfig()
     work = state or ReplayState()
@@ -460,6 +565,29 @@ def replay(
         work.bump("dividend_events_applied", dividend_applied)
         work.bump("dividend_events_skipped", dividend_skipped)
         work.bump("dividend_codes_without_events", dividend_missing)
+
+    # ---- 板块层：一次建索引，避免每天重扫整段板块历史 -------------------
+    sector_map = {
+        str(code): str(name) for code, name in (sector_by_code or {}).items() if name
+    }
+    sector_codes = {str(name): str(code) for name, code in (sector_code_by_name or {}).items()}
+    series_by_name: dict[str, SectorSeries] = {}
+    for name, bars in (sector_bars_by_name or {}).items():
+        if bars:
+            series_by_name[str(name)] = SectorSeries.build(
+                str(name), sector_codes.get(str(name), ""), bars
+            )
+    series_of_code = {
+        code: series_by_name[name] for code, name in sector_map.items() if name in series_by_name
+    }
+    sector_layer = bool(sector_map)
+    if index_bars:
+        # rs_t 的减项用指数**原始日线**算：不依赖 M1 档位算得出来（档位落在缓冲带时
+        # market_by_day 里那天是缺的，但「大盘涨跌」仍然有值，SEC-1 不该因此断档）
+        index_pct = _pct_by_day(sorted(index_bars, key=lambda bar: bar.trade_date))
+    else:
+        index_pct = {day: view.pct_change for day, view in (market_by_day or {}).items()}
+    sector_view_cache: dict[tuple[str, date], SectorView | None] = {}
 
     processed = 0
     plans_total = 0
@@ -492,6 +620,26 @@ def replay(
                 position=cfg.position(code, window[-1].close),
                 source_tag=cfg.source_tag,
             )
+            sector: SectorView | None = None
+            series = series_of_code.get(code)
+            if series is not None:
+                key = (series.name, day)
+                if key not in sector_view_cache:
+                    sector_view_cache[key] = sector_view_for_day(series, day, index_pct)
+                sector = sector_view_cache[key]
+            if sector_layer or series_by_name:
+                if sector is None:
+                    work.bump("sector_missing_code_days")
+                else:
+                    work.bump("sector_view_days")
+                    if sector.degraded:
+                        work.bump("sector_degraded_days")
+                    if sector.rs_t is None:
+                        work.bump("sector_rs_missing_days")
+                    if sector.strength == STRENGTH_STRONG:
+                        work.bump("sector_strong_days")
+                    elif sector.strength == STRENGTH_WEAK:
+                        work.bump("sector_weak_days")
             outcome = run_guard_chain(
                 GuardChainInput(
                     view=view,
@@ -500,6 +648,10 @@ def replay(
                     calc_version=calc_version,
                     generated_at=datetime.combine(day, _GENERATED_AT),
                     market=(market_by_day or {}).get(day),
+                    # 板块区没接入时保持「只注记」的老行为；接入后按真实映射标，
+                    # 没映射上才出 SEC-3「映射失败」（与实盘 pipeline 同一条口径）
+                    sector=sector,
+                    sector_mapped=True if not sector_layer else code in sector_map,
                     expected_data_date=day,
                     trading_days=ordered[: position + 1],
                     stage_state=work.stages.get(code, StageDebounceState()),
@@ -571,6 +723,36 @@ def replay(
             modeled.append(f"{dividend_skipped} 次除权事件因缺前一交易日 K 线未能折算")
         if dividend_missing:
             modeled.append(f"{dividend_missing} 只标的没有分红事件记录（按无分红处理，可能低估）")
+    if sector_layer:
+        unmapped = sorted(set(codes) - set(sector_map))
+        modeled.append(
+            "板块当日涨跌幅由板块指数序列自算（实盘用板块一览的当日涨跌幅），两者可能有尾差"
+        )
+        modeled.append(
+            "板块 2×2 阈值（20 日线 / 5 日斜率 / 0.5% 缓冲带）用默认值，尚未进参数注册表"
+        )
+        if unmapped:
+            modeled.append(
+                f"{len(unmapped)} 只未映射到板块，板块分恒 0：{', '.join(unmapped)}"
+            )
+    stats["sector"] = {
+        "enabled": sector_layer,
+        "mapped_codes": len(set(codes) & set(sector_map)),
+        "unmapped_codes": sorted(set(codes) - set(sector_map)) if sector_layer else [],
+        "sectors": sorted(series_by_name) if sector_layer else [],
+        # 序列覆盖随数据补齐会变，而 calc_version 不会：不记下来，同一版本号的两次回放
+        # 结果对不上时无从判断是规则改了还是数据补了
+        "series": {
+            name: [len(series.bars), series.bars[0].trade_date.isoformat(),
+                   series.bars[-1].trade_date.isoformat()]
+            for name, series in sorted(series_by_name.items())
+        } if sector_layer else {},
+        "view_code_days": work.counters.get("sector_view_days", 0),
+        "missing_code_days": work.counters.get("sector_missing_code_days", 0),
+        "degraded_code_days": work.counters.get("sector_degraded_days", 0),
+        "strong_code_days": work.counters.get("sector_strong_days", 0),
+        "weak_code_days": work.counters.get("sector_weak_days", 0),
+    }
     stats["not_modelled"] = modeled + [
         "组合层资金曲线与「资金耗尽不再买」约束",
         "大盘缺失日：M1 环境档与「大盘 ≤ 警示」风险不触发（见 market_missing_days）",

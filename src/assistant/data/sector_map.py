@@ -34,6 +34,7 @@ from typing import Callable, Mapping, Sequence
 __all__ = [
     "DEFAULT_INDUSTRY_CACHE",
     "IndustryResolver",
+    "SECTOR_ALIASES",
     "SectorRef",
     "normalize_industry_name",
     "to_secucode",
@@ -48,6 +49,22 @@ _EM_URL = "https://datacenter-web.eastmoney.com/api/data/v1/get"
 #: 匹配优先级：同花顺板块更接近东财二级，二级优先；三级过窄、一级过粗，作后备
 _LEVEL_ORDER = ("2", "1", "3")
 _SUFFIX = re.compile(r"(Ⅱ|Ⅲ|Ⅱ|Ⅲ|II|III|Ⅰ|I)$")
+
+#: 东财行业名 → 同花顺板块名的**显式**别名（同一行业、两家叫法不同）。
+#:
+#: 这里刻意用穷举表而不是相似度匹配：`difflib`/编辑距离会把「煤炭开采」错配到
+#: 「煤炭开采加工」之外的板块，而板块错配会直接误导个股判断。表里每一条都得是
+#: 人工核对过的同一行业——**新加一条要有依据，不是让代码去猜**。
+#: 实测来源（2026-11-27，20 只红利 ETF 成分）：5 只未映射全部是「同词异序/带后缀」，
+#: 加上这三条后 20/20 全部命中。
+SECTOR_ALIASES: dict[str, str] = {
+    # 东财二级「煤炭开采」= 同花顺「煤炭开采加工」（600188 兖矿能源、601101 昊华能源）
+    "煤炭开采": "煤炭开采加工",
+    # 东财二级「铁路公路」= 同花顺「公路铁路运输」（600012 皖通高速）
+    "铁路公路": "公路铁路运输",
+    # 东财二级「航运港口」= 同花顺「港口航运」（601872 招商轮船、603565 中谷物流）
+    "航运港口": "港口航运",
+}
 
 
 def normalize_industry_name(name: str) -> str:
@@ -188,7 +205,10 @@ class IndustryResolver:
     def resolve(self, codes: Sequence[str], boards: Mapping[str, str]) -> dict[str, SectorRef]:
         """把代码映射到同花顺板块；``boards`` 是 ``板块名 → 板块代码``。
 
-        一个板块名匹配不上就换下一个候选层级，全不中即视为未映射（不出现在返回值里）。
+        一个板块名匹配不上就换下一个候选层级；精确名不中时再查一次
+        :data:`SECTOR_ALIASES`（东财叫法与同花顺不同但确属同一行业），全不中即视为
+        未映射（不出现在返回值里）。别名命中会留日志——**这是人工对照的结果，
+        不是相似度猜的**，出问题时能一眼看出是哪条规则把它接上的。
         """
         resolved: dict[str, SectorRef] = {}
         for code in codes:
@@ -201,11 +221,21 @@ class IndustryResolver:
             for level in _LEVEL_ORDER:
                 for raw in by_level.get(level, []):
                     name = normalize_industry_name(raw)
+                    target = name
                     sector_code = boards.get(name)
+                    via_alias = False
+                    if not sector_code:
+                        alias = SECTOR_ALIASES.get(name)
+                        if alias and boards.get(alias):
+                            target, sector_code, via_alias = alias, boards[alias], True
                     if sector_code:
+                        if via_alias:
+                            logger.info(
+                                "个股 %s 的行业 %r 按别名映射到同花顺板块 %r", code, name, target
+                            )
                         resolved[code] = SectorRef(
                             code=code,
-                            sector_name=name,
+                            sector_name=target,
                             sector_code=sector_code,
                             matched_level=level,
                             raw_industry=raw,

@@ -84,6 +84,10 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--override", action="append", help="参数覆盖 key=value（只做对照实验用），可多次")
     parser.add_argument("--index", default=None,
                         help="大盘指数符号（如 sh000001）；给了才注入 M1 环境档，缺省不注入")
+    parser.add_argument("--sectors", action="store_true",
+                        help="把板块层接进回放：按映射读 L1 板块指数日线，逐日复算三档与 rs_t")
+    parser.add_argument("--sector-map", default="data/cache/assistant_sector_map.json",
+                        help="个股→板块映射 JSON（assistant_ingest_history.py --sectors 产出）")
     parser.add_argument("--adjust", choices=["raw", "total_return"], default="raw",
                         help="价格口径：raw=不复权（默认）；total_return=含分红再投（前复权）")
     parser.add_argument("--dividend-tax", type=float, default=0.0,
@@ -138,12 +142,57 @@ def main(argv: list[str] | None = None) -> int:
     state = load_state(args.checkpoint) if (args.resume and args.checkpoint) else ReplayState()
 
     market_by_day = None
+    index_bars = None
     if args.index:
         index_bars = store.load_bars(args.index, end=args.end)
         if not index_bars:
             raise SystemExit(f"库里没有 {args.index} 的日线，先跑 assistant_ingest_history.py --index {args.index}")
         market_by_day = market_views_from_index(index_bars, days, symbol=args.index)
         print(f"大盘注入：{args.index} · 覆盖 {len(market_by_day)}/{len(days)} 个交易日")
+
+    sector_by_code = None
+    sector_bars_by_name = None
+    sector_code_by_name = None
+    if args.sectors:
+        map_path = Path(args.sector_map)
+        if not map_path.is_file():
+            raise SystemExit(
+                f"没有板块映射 {map_path}：先跑 assistant_ingest_history.py "
+                f"--codes ... --sectors（会补板块指数日线并落这份映射）"
+            )
+        payload = json.loads(map_path.read_text(encoding="utf-8"))
+        sector_by_code = {
+            str(code): str(row.get("sector_name") or "")
+            for code, row in (payload.get("map") or {}).items()
+            if row.get("sector_name")
+        }
+        sector_code_by_name = {
+            str(row.get("sector_name")): str(row.get("sector_code") or "")
+            for row in (payload.get("map") or {}).values()
+            if row.get("sector_name")
+        }
+        sector_bars_by_name = store.load_sector_bars_by_name(end=args.end)
+        unmapped = sorted(set(bars_by_code) - set(sector_by_code))
+        missing_bars = sorted(
+            {
+                sector_by_code[code]
+                for code in bars_by_code
+                if sector_by_code.get(code) and not sector_bars_by_name.get(sector_by_code[code])
+            }
+        )
+        covered = sum(
+            1 for code in bars_by_code if sector_by_code.get(code) in sector_bars_by_name
+        )
+        print(
+            f"板块注入：映射 {len(set(bars_by_code) & set(sector_by_code))}/{len(bars_by_code)} 只 · "
+            f"L1 板块日线 {len(sector_bars_by_name)} 个 · 真正有序列 {covered} 只"
+        )
+        if unmapped:
+            print(f"  未映射（板块分恒 0）：{', '.join(unmapped)}")
+        if missing_bars:
+            print(f"  缺板块日线（板块分恒 0）：{', '.join(missing_bars)}")
+        if not index_bars:
+            print("  提示：没给 --index，rs_t 与 SEC-1 不会生效（三档加减分仍照算）")
 
     dividend_events = None
     if config.adjust == "total_return":
@@ -164,6 +213,10 @@ def main(argv: list[str] | None = None) -> int:
         checkpoint_path=args.checkpoint,
         market_by_day=market_by_day,
         dividend_events=dividend_events,
+        sector_by_code=sector_by_code,
+        sector_bars_by_name=sector_bars_by_name,
+        sector_code_by_name=sector_code_by_name,
+        index_bars=index_bars,
     )
 
     stats = result.stats
@@ -178,6 +231,13 @@ def main(argv: list[str] | None = None) -> int:
         print(f"胜率：{stats['win_rate'] * 100:.1f}%（闭合 {stats['closed']}）")
     if result.counters:
         print("计数：" + "，".join(f"{key}={value}" for key, value in sorted(result.counters.items())))
+    sector = stats.get("sector") or {}
+    if sector.get("enabled"):
+        print(
+            f"板块：{len(sector['sectors'])} 个板块 · 板块视图 {sector['view_code_days']} 个 code-day "
+            f"（偏强 {sector['strong_code_days']} / 偏弱 {sector['weak_code_days']} / "
+            f"降级 {sector['degraded_code_days']} / 缺失 {sector['missing_code_days']}）"
+        )
 
     if args.out:
         target = Path(args.out)

@@ -22,9 +22,10 @@
 from __future__ import annotations
 
 import argparse
+import json
 import sqlite3
 import sys
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -130,13 +131,21 @@ def main(argv: list[str] | None = None) -> int:
                         help="顺带取分红送转事件（除权日 / 每股派息 / 送转），供 --adjust total_return")
     parser.add_argument("--index", nargs="*", default=None,
                         help="顺带补指数日线（如 sh000001），按原符号存入 L1，供回放注入大盘")
+    parser.add_argument("--sectors", action="store_true",
+                        help="顺带补板块指数日线：对本次 --codes 做个股→板块映射，落涉及的板块")
+    parser.add_argument("--sector-names", nargs="*", default=None,
+                        help="直接指定板块名（如 银行 白酒），补这些板块的指数日线")
+    parser.add_argument("--sector-map", default="data/cache/assistant_sector_map.json",
+                        help="个股→板块映射的落盘路径（回放读它，保证不联网）")
+    parser.add_argument("--sector-refill", action="store_true",
+                        help="板块指数日线全量重取（默认已有就跳过）")
     args = parser.parse_args(argv)
 
     codes = list(args.codes or [])
     if args.watchlist:
         codes += watchlist_codes(Path(args.watchlist))
     codes = sorted({code.strip() for code in codes if code.strip()})
-    if not codes:
+    if not codes and not (args.sectors or args.sector_names):
         raise SystemExit("没有标的：给 --codes 或 --watchlist")
 
     end = args.end or date.today()
@@ -196,6 +205,73 @@ def main(argv: list[str] | None = None) -> int:
         print(f"  {symbol}: {rows} 行 · 来源 {result.source_tag.value}({result.source_name}) · "
               f"{result.bars[0].trade_date} ~ {result.bars[-1].trade_date}")
         filled += 1
+
+    if args.sectors or args.sector_names:
+        from src.assistant.data.sector_map import IndustryResolver  # noqa: PLC0415
+
+        # 板块代码只能从同花顺一览拿（个股映射也是按「板块名」对齐），一次请求顺带取回
+        ref_fetcher = ReferenceFetcher(store=store, breaker=CircuitBreaker())
+        overview = ref_fetcher.fetch_sectors()
+        if not overview.rows:
+            print(f"板块一览取数失败（{overview.note or '无数据'}），板块日线本次不补")
+            failed += 1
+        else:
+            boards = {row.sector_name: row.sector_code for row in overview.rows if row.sector_code}
+            wanted: dict[str, str] = {}
+            if args.sectors:
+                resolved = IndustryResolver().resolve(codes, boards)
+                print(f"个股→板块映射：{len(resolved)}/{len(codes)} 只成功")
+                for code in codes:
+                    ref = resolved.get(code)
+                    print(f"  {code}: {ref.sector_name if ref else '未映射'}"
+                          + (f"（{ref.matched_level} 级 {ref.raw_industry}）" if ref else ""))
+                wanted.update({ref.sector_name: ref.sector_code for ref in resolved.values()})
+            for name in args.sector_names or []:
+                code = boards.get(name)
+                if not code:
+                    print(f"  板块 {name!r} 不在同花顺一览里，跳过（不猜代码）")
+                    failed += 1
+                    continue
+                wanted[name] = code
+            print(f"补板块指数日线：{len(wanted)} 个板块")
+            for name, code in sorted(wanted.items()):
+                existing = store.load_sector_bars(code, end=end)
+                if existing and not (args.refill or args.sector_refill):
+                    print(f"  {name}({code}): 已有 {len(existing)} 根，跳过")
+                    skipped += 1
+                    continue
+                bars = ref_fetcher.fetch_sector_index(name, start, end)
+                if not bars:
+                    print(f"  {name}({code}): 板块指数取不到，跳过（不写空数据）")
+                    failed += 1
+                    continue
+                rows = store.save_sector_bars(code, name, bars)
+                print(f"  {name}({code}): {rows} 行 · {bars[0].trade_date} ~ {bars[-1].trade_date}")
+                filled += 1
+            if args.sectors:
+                # 映射单独落一份 JSON：回放要求「不联网」，靠它按代码→板块取 L1 序列，
+                # 不去现场打东财 F10（实测 27 只要 3 秒，但回放几百天不该依赖网络可用）
+                map_path = Path(args.sector_map)
+                map_path.parent.mkdir(parents=True, exist_ok=True)
+                payload = {
+                    "generated_at": datetime.now().isoformat(timespec="seconds"),
+                    "source": "ths-board-list + em-f10",
+                    "map": {
+                        code: {
+                            "sector_name": ref.sector_name,
+                            "sector_code": ref.sector_code,
+                            "matched_level": ref.matched_level,
+                            "raw_industry": ref.raw_industry,
+                        }
+                        for code, ref in sorted(resolved.items())
+                    },
+                }
+                map_path.write_text(
+                    json.dumps(payload, ensure_ascii=False, indent=2) + "\n",
+                    encoding="utf-8",
+                    newline="\n",
+                )
+                print(f"  映射已写入 {map_path}（{len(resolved)} 只）")
 
     if args.dividends:
         from src.assistant.data.dividend import fetch_dividend_events  # noqa: PLC0415
