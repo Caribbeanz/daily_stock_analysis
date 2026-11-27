@@ -95,6 +95,21 @@ class TestResolve:
         assert ref.matched_level == "2"
         assert ref.raw_industry == "煤炭开采"  # 东财原名保留，便于核对
 
+    def test_alias_supports_superset_industry(self) -> None:
+        """东财「调味发酵品Ⅱ」→ 同花顺「食品加工制造」：上位行业匹配（D-36）。
+
+        这一条与「同词异序」的别名性质不同——调味品是食品加工的子集，板块相对强度
+        会比其他标的粗一档。之所以允许，是因为同花顺没有更细的板块，而「未映射」
+        会让这只票的板块分恒 0（看起来像「板块没影响」，实际是没数据）。
+        """
+        calls: list[str] = []
+        resolver = _resolver({"603288": [("1", "食品饮料"), ("2", "调味发酵品Ⅱ")]}, calls)
+
+        ref = resolver.resolve(["603288"], {"食品加工制造": "881134"})["603288"]
+
+        assert ref.sector_name == "食品加工制造"
+        assert ref.raw_industry == "调味发酵品Ⅱ"
+
     def test_exact_name_wins_over_alias(self) -> None:
         calls: list[str] = []
         resolver = _resolver({"600188": [("2", "煤炭开采")]}, calls)
