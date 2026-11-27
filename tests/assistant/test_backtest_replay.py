@@ -23,7 +23,7 @@ from src.assistant.backtest_replay import (
 )
 from src.assistant.config.overrides import default_param_set
 from src.assistant.data.dividend import DividendEvent
-from src.assistant.domain import Bar, KeyLevel
+from src.assistant.domain import Bar, KeyLevel, MarketView
 from src.assistant.enums import Action, Stage, TriggerType
 from src.assistant.engine.stage import StageDebounceState
 
@@ -456,6 +456,77 @@ def _index_series(count: int, *, start: float = 3000.0, step: float = 6.0,
         close = start + step * i
         out.append(_bar(day, open_=close - 2, high=close + 3, low=close - 4, close=close))
     return out
+
+
+class TestEntryGate:
+    """入场硬门槛（对照实验）：偏弱日不新开仓，但缺数据不算偏弱。"""
+
+    def _market(self, days, regime: str) -> dict:
+        return {day: MarketView(regime=regime) for day in days}
+
+    def test_gate_off_is_product_default(self) -> None:
+        assert ReplayConfig().entry_gate == "off"
+
+    def test_rejects_unknown_gate(self) -> None:
+        with pytest.raises(ValueError):
+            ReplayConfig(entry_gate="market_crashed")
+
+    def test_gate_helper_blocks_nothing_when_off(self) -> None:
+        plans = [{"code": "600000", "action": "买入"}]
+
+        kept, blocked = module._apply_entry_gate(plans, MarketView(regime="偏弱"), "off")
+
+        assert kept == plans and blocked == 0
+
+    def test_gate_helper_blocks_only_弱(self) -> None:
+        plans = [{"code": "600000"}, {"code": "600001"}]
+
+        assert module._apply_entry_gate(plans, MarketView(regime="偏弱"), "market_weak") == ([], 2)
+        for regime in ("中性", "偏强"):
+            kept, blocked = module._apply_entry_gate(plans, MarketView(regime=regime), "market_weak")
+            assert kept == plans and blocked == 0
+
+    def test_missing_or_degraded_market_does_not_block(self) -> None:
+        """「没有数据」不等于「环境差」：缺失与降级（regime 为空）都不拦。"""
+        plans = [{"code": "600000"}]
+
+        assert module._apply_entry_gate(plans, None, "market_weak") == (plans, 0)
+        degraded = MarketView(regime="", regime_degraded=True)
+        assert module._apply_entry_gate(plans, degraded, "market_weak") == (plans, 0)
+
+    def test_weak_market_blocks_all_entries_in_replay(self, monkeypatch) -> None:
+        _patch_chain(monkeypatch, lambda inp: _outcome(plans=[_branch(price=10.0)]))
+        bars = _series(8)
+        days = _days(bars)
+
+        result = replay(
+            days=days,
+            bars_by_code={"600000": bars},
+            config=_config(entry_gate="market_weak"),
+            market_by_day=self._market(days, "偏弱"),
+        )
+
+        assert result.counters["gated_plans"] == len(days)
+        assert result.stats["entry_gate"] == {"gate": "market_weak", "blocked_plans": len(days)}
+        # 计划数照记（与对照组可比），挡掉的是回合
+        assert result.plans == len(days)
+        assert result.rounds == ()
+        assert result.stats["closed"] == 0
+
+    def test_same_day_strong_market_keeps_entries(self, monkeypatch) -> None:
+        _patch_chain(monkeypatch, lambda inp: _outcome(plans=[_branch(price=10.0)]))
+        bars = _series(8)
+        days = _days(bars)
+
+        result = replay(
+            days=days,
+            bars_by_code={"600000": bars},
+            config=_config(entry_gate="market_weak"),
+            market_by_day=self._market(days, "偏强"),
+        )
+
+        assert "gated_plans" not in result.counters
+        assert result.rounds, "偏强日不该被门槛拦掉"
 
 
 class TestMarketViews:

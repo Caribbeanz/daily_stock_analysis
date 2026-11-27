@@ -31,6 +31,7 @@ from src.assistant.data.models import (
     ConditionalPlanRow,
     DividendEventRow,
     DeliveryLogRow,
+    FundamentalReportRow,
     HoldingConclusionRow,
     InboundLogRow,
     LlmTextCacheRow,
@@ -52,6 +53,7 @@ from src.assistant.data.models import (
     WatchlistRuntime,
 )
 from src.assistant.data.dividend import DividendEvent
+from src.assistant.data.fundamentals import FundamentalReport
 from src.assistant.data.valuation import ValuationRow
 from src.assistant.domain import Bar, GuardChainResult
 from src.assistant.enums import SourceTag
@@ -105,6 +107,7 @@ class AssistantStore:
         AssistantBase.metadata.create_all(self._engine)
         self._ensure_dividend_columns()
         self._ensure_sector_columns()
+        self._ensure_fundamental_columns()
 
     def _ensure_sector_columns(self) -> None:
         """给 ``assistant_sector_daily`` 补板块指数 OHLC（老库建表时只有当日涨跌）。"""
@@ -132,6 +135,34 @@ class AssistantStore:
             for name, ddl in missing.items():
                 conn.execute(text(f"ALTER TABLE assistant_sector_daily ADD COLUMN {name} {ddl}"))
         logger.info("已为 assistant_sector_daily 补列：%s", list(missing))
+
+    def _ensure_fundamental_columns(self) -> None:
+        """给 ``assistant_fundamental_report`` 补后续新增的列（老库建表时没有）。
+
+        这张表是增量 25 才加的；``create_all`` 只建表、不给已有表补列，所以同一天之内
+        加字段的库（比如刚补完财报又改了口径）必须在这里补，否则写入会报 no column。
+        """
+        from sqlalchemy import inspect, text
+
+        inspector = inspect(self._engine)
+        if "assistant_fundamental_report" not in inspector.get_table_names():
+            return
+        existing = {col["name"] for col in inspector.get_columns("assistant_fundamental_report")}
+        wanted = {"ocf_yoy": "FLOAT"}
+        missing = {name: ddl for name, ddl in wanted.items() if name not in existing}
+        if not missing:
+            return
+        if self._engine.dialect.name != "sqlite":  # pragma: no cover - 当前只用 SQLite
+            logger.warning(
+                "表 assistant_fundamental_report 缺列 %s，非 SQLite 请手动迁移", list(missing)
+            )
+            return
+        with self._engine.begin() as conn:
+            for name, ddl in missing.items():
+                conn.execute(
+                    text(f"ALTER TABLE assistant_fundamental_report ADD COLUMN {name} {ddl}")
+                )
+        logger.info("已为 assistant_fundamental_report 补列：%s", list(missing))
 
     def _ensure_dividend_columns(self) -> None:
         from sqlalchemy import inspect, text
@@ -478,6 +509,94 @@ class AssistantStore:
             pe_pctile=row.pe_pctile,
             pb_pctile=row.pb_pctile,
         )
+
+    # ------------------------------------------------------------------
+    # 财报事实（按报告期；公告日决定「T 日是否可见」）
+    # ------------------------------------------------------------------
+    def save_fundamental_reports(
+        self,
+        code: str,
+        reports: Sequence[FundamentalReport],
+        *,
+        source_tag: str = "D1",
+    ) -> int:
+        """幂等写入某只标的的财报期（唯一键 ``code + report_date``）。"""
+        if not reports:
+            return 0
+        payload = [
+            {
+                "code": code,
+                "report_date": report.report_date,
+                "notice_date": report.notice_date,
+                "period_label": report.period_label,
+                "revenue": report.revenue,
+                "revenue_yoy": report.revenue_yoy,
+                "net_profit": report.net_profit,
+                "profit_yoy": report.profit_yoy,
+                "roe": report.roe,
+                "roe_yoy": report.roe_yoy,
+                "ocf_per_share": report.ocf_per_share,
+                "ocf_yoy": report.ocf_yoy,
+                "debt_ratio": report.debt_ratio,
+                "gross_margin": report.gross_margin,
+                "source_tag": source_tag,
+            }
+            for report in reports
+        ]
+        with self.session() as sess:
+            stmt = sqlite_insert(FundamentalReportRow).values(payload)
+            stmt = stmt.on_conflict_do_update(
+                index_elements=["code", "report_date"],
+                set_={
+                    "notice_date": stmt.excluded.notice_date,
+                    "period_label": stmt.excluded.period_label,
+                    "revenue": stmt.excluded.revenue,
+                    "revenue_yoy": stmt.excluded.revenue_yoy,
+                    "net_profit": stmt.excluded.net_profit,
+                    "profit_yoy": stmt.excluded.profit_yoy,
+                    "roe": stmt.excluded.roe,
+                    "roe_yoy": stmt.excluded.roe_yoy,
+                    "ocf_per_share": stmt.excluded.ocf_per_share,
+                    "ocf_yoy": stmt.excluded.ocf_yoy,
+                    "debt_ratio": stmt.excluded.debt_ratio,
+                    "gross_margin": stmt.excluded.gross_margin,
+                    "source_tag": stmt.excluded.source_tag,
+                },
+            )
+            sess.execute(stmt)
+        return len(payload)
+
+    def load_fundamental_reports(
+        self, codes: Sequence[str] | None = None
+    ) -> dict[str, list[FundamentalReport]]:
+        """``{代码: [报告期（按 report_date 倒序）]}``；不给 ``codes`` 就全取。"""
+        stmt = select(FundamentalReportRow)
+        if codes:
+            stmt = stmt.where(FundamentalReportRow.code.in_(list(codes)))
+        stmt = stmt.order_by(FundamentalReportRow.code.asc(), FundamentalReportRow.report_date.desc())
+        with self.session() as sess:
+            rows = list(sess.execute(stmt).scalars().all())
+        out: dict[str, list[FundamentalReport]] = {}
+        for row in rows:
+            out.setdefault(row.code, []).append(
+                FundamentalReport(
+                    code=row.code,
+                    report_date=row.report_date,
+                    notice_date=row.notice_date,
+                    period_label=row.period_label or "",
+                    revenue=row.revenue,
+                    revenue_yoy=row.revenue_yoy,
+                    net_profit=row.net_profit,
+                    profit_yoy=row.profit_yoy,
+                    roe=row.roe,
+                    roe_yoy=row.roe_yoy,
+                    ocf_per_share=row.ocf_per_share,
+                    ocf_yoy=row.ocf_yoy,
+                    debt_ratio=row.debt_ratio,
+                    gross_margin=row.gross_margin,
+                )
+            )
+        return out
 
     # ------------------------------------------------------------------
     # 除权除息事件（原始数据；复权序列按 §3.3 不落库）

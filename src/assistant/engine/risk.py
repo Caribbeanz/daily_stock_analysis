@@ -443,21 +443,36 @@ def _dividend_valuation_risks(ctx: RiskContext) -> list:
                 affects=True,
             )
         )
+    # DIV-2 有两条并列依据（需求 §5.10.2：股息率异常／除权日临近），合成一条输出，
+    # 免得同一个编号出两条信号；两条都属于「展示与观察」，不改档
+    div2_facts: list[str] = []
+    div2_advice: list[str] = []
+    if val.dividend_yield_percentile is not None:
+        high = float(ctx.params.get("risk_pctile_high"))
+        if val.dividend_yield_percentile >= high:
+            div2_facts.append(
+                f"股息率处历史高分位 {val.dividend_yield_percentile:.2f}"
+                f"（高界 {high}）"
+            )
+            div2_advice.append("高股息可能来自股价下跌，别把高息当安全垫")
     if val.ex_dividend_date is not None and ctx.data_date <= val.ex_dividend_date:
         days = (val.ex_dividend_date - ctx.data_date).days
         if days <= 7:
-            out.append(
-                _sig(
-                    ctx,
-                    RiskCode.DIV_2,
-                    RiskCategory.DIVIDEND_VALUATION,
-                    RiskLevel.INFO,
-                    f"除权除息日 {val.ex_dividend_date.isoformat()}（距今 {days} 天），价位须按除权重算",
-                    "展示与观察，不改档",
-                    f"{days} 天后除权，条件单价位要按除权重算",
-                    affects=False,
-                )
+            div2_facts.append(f"除权除息日 {val.ex_dividend_date.isoformat()}（距今 {days} 天）")
+            div2_advice.append("条件单价位要按除权重算")
+    if div2_facts:
+        out.append(
+            _sig(
+                ctx,
+                RiskCode.DIV_2,
+                RiskCategory.DIVIDEND_VALUATION,
+                RiskLevel.INFO,
+                "；".join(div2_facts),
+                "展示与观察，不改档",
+                "；".join(div2_advice),
+                affects=False,
             )
+        )
     pctiles = [p for p in (val.pe_percentile, val.pb_percentile) if p is not None]
     if pctiles:
         avg_pct = sum(pctiles) / len(pctiles)

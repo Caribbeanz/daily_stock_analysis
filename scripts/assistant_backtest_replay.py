@@ -82,6 +82,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--min-closed", type=int, default=30, help="样本门槛：不足只报计数")
     parser.add_argument("--holding", action="append", help="起点持仓，形如 600000:1000，可多次")
     parser.add_argument("--override", action="append", help="参数覆盖 key=value（只做对照实验用），可多次")
+    parser.add_argument("--entry-gate", choices=["off", "market_weak"], default="off",
+                        help="入场硬门槛（对照实验，默认 off）：market_weak=当日大盘档偏弱时不新开仓")
     parser.add_argument("--index", default=None,
                         help="大盘指数符号（如 sh000001）；给了才注入 M1 环境档，缺省不注入")
     parser.add_argument("--sectors", action="store_true",
@@ -90,6 +92,8 @@ def main(argv: list[str] | None = None) -> int:
                         help="个股→板块映射 JSON（assistant_ingest_history.py --sectors 产出）")
     parser.add_argument("--adjust", choices=["raw", "total_return"], default="raw",
                         help="价格口径：raw=不复权（默认）；total_return=含分红再投（前复权）")
+    parser.add_argument("--fundamentals", action="store_true",
+                        help="把财报事实接进回放（w_fundamental 与 FUN-1/2）：读 L2 财报期，按公告日切片")
     parser.add_argument("--valuations", action="store_true",
                         help="把估值分位与分红事实接进评分（w_valuation/w_dividend 与 DIV-1/2/3）")
     parser.add_argument("--dividend-tax", type=float, default=0.0,
@@ -133,6 +137,7 @@ def main(argv: list[str] | None = None) -> int:
         params=ParamSet.build(Preset(args.preset), overrides=_parse_overrides(args.override)),
         adjust=args.adjust,
         dividend_tax_rate=args.dividend_tax,
+        entry_gate=args.entry_gate,
         round_config=RoundConfig(
             cost_bps=args.cost_bps,
             max_hold_days=args.max_hold,
@@ -197,7 +202,7 @@ def main(argv: list[str] | None = None) -> int:
             print("  提示：没给 --index，rs_t 与 SEC-1 不会生效（三档加减分仍照算）")
 
     dividend_events = None
-    if config.adjust == "total_return" or args.valuations:
+    if config.adjust == "total_return" or args.valuations or args.fundamentals:
         dividend_events = store.load_dividend_events(list(bars_by_code))
         covered = sum(1 for code in bars_by_code if dividend_events.get(code))
         if config.adjust == "total_return":
@@ -224,6 +229,17 @@ def main(argv: list[str] | None = None) -> int:
                 "库里没有估值行，先跑 assistant_ingest_history.py --valuations"
             )
 
+    fundamental_rows = None
+    if args.fundamentals:
+        fundamental_rows = store.load_fundamental_reports(list(bars_by_code))
+        with_rows = sum(1 for rows in fundamental_rows.values() if rows)
+        print(f"财报注入：{with_rows}/{len(bars_by_code)} 只有财报期"
+              f"（按公告日切片，报告期末不算可见）")
+        if not with_rows:
+            raise SystemExit(
+                "库里没有财报，先跑 assistant_ingest_history.py --fundamentals"
+            )
+
     result = replay(
         days=days,
         bars_by_code=bars_by_code,
@@ -237,6 +253,7 @@ def main(argv: list[str] | None = None) -> int:
         sector_code_by_name=sector_code_by_name,
         index_bars=index_bars,
         valuations_by_code=valuation_rows,
+        fundamentals_by_code=fundamental_rows,
     )
 
     stats = result.stats

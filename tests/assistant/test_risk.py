@@ -4,7 +4,7 @@
 from __future__ import annotations
 
 from dataclasses import replace
-from datetime import date
+from datetime import date, timedelta
 
 import pytest
 
@@ -125,6 +125,42 @@ def test_dividend_interruption_severe_even_with_weight_off() -> None:
     div1 = next(s for s in summary.signals if s.code is RiskCode.DIV_1)
     assert div1.level is RiskLevel.SEVERE
     assert div1.affects_advice is True
+
+
+def test_high_yield_percentile_is_div2_info() -> None:
+    """股息率处历史高分位 → DIV-2 观察级（不改档）：高息可能是股价跌出来的。"""
+    view = make_view(trending(150, 0.005))
+    view = replace(
+        view, valuation=ValuationView(dividend_yield=7.5, dividend_yield_percentile=0.92)
+    )
+
+    summary = assess_risks(_ctx(view=view))
+
+    assert RiskCode.DIV_2 in _codes(summary)
+    div2 = next(s for s in summary.signals if s.code is RiskCode.DIV_2)
+    assert div2.level is RiskLevel.INFO
+    assert div2.affects_advice is False
+    assert "高分位" in div2.trigger_basis
+
+
+def test_div2_merges_yield_and_ex_date_into_one_signal() -> None:
+    """股息率异常与除权临近是同一个编号的两条依据：合成一条，不重复出信号。"""
+    view = make_view(trending(150, 0.005))
+    view = replace(
+        view,
+        valuation=ValuationView(
+            dividend_yield=7.5,
+            dividend_yield_percentile=0.92,
+            ex_dividend_date=DATA_DATE + timedelta(days=3),
+        ),
+    )
+
+    summary = assess_risks(_ctx(view=view))
+
+    div2 = [s for s in summary.signals if s.code is RiskCode.DIV_2]
+    assert len(div2) == 1
+    assert "高分位" in div2[0].trigger_basis
+    assert "除权" in div2[0].trigger_basis
 
 
 def test_three_warnings_not_upgraded_to_severe() -> None:

@@ -22,10 +22,16 @@ from datetime import date, datetime, timedelta
 from typing import Any, Callable, Mapping, Optional, Sequence
 
 from src.assistant.config.overrides import ParamSet
+from src.assistant.data.fundamentals import (
+    FundamentalReport,
+    fundamental_view_from_reports,
+)
 from src.assistant.data.storage import AssistantStore
 from src.assistant.data.valuation import valuation_view
+from src.assistant.data.dividend import yield_percentile_series, yield_series
 from src.assistant.domain import (
     Bar,
+    FundamentalView,
     MarketLine,
     MarketView,
     PortfolioView,
@@ -261,6 +267,12 @@ class AssistantPipeline:
     _valuation_cache: dict[tuple[str, date], ValuationView] = field(
         default_factory=dict, repr=False
     )
+    #: 代码 → 财报期（一次读完，按公告日切片；不要每天查库）
+    _fundamental_cache: dict[str, tuple[FundamentalReport, ...]] = field(
+        default_factory=dict, repr=False
+    )
+    #: 代码 → {日期: 股息率分位}（逐日推进算一次，之后按日取）
+    _yield_pct_cache: dict[str, dict[date, float]] = field(default_factory=dict, repr=False)
 
     # ------------------------------------------------------------------
     # 对外入口
@@ -537,7 +549,35 @@ class AssistantPipeline:
         self._sector_views_cache[day] = result
         return result
 
-    def valuation_view(self, code: str, day: date, last_close: float) -> ValuationView:
+    def fundamental_view(self, code: str, day: date) -> FundamentalView:
+        """T 日**已公告**的财报事实（FUN-1/FUN-2 与 ``w_fundamental`` 的输入）。
+
+        可见性按 ``notice_date <= T`` 判定，不按报告期末——三季报 10-31 才公告，拿它
+        在 10-01 扣分就是偷看未来（见 :mod:`src.assistant.data.fundamentals`）。
+        一份都看不见时返回 ``available=False``，风险层按 FUN-3「财报未更新」注记，
+        **不当作基本面变坏**。报表一次读完缓存，不每天查库。
+        """
+        reports = self._fundamental_cache.get(code)
+        if reports is None:
+            reports = tuple(self.store.load_fundamental_reports([code]).get(code, ()))
+            self._fundamental_cache[code] = reports
+        return fundamental_view_from_reports(reports, day)
+
+    def _yield_percentile(
+        self, code: str, day: date, bars: Sequence[Bar] | None, events: Sequence[Any]
+    ) -> float | None:
+        """股息率的当日历史分位（逐日推进算一次，之后按日取）。"""
+        series = self._yield_pct_cache.get(code)
+        if series is None:
+            if not bars:
+                return None
+            series = yield_percentile_series(yield_series(list(bars), events))
+            self._yield_pct_cache[code] = series
+        return series.get(day)
+
+    def valuation_view(
+        self, code: str, day: date, last_close: float, bars: Sequence[Bar] | None = None
+    ) -> ValuationView:
         """估值分位 + 分红事实（评分 `w_valuation`/`w_dividend` 与 DIV-1/2/3 的输入）。
 
         两条数据来源不同、缺失语义也不同：
@@ -559,7 +599,13 @@ class AssistantPipeline:
         if events is None:
             events = tuple(self.store.load_dividend_events([code]).get(code, ()))
             self._dividend_cache[code] = events
-        view = valuation_view([row] if row is not None else [], events, day, last_close)
+        view = valuation_view(
+            [row] if row is not None else [],
+            events,
+            day,
+            last_close,
+            yield_percentile=self._yield_percentile(code, day, bars, events),
+        )
         self._valuation_cache[key] = view
         return view
 
@@ -782,9 +828,10 @@ class AssistantPipeline:
                     bars=bars,
                     position=position,
                     source_tag=tag,
-                    # 估值分位 + 分红事实：这两项此前从未填充，导致 w_valuation/w_dividend
-                    # 恒 0、DIV-1/2/3 永不触发（见实现笔记 D-34）
-                    valuation=self.valuation_view(code, day, bars[-1].close),
+                    # 估值分位 + 分红事实（含股息率历史分位）：w_valuation 与 DIV-1/2/3 的输入
+                    valuation=self.valuation_view(code, day, bars[-1].close, bars),
+                    # 财报事实：FUN-1/FUN-2 与 w_fundamental 的输入（此前一直空转，见 D-38）
+                    fundamental=self.fundamental_view(code, day),
                 )
             )
         return views

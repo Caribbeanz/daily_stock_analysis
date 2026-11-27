@@ -44,7 +44,13 @@ from typing import Any, Iterable, Mapping, Sequence
 
 from src.assistant.backtest import PlanRound, RoundConfig, simulate_rounds, summarize_rounds
 from src.assistant.config.overrides import ParamSet, default_param_set
-from src.assistant.data.dividend import DividendEvent, apply_total_return
+from src.assistant.data.dividend import (
+    DividendEvent,
+    apply_total_return,
+    yield_percentile_series,
+    yield_series,
+)
+from src.assistant.data.fundamentals import FundamentalReport, fundamental_view_from_reports
 from src.assistant.data.valuation import ValuationRow, valuation_view
 from src.assistant.domain import Bar, MarketView, PortfolioView, PositionView, SectorView, StockView
 from src.assistant.engine.guard_chain import GuardChainInput, run_guard_chain
@@ -240,6 +246,11 @@ class ReplayConfig:
     adjust: str = "raw"
     #: 红利税率：0 = 税前全额；持股 1 个月–1 年按 10%。只影响 ``total_return`` 口径
     dividend_tax_rate: float = 0.0
+    #: 入场硬门槛（**只做对照实验用，默认关闭**）：
+    #: ``off`` = 现有行为（大盘档只经 ``w_market`` 加减分，不拦入场）；
+    #: ``market_weak`` = 当日大盘档为「偏弱」时不新开仓（只挡建仓，不影响止损止盈与出场）。
+    #: 大盘档缺失/降级一律**不拦**——「没有数据」不等于「环境差」，这条与其它处的口径一致。
+    entry_gate: str = "off"
     max_days: int | None = None
     progress_every: int = 20
     checkpoint_every: int = 20
@@ -253,6 +264,8 @@ class ReplayConfig:
             raise ValueError("adjust 只能是 raw 或 total_return")
         if not 0 <= self.dividend_tax_rate < 1:
             raise ValueError("dividend_tax_rate 必须落在 [0, 1)")
+        if self.entry_gate not in ("off", "market_weak"):
+            raise ValueError("entry_gate 只能是 off 或 market_weak")
 
     def position(self, code: str, last_close: float = 0.0) -> PositionView:
         """起点持仓视图；没登记的标的一律按未持仓（不猜测）。"""
@@ -472,6 +485,22 @@ def _plan_rows(result: Any, day: date) -> list[dict[str, Any]]:
     return rows
 
 
+def _apply_entry_gate(
+    plans: list[dict[str, Any]], market: MarketView | None, gate: str
+) -> tuple[list[dict[str, Any]], int]:
+    """入场硬门槛（**对照实验**）：``market_weak`` 在偏弱日不新开仓。
+
+    只挡**建仓**，不碰止损止盈与出场逻辑——已持仓该止损还是止损。大盘档缺失或降级
+    （``regime`` 为空）一律**不拦**：「没有数据」不等于「环境差」，与守卫链其它处的
+    降级口径一致；把缺数据当偏弱会让回放早期的数据缺口变成人为的空仓期。
+    """
+    if gate == "off" or not plans:
+        return plans, 0
+    if market is None or market.regime != "偏弱":
+        return plans, 0
+    return [], len(plans)
+
+
 def _drop_overlaps(rounds: Iterable[PlanRound], taken: list[PlanRound]) -> tuple[list[PlanRound], int]:
     """**同一标的**已有未平仓回合时，后面的触发不再建仓（组合层约束的保守近似）。
 
@@ -520,6 +549,7 @@ def replay(
     sector_code_by_name: Mapping[str, str] | None = None,
     index_bars: Sequence[Bar] | None = None,
     valuations_by_code: Mapping[str, Sequence[ValuationRow]] | None = None,
+    fundamentals_by_code: Mapping[str, Sequence[FundamentalReport]] | None = None,
     state: ReplayState | None = None,
     checkpoint_path: str | Path | None = None,
 ) -> ReplayResult:
@@ -607,6 +637,18 @@ def replay(
                 series_rows,
             )
     events_by_code = {code: tuple(items) for code, items in (dividend_events or {}).items()}
+    reports_by_code = {
+        code: tuple(sorted(items, key=lambda item: item.report_date, reverse=True))
+        for code, items in (fundamentals_by_code or {}).items()
+        if items
+    }
+    # 股息率分位用**不复权**的原始 K 线算：复权因子会把早期价格整体压低，
+    # 股息率水平随之虚高，分位（相对排序）也会被季节性的除权节奏带偏
+    yield_pct_by_code: dict[str, dict[date, float]] = {}
+    for code in codes:
+        series = yield_series(bars_by_code.get(code) or (), events_by_code.get(code, ()))
+        if series:
+            yield_pct_by_code[code] = yield_percentile_series(series)
 
     processed = 0
     plans_total = 0
@@ -649,7 +691,9 @@ def replay(
                     events_by_code.get(code, ()),
                     day,
                     window[-1].close,
+                    yield_percentile=yield_pct_by_code.get(code, {}).get(day),
                 ),
+                fundamental=fundamental_view_from_reports(reports_by_code.get(code, ()), day),
             )
             sector: SectorView | None = None
             series = series_of_code.get(code)
@@ -706,12 +750,22 @@ def replay(
             work.bump("skipped_days")
 
         if day_plans:
+            # 门槛前的计划数照记：对照组与实验组「生成了多少计划」必须可比，
+            # 被门槛挡掉多少单独进 gated_plans
+            plans_total += len(day_plans)
+            kept, blocked = _apply_entry_gate(
+                day_plans, (market_by_day or {}).get(day), cfg.entry_gate
+            )
+            if blocked:
+                work.bump("gated_plans", blocked)
+            day_plans = kept
+
+        if day_plans:
             simulated = simulate_rounds(day_plans, history, config=cfg.round_config)
             accepted, dropped = _drop_overlaps(simulated, work.rounds)
             if dropped:
                 work.bump("overlap_skipped", dropped)
             work.rounds.extend(accepted)
-            plans_total += len(day_plans)
             missing = sum(1 for plan in day_plans if plan.get("stop_loss") is None)
             if missing:
                 work.bump("exit_rules_missing", missing)
@@ -792,6 +846,11 @@ def replay(
     stats["valuation"] = {
         "codes_with_rows": sum(1 for code in codes if code in valuation_series),
         "codes_with_events": sum(1 for code in codes if events_by_code.get(code)),
+        "codes_with_yield_pctile": sum(1 for code in codes if yield_pct_by_code.get(code)),
+    }
+    stats["fundamental"] = {
+        "codes_with_reports": len(reports_by_code),
+        "reports": sum(len(items) for items in reports_by_code.values()),
     }
     stats["not_modelled"] = modeled + [
         "组合层资金曲线与「资金耗尽不再买」约束",
@@ -799,6 +858,12 @@ def replay(
     ]
     stats["adjust"] = cfg.adjust
     stats["dividend_tax_rate"] = cfg.dividend_tax_rate
+    #: 入场门槛（对照实验）：``off`` 是产品默认；``blocked_plans`` 是「偏弱日被挡掉的计划数」。
+    #: 记在这里是为了让两组对照能看出「差的是门槛还是别的」。
+    stats["entry_gate"] = {
+        "gate": cfg.entry_gate,
+        "blocked_plans": work.counters.get("gated_plans", 0),
+    }
     if cfg.adjust == "total_return":
         stats["dividend_events_applied"] = dividend_applied
         stats["dividend_cash_per_share_total"] = round(dividend_cash, 6)

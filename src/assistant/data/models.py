@@ -187,6 +187,37 @@ class ValuationHist(AssistantBase):
     __table_args__ = (UniqueConstraint("code", "trade_date", name="uq_assistant_valuation_hist"),)
 
 
+class FundamentalReportRow(AssistantBase):
+    """L2 财报事实（一期一行）。
+
+    ``notice_date`` 是**公告日**，它决定「T 日能不能看见这份财报」；回放与实盘都按它
+    切片，不按 ``report_date``（报告期末）——否则三季报会在 10 月 1 日就被用上。
+    """
+
+    __tablename__ = "assistant_fundamental_report"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    code = Column(String(16), nullable=False)
+    report_date = Column(Date, nullable=False)
+    notice_date = Column(Date, nullable=True)
+    period_label = Column(String(32), nullable=False, default="")
+    revenue = Column(Float, nullable=True)
+    revenue_yoy = Column(Float, nullable=True)
+    net_profit = Column(Float, nullable=True)
+    profit_yoy = Column(Float, nullable=True)
+    roe = Column(Float, nullable=True)
+    roe_yoy = Column(Float, nullable=True)
+    ocf_per_share = Column(Float, nullable=True)
+    ocf_yoy = Column(Float, nullable=True)
+    debt_ratio = Column(Float, nullable=True)
+    gross_margin = Column(Float, nullable=True)
+    source_tag = Column(String(4), nullable=False, default="D1")
+
+    __table_args__ = (
+        UniqueConstraint("code", "report_date", name="uq_assistant_fundamental_report"),
+    )
+
+
 class EventFeed(AssistantBase):
     """L1 重大消息（append-only，只取事实与时间戳，不做情绪判断）。"""
 

@@ -29,6 +29,7 @@ __all__ = [
     "ValuationPoint",
     "ValuationRow",
     "fetch_valuation_history",
+    "percentile_of",
     "percentile_series",
     "valuation_view",
     "valuation_view_from_rows",
@@ -102,14 +103,20 @@ def percentile_series(
                 trade_date=point.trade_date,
                 pe=point.pe,
                 pb=point.pb,
-                pe_pctile=_pctile(pe_values, pe, min_obs),
-                pb_pctile=_pctile(pb_values, pb, min_obs),
+                pe_pctile=percentile_of(pe_values, pe, min_obs),
+                pb_pctile=percentile_of(pb_values, pb, min_obs),
             )
         )
     return out
 
 
-def _pctile(sorted_values: Sequence[float], value: float | None, min_obs: int) -> float | None:
+def percentile_of(
+    sorted_values: Sequence[float], value: float | None, min_obs: int
+) -> float | None:
+    """一个值在「已排序样本」里的分位（严格小于的比例），样本不足返回 ``None``。
+
+    估值分位与股息率分位共用同一口径，免得两处各写一遍、以后改一个忘一个。
+    """
     if value is None or len(sorted_values) < max(2, min_obs):
         return None
     if sorted_values[0] == sorted_values[-1]:
@@ -207,11 +214,17 @@ def valuation_view(
     events: Iterable[Any] | None,
     day: date,
     last_close: float | None,
+    *,
+    yield_percentile: float | None = None,
 ) -> ValuationView:
     """估值分位 + 分红事实合成一份 ``ValuationView``（评分与风险共用）。
 
     分红部分调用 :func:`src.assistant.data.dividend.dividend_facts`，只用 ``ex_date <= day``
     的事件；两者都缺时返回空视图（`is_missing` 为真），评分与风险各自按「缺失」注记。
+
+    ``yield_percentile`` 由调用方从「逐日推进的股息率分位序列」取当日值给（见
+    :func:`src.assistant.data.dividend.yield_percentile_series`）——本函数拿不到历史 K 线，
+    不在这里现算，避免把日频循环塞进一个纯函数。
     """
     from src.assistant.data.dividend import dividend_facts  # noqa: PLC0415 - 避免循环导入
 
@@ -221,7 +234,7 @@ def valuation_view(
         pe_percentile=base.pe_percentile,
         pb_percentile=base.pb_percentile,
         dividend_yield=facts.dividend_yield,
-        dividend_yield_percentile=None,
+        dividend_yield_percentile=yield_percentile,
         dividend_continuity_years=facts.continuity_years,
         dividend_interrupted=facts.interrupted,
         ex_dividend_date=facts.ex_dividend_date,

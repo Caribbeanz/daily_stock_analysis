@@ -29,10 +29,12 @@
 from __future__ import annotations
 
 import logging
+from bisect import bisect_right, insort
 from dataclasses import dataclass, replace
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from typing import Any, Iterable, Mapping, Sequence
 
+from src.assistant.data.valuation import percentile_of
 from src.assistant.domain import Bar
 
 __all__ = [
@@ -43,6 +45,8 @@ __all__ = [
     "dividend_facts",
     "fetch_dividend_events",
     "parse_dividend_rows",
+    "yield_percentile_series",
+    "yield_series",
 ]
 
 logger = logging.getLogger(__name__)
@@ -385,3 +389,53 @@ def apply_total_return(
         skipped=skipped,
         cash_per_share=cash_total,
     )
+
+
+def yield_series(
+    bars: Sequence[Bar], events: Iterable["DividendEvent"], *, window_days: int = 365
+) -> dict[date, float]:
+    """逐日 TTM 股息率（百分数）：``T 前 window_days 天的每股现金分红合计 / T 日收盘``。
+
+    为什么逐日算而不是只算当天：股息率的**历史分位**需要一条自己的历史序列。这条序列
+    只用「≤T 的事件 + T 日收盘」，所以任何一天的分位都不会看到未来——与估值分位同一条纪律。
+
+    收盘缺失或 ``<= 0`` 的日子跳过（不能拿 0 当收盘价，否则股息率会是无穷大）。
+    """
+    cash = sorted(
+        (event for event in events if event.cash_per_share > 0), key=lambda event: event.ex_date
+    )
+    if not cash:
+        return {}
+    ex_dates = [event.ex_date for event in cash]
+    out: dict[date, float] = {}
+    for bar in bars:
+        if bar.close is None or bar.close <= 0:
+            continue
+        stop = bar.trade_date - timedelta(days=window_days)
+        total = 0.0
+        # 从「<= T 的最后一个事件」往前累加，遇到 <= 窗口起点就停（事件按日期有序）
+        index = bisect_right(ex_dates, bar.trade_date)
+        for pos in range(index - 1, -1, -1):
+            if ex_dates[pos] <= stop:
+                break
+            total += cash[pos].cash_per_share
+        out[bar.trade_date] = total / bar.close * 100.0
+    return out
+
+
+def yield_percentile_series(
+    series: Mapping[date, float], *, min_obs: int = 250
+) -> dict[date, float]:
+    """股息率的历史分位（逐日推进，只用 ≤当日的样本）。
+
+    ``min_obs`` 默认 250（约一年）：红利股一年只有 1–2 次除权，「近 30 天的股息率分位」
+    没有意义。样本不足的日子**不给分位**（不塞 0 也不塞 0.5）。
+    """
+    history: list[float] = []
+    out: dict[date, float] = {}
+    for day, value in sorted(series.items()):
+        insort(history, value)
+        pct = percentile_of(history, value, min_obs)
+        if pct is not None:
+            out[day] = pct
+    return out

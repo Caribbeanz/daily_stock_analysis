@@ -141,6 +141,8 @@ def main(argv: list[str] | None = None) -> int:
                         help="板块指数日线全量重取（默认已有就跳过）")
     parser.add_argument("--valuations", action="store_true",
                         help="补估值历史（PE/PB + 当日分位），供评分的 w_valuation 与 DIV-3")
+    parser.add_argument("--fundamentals", action="store_true",
+                        help="补财报期（营收/利润/ROE 同比 + 公告日），供 w_fundamental 与 FUN-1/2")
     args = parser.parse_args(argv)
 
     codes = list(args.codes or [])
@@ -312,6 +314,33 @@ def main(argv: list[str] | None = None) -> int:
             )
             got += 1
         print(f"  估值写入 {got} 只")
+
+    if args.fundamentals:
+        from src.assistant.data.fundamentals import fetch_fundamental_reports  # noqa: PLC0415
+
+        print("补财报事实（按报告期，含公告日）：")
+        got = 0
+        for code in codes:
+            existing = store.load_fundamental_reports([code]).get(code)
+            if existing and not args.refill:
+                print(f"  {code}: 已有 {len(existing)} 期，跳过")
+                skipped += 1
+                continue
+            reports = fetch_fundamental_reports(code)
+            if not reports:
+                print(f"  {code}: 财报取不到，跳过（不写空数据）")
+                failed += 1
+                continue
+            written = store.save_fundamental_reports(code, reports)
+            latest = reports[0]
+            print(
+                f"  {code}: {written} 期 · {latest.period_label or latest.report_date} "
+                f"公告 {latest.notice_date or '—'} · 营收同比 "
+                f"{latest.revenue_yoy if latest.revenue_yoy is not None else '—'} · 净利同比 "
+                f"{latest.profit_yoy if latest.profit_yoy is not None else '—'}"
+            )
+            got += 1
+        print(f"  财报写入 {got} 只")
 
     if args.dividends:
         from src.assistant.data.dividend import fetch_dividend_events  # noqa: PLC0415
