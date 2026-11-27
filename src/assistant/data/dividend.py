@@ -38,7 +38,9 @@ from src.assistant.domain import Bar
 __all__ = [
     "AdjustOutcome",
     "DividendEvent",
+    "DividendFacts",
     "apply_total_return",
+    "dividend_facts",
     "fetch_dividend_events",
     "parse_dividend_rows",
 ]
@@ -102,6 +104,101 @@ class AdjustOutcome:
     skipped: int = 0
     #: 本次折算掉的每股现金分红合计（仅统计真正应用了的事件）
     cash_per_share: float = 0.0
+
+
+@dataclass(frozen=True)
+class DividendFacts:
+    """分红事实（进 ``ValuationView``：评分的 `w_dividend` 与 DIV-1/2 风险共用）。
+
+    口径都写在这里，避免「连续 5 年」在不同地方有不同数法：
+
+    - **连续年数**按**完整年度**数（``day.year - 1`` 起往前），当年未实施完的分红
+      不参与——否则每年 1–6 月会把「还没到除权日」误判成中断；
+    - **中断**只有在「事件覆盖到了那一年、而那年确实没有现金分红」时才成立；
+      覆盖不足一律 ``None``（不猜），由风险层按「数据不足」注记；
+    - **股息率**是近 365 天每股现金分红之和 ÷ 最新收盘价（百分数，与主项目
+      ``ttm_dividend_yield_pct`` 同单位），不做税费调整（税前口径）。
+    """
+
+    continuity_years: int | None = None
+    interrupted: bool = False
+    #: 未来最近的除权日（事件表里有才算；东财实施分配表通常只有已实施记录）
+    ex_dividend_date: date | None = None
+    ttm_cash_per_share: float = 0.0
+    #: 百分比（5.2 表示 5.2%）
+    dividend_yield: float | None = None
+    #: 事件覆盖起点，便于核对「为什么判不了连续 N 年」
+    covered_from: date | None = None
+    note: str = ""
+
+    @property
+    def has_data(self) -> bool:
+        return (
+            self.continuity_years is not None
+            or self.interrupted
+            or self.dividend_yield is not None
+            or self.ex_dividend_date is not None
+        )
+
+
+def dividend_facts(
+    events: Iterable["DividendEvent"],
+    day: date,
+    last_close: float | None,
+    *,
+    window: int = 10,
+) -> DividendFacts:
+    """由除权事件算分红事实；**只用 ``ex_date <= day`` 的事件**（不碰未来）。"""
+    past = sorted((e for e in events if e.ex_date <= day), key=lambda e: e.ex_date)
+    upcoming = sorted((e for e in events if e.ex_date > day), key=lambda e: e.ex_date)
+    covered_from = past[0].ex_date if past else None
+    cash = [e for e in past if e.cash_per_share > 0]
+
+    continuity: int | None = None
+    interrupted = False
+    note = ""
+    last_full = day.year - 1
+    if not cash:
+        if covered_from is None:
+            note = "无除权事件记录（按无分红处理）"
+        else:
+            interrupted = True
+            continuity = 0
+            note = f"事件覆盖自 {covered_from.isoformat()}，其间无现金分红"
+    elif last_full in {e.ex_date.year for e in cash}:
+        years = {e.ex_date.year for e in cash}
+        count = 0
+        year = last_full
+        while year in years and count < window:
+            count += 1
+            year -= 1
+        continuity = count
+        if count >= window:
+            note = f"连续分红 ≥{window} 年（窗口上限）"
+        elif covered_from is not None and covered_from.year <= year:
+            note = f"{year} 年无现金分红（断点）"
+        else:
+            note = f"事件覆盖自 {covered_from.year if covered_from else '未知'} 年，连续年数为下界"
+    elif covered_from is not None and covered_from.year <= last_full:
+        interrupted = True
+        continuity = 0
+        note = f"{last_full} 年无现金分红"
+    else:
+        note = "除权事件覆盖不足，无法判断连续性（不猜）"
+
+    ttm_cash = sum(e.cash_per_share for e in cash if (day - e.ex_date).days <= 365)
+    yield_pct = None
+    if ttm_cash > 0 and last_close and last_close > 0:
+        yield_pct = round(ttm_cash / last_close * 100, 4)
+    return DividendFacts(
+        continuity_years=continuity,
+        interrupted=interrupted,
+        ex_dividend_date=upcoming[0].ex_date if upcoming else None,
+        ttm_cash_per_share=round(ttm_cash, 6),
+        dividend_yield=yield_pct,
+        covered_from=covered_from,
+        note=note,
+    )
 
 
 def _to_date(value: Any) -> date | None:

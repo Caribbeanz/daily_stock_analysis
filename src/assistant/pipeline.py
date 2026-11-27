@@ -23,6 +23,7 @@ from typing import Any, Callable, Mapping, Optional, Sequence
 
 from src.assistant.config.overrides import ParamSet
 from src.assistant.data.storage import AssistantStore
+from src.assistant.data.valuation import valuation_view
 from src.assistant.domain import (
     Bar,
     MarketLine,
@@ -31,6 +32,7 @@ from src.assistant.domain import (
     PositionView,
     SectorView,
     StockView,
+    ValuationView,
 )
 from src.assistant.engine.guard_chain import GuardChainInput, run_guard_chain
 from src.assistant.data.sector_map import IndustryResolver
@@ -251,6 +253,12 @@ class AssistantPipeline:
     _sector_map_cache: dict[date, dict[str, str]] = field(default_factory=dict, repr=False)
     #: 代码 → SectorView（结论层评分与 SEC-1 用）
     _sector_views_cache: dict[date, tuple[dict[str, SectorView], bool]] = field(
+        default_factory=dict, repr=False
+    )
+    #: 代码 → 除权事件（算分红连续性与股息率用；同一标的不要重复查库）
+    _dividend_cache: dict[str, tuple] = field(default_factory=dict, repr=False)
+    #: (代码, 日期) → 估值与分红事实（评分 w_valuation/w_dividend 与 DIV-1/2/3 用）
+    _valuation_cache: dict[tuple[str, date], ValuationView] = field(
         default_factory=dict, repr=False
     )
 
@@ -529,6 +537,32 @@ class AssistantPipeline:
         self._sector_views_cache[day] = result
         return result
 
+    def valuation_view(self, code: str, day: date, last_close: float) -> ValuationView:
+        """估值分位 + 分红事实（评分 `w_valuation`/`w_dividend` 与 DIV-1/2/3 的输入）。
+
+        两条数据来源不同、缺失语义也不同：
+
+        - **估值分位**来自 L1 `assistant_valuation_hist`，分位在建库时已按「只用 ≤该日
+          的样本」算好（`data/valuation.py`），这里只取 ≤T 的最近一条；
+        - **分红事实**用 `assistant_dividend_event` 现算（连续年数/是否中断/股息率），
+          只用 `ex_date <= T` 的事件。
+
+        数据不足时返回空 `ValuationView`（`is_missing` 为真），评分与风险各自写「缺失」，
+        **不拿默认值冒充**。同日同标的只算一次。
+        """
+        key = (code, day)
+        cached = self._valuation_cache.get(key)
+        if cached is not None:
+            return cached
+        row = self.store.latest_valuation(code, day)
+        events = self._dividend_cache.get(code)
+        if events is None:
+            events = tuple(self.store.load_dividend_events([code]).get(code, ()))
+            self._dividend_cache[code] = events
+        view = valuation_view([row] if row is not None else [], events, day, last_close)
+        self._valuation_cache[key] = view
+        return view
+
     #: 调度层直接把它当 ``generate`` 传进去
     generate = payload
 
@@ -748,6 +782,9 @@ class AssistantPipeline:
                     bars=bars,
                     position=position,
                     source_tag=tag,
+                    # 估值分位 + 分红事实：这两项此前从未填充，导致 w_valuation/w_dividend
+                    # 恒 0、DIV-1/2/3 永不触发（见实现笔记 D-34）
+                    valuation=self.valuation_view(code, day, bars[-1].close),
                 )
             )
         return views

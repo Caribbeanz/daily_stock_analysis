@@ -45,6 +45,7 @@ from typing import Any, Iterable, Mapping, Sequence
 from src.assistant.backtest import PlanRound, RoundConfig, simulate_rounds, summarize_rounds
 from src.assistant.config.overrides import ParamSet, default_param_set
 from src.assistant.data.dividend import DividendEvent, apply_total_return
+from src.assistant.data.valuation import ValuationRow, valuation_view
 from src.assistant.domain import Bar, MarketView, PortfolioView, PositionView, SectorView, StockView
 from src.assistant.engine.guard_chain import GuardChainInput, run_guard_chain
 from src.assistant.engine.market import market_line_from_bars
@@ -518,6 +519,7 @@ def replay(
     sector_bars_by_name: Mapping[str, Sequence[Bar]] | None = None,
     sector_code_by_name: Mapping[str, str] | None = None,
     index_bars: Sequence[Bar] | None = None,
+    valuations_by_code: Mapping[str, Sequence[ValuationRow]] | None = None,
     state: ReplayState | None = None,
     checkpoint_path: str | Path | None = None,
 ) -> ReplayResult:
@@ -535,6 +537,11 @@ def replay(
     评分里的 ``sector_adj_up/down`` 与风险里的 SEC-1 才真正会动——在此之前板块分恒为 0。
     ``index_bars`` 只用于算「大盘当日涨跌」（rs_t 的减项），缺省时退回 ``market_by_day``
     的涨跌幅（M1 档算不出来、没进字典的日子就没有减项）。
+
+    ``valuations_by_code`` 是 L1 估值行（PE/PB + 当日分位），``dividend_events`` 同时兼作
+    分红事实的输入（连续年数 / 是否中断 / 股息率）；两者合起来填 ``ValuationView``，
+    ``w_valuation``/``w_dividend`` 与 DIV-1/2/3 才不再是空转。分位在落库时已按
+    「只用 ≤该日的样本」算好，回放按日期取最近一条，**不做前视**。
     """
     cfg = config or ReplayConfig()
     work = state or ReplayState()
@@ -589,6 +596,18 @@ def replay(
         index_pct = {day: view.pct_change for day, view in (market_by_day or {}).items()}
     sector_view_cache: dict[tuple[str, date], SectorView | None] = {}
 
+    # ---- 估值与分红事实：按日期建索引，每天只做一次 bisect ----------------
+    valuation_series: dict[str, tuple[tuple[date, ...], tuple[ValuationRow, ...]]] = {}
+    for code, rows in (valuations_by_code or {}).items():
+        # 变量名别用 ordered：外层 ordered 是回放交易日列表，覆盖了会让循环拿到估值行
+        series_rows = tuple(sorted(rows, key=lambda row: row.trade_date))
+        if series_rows:
+            valuation_series[code] = (
+                tuple(row.trade_date for row in series_rows),
+                series_rows,
+            )
+    events_by_code = {code: tuple(items) for code, items in (dividend_events or {}).items()}
+
     processed = 0
     plans_total = 0
     truncated = False
@@ -613,12 +632,24 @@ def replay(
                 continue
             window = upto[-cfg.lookback_bars :]
             trend, advice = work.previous.get(code, ("", ""))
+            valuation_row: ValuationRow | None = None
+            series_meta = valuation_series.get(code)
+            if series_meta is not None:
+                idx = bisect_right(series_meta[0], day) - 1
+                if idx >= 0:
+                    valuation_row = series_meta[1][idx]
             view = StockView(
                 code=code,
                 name=code,
                 bars=window,
                 position=cfg.position(code, window[-1].close),
                 source_tag=cfg.source_tag,
+                valuation=valuation_view(
+                    [valuation_row] if valuation_row is not None else [],
+                    events_by_code.get(code, ()),
+                    day,
+                    window[-1].close,
+                ),
             )
             sector: SectorView | None = None
             series = series_of_code.get(code)
@@ -735,6 +766,11 @@ def replay(
             modeled.append(
                 f"{len(unmapped)} 只未映射到板块，板块分恒 0：{', '.join(unmapped)}"
             )
+    if valuation_series or events_by_code:
+        modeled.append(
+            "估值分位按 ≤T 的样本滚动计算（样本 <500 根不给分位）；PE≤0/PB≤0 不参与分位"
+        )
+        modeled.append("股息率为税前 TTM（近 365 天每股现金分红 ÷ 收盘价），未扣红利税")
     stats["sector"] = {
         "enabled": sector_layer,
         "mapped_codes": len(set(codes) & set(sector_map)),
@@ -752,6 +788,10 @@ def replay(
         "degraded_code_days": work.counters.get("sector_degraded_days", 0),
         "strong_code_days": work.counters.get("sector_strong_days", 0),
         "weak_code_days": work.counters.get("sector_weak_days", 0),
+    }
+    stats["valuation"] = {
+        "codes_with_rows": sum(1 for code in codes if code in valuation_series),
+        "codes_with_events": sum(1 for code in codes if events_by_code.get(code)),
     }
     stats["not_modelled"] = modeled + [
         "组合层资金曲线与「资金耗尽不再买」约束",

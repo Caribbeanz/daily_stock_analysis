@@ -90,6 +90,8 @@ def main(argv: list[str] | None = None) -> int:
                         help="个股→板块映射 JSON（assistant_ingest_history.py --sectors 产出）")
     parser.add_argument("--adjust", choices=["raw", "total_return"], default="raw",
                         help="价格口径：raw=不复权（默认）；total_return=含分红再投（前复权）")
+    parser.add_argument("--valuations", action="store_true",
+                        help="把估值分位与分红事实接进评分（w_valuation/w_dividend 与 DIV-1/2/3）")
     parser.add_argument("--dividend-tax", type=float, default=0.0,
                         help="红利税率（0=税前；持股 1 月–1 年用 0.10），只影响 total_return")
     parser.add_argument("--checkpoint", default=None, help="检查点路径（可续跑）")
@@ -195,14 +197,31 @@ def main(argv: list[str] | None = None) -> int:
             print("  提示：没给 --index，rs_t 与 SEC-1 不会生效（三档加减分仍照算）")
 
     dividend_events = None
-    if config.adjust == "total_return":
+    if config.adjust == "total_return" or args.valuations:
         dividend_events = store.load_dividend_events(list(bars_by_code))
         covered = sum(1 for code in bars_by_code if dividend_events.get(code))
-        print(f"分红口径：含分红再投 · 事件覆盖 {covered}/{len(bars_by_code)} 只 · 税率 {args.dividend_tax:.0%}")
-        if not covered:
+        if config.adjust == "total_return":
+            print(f"分红口径：含分红再投 · 事件覆盖 {covered}/{len(bars_by_code)} 只 · "
+                  f"税率 {args.dividend_tax:.0%}")
+        else:
+            # raw 口径下事件不参与复权，只用来算「连续分红年数 / 是否中断 / 股息率」
+            print(f"分红事实：事件覆盖 {covered}/{len(bars_by_code)} 只（口径仍为不复权）")
+        if not covered and config.adjust == "total_return":
             raise SystemExit(
                 "库里没有分红事件，先跑 assistant_ingest_history.py --dividends；"
                 "否则 total_return 与 raw 没有区别"
+            )
+
+    valuation_rows = None
+    if args.valuations:
+        valuation_rows = {
+            code: store.load_valuation_rows(code, end=args.end) for code in bars_by_code
+        }
+        with_rows = sum(1 for rows in valuation_rows.values() if rows)
+        print(f"估值注入：{with_rows}/{len(bars_by_code)} 只有估值行；分位为落库时按 ≤当日样本滚动算好")
+        if not with_rows:
+            raise SystemExit(
+                "库里没有估值行，先跑 assistant_ingest_history.py --valuations"
             )
 
     result = replay(
@@ -217,6 +236,7 @@ def main(argv: list[str] | None = None) -> int:
         sector_bars_by_name=sector_bars_by_name,
         sector_code_by_name=sector_code_by_name,
         index_bars=index_bars,
+        valuations_by_code=valuation_rows,
     )
 
     stats = result.stats

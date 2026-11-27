@@ -48,9 +48,11 @@ from src.assistant.data.models import (
     StockWeekly,
     UserHolding,
     UserNote,
+    ValuationHist,
     WatchlistRuntime,
 )
 from src.assistant.data.dividend import DividendEvent
+from src.assistant.data.valuation import ValuationRow
 from src.assistant.domain import Bar, GuardChainResult
 from src.assistant.enums import SourceTag
 
@@ -392,6 +394,90 @@ class AssistantStore:
                 .distinct()
             ).all()
         return {str(name): str(code) for name, code in rows if name and code}
+
+    # ------------------------------------------------------------------
+    # L1 估值历史（PE/PB 分位；分位由写库方按「只用过去」算好再落）
+    # ------------------------------------------------------------------
+    def save_valuation_rows(
+        self,
+        code: str,
+        rows: Sequence[ValuationRow],
+        *,
+        source_tag: str = "D1",
+    ) -> int:
+        """幂等写入估值行（``ValuationRow``：日期 + PE/PB + 当日分位）。"""
+        if not rows:
+            return 0
+        payload = [
+            {
+                "code": code,
+                "trade_date": row.trade_date,
+                "pe": row.pe,
+                "pb": row.pb,
+                "pe_pctile": row.pe_pctile,
+                "pb_pctile": row.pb_pctile,
+                "dividend_yield": None,
+                "source_tag": source_tag,
+            }
+            for row in rows
+        ]
+        with self.session() as sess:
+            stmt = sqlite_insert(ValuationHist).values(payload)
+            stmt = stmt.on_conflict_do_update(
+                index_elements=["code", "trade_date"],
+                set_={
+                    "pe": stmt.excluded.pe,
+                    "pb": stmt.excluded.pb,
+                    "pe_pctile": stmt.excluded.pe_pctile,
+                    "pb_pctile": stmt.excluded.pb_pctile,
+                    "source_tag": stmt.excluded.source_tag,
+                },
+            )
+            sess.execute(stmt)
+        return len(payload)
+
+    def load_valuation_rows(
+        self, code: str, *, start: date | None = None, end: date | None = None
+    ) -> list[ValuationRow]:
+        """按日期升序读取某只标的的估值行。"""
+        with self.session() as sess:
+            stmt = select(ValuationHist).where(ValuationHist.code == code)
+            if start is not None:
+                stmt = stmt.where(ValuationHist.trade_date >= start)
+            if end is not None:
+                stmt = stmt.where(ValuationHist.trade_date <= end)
+            rows = list(
+                sess.execute(stmt.order_by(ValuationHist.trade_date.asc())).scalars().all()
+            )
+        return [
+            ValuationRow(
+                trade_date=row.trade_date,
+                pe=row.pe,
+                pb=row.pb,
+                pe_pctile=row.pe_pctile,
+                pb_pctile=row.pb_pctile,
+            )
+            for row in rows
+        ]
+
+    def latest_valuation(self, code: str, day: date) -> ValuationRow | None:
+        """``trade_date <= day`` 的最近一条估值行；没有返回 ``None``。"""
+        with self.session() as sess:
+            row = sess.execute(
+                select(ValuationHist)
+                .where(ValuationHist.code == code, ValuationHist.trade_date <= day)
+                .order_by(ValuationHist.trade_date.desc())
+                .limit(1)
+            ).scalars().first()
+        if row is None:
+            return None
+        return ValuationRow(
+            trade_date=row.trade_date,
+            pe=row.pe,
+            pb=row.pb,
+            pe_pctile=row.pe_pctile,
+            pb_pctile=row.pb_pctile,
+        )
 
     # ------------------------------------------------------------------
     # 除权除息事件（原始数据；复权序列按 §3.3 不落库）

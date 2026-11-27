@@ -139,6 +139,8 @@ def main(argv: list[str] | None = None) -> int:
                         help="个股→板块映射的落盘路径（回放读它，保证不联网）")
     parser.add_argument("--sector-refill", action="store_true",
                         help="板块指数日线全量重取（默认已有就跳过）")
+    parser.add_argument("--valuations", action="store_true",
+                        help="补估值历史（PE/PB + 当日分位），供评分的 w_valuation 与 DIV-3")
     args = parser.parse_args(argv)
 
     codes = list(args.codes or [])
@@ -272,6 +274,44 @@ def main(argv: list[str] | None = None) -> int:
                     newline="\n",
                 )
                 print(f"  映射已写入 {map_path}（{len(resolved)} 只）")
+
+    if args.valuations:
+        from src.assistant.data.valuation import (  # noqa: PLC0415
+            fetch_valuation_history,
+            percentile_series,
+        )
+
+        print("补估值历史（PE/PB 与当日分位）：")
+        got = 0
+        for code in codes:
+            existing = store.load_valuation_rows(code, end=end)
+            if existing and not args.refill:
+                print(f"  {code}: 已有 {len(existing)} 行，跳过")
+                skipped += 1
+                continue
+            # 分位必须用**更长**的历史算：起始日从 1990 起拿全量，只在落库时截到目标区间。
+            # 否则「3 年区间」的头一年会因为没有前置样本而算不出分位（前视的反面）
+            points, source = fetch_valuation_history(code, date(1990, 1, 1), end)
+            if not points:
+                print(f"  {code}: 估值取不到，跳过（不写空数据）")
+                failed += 1
+                continue
+            rows = [row for row in percentile_series(points) if start <= row.trade_date <= end]
+            if not rows:
+                print(f"  {code}: 区间内无估值行，跳过")
+                failed += 1
+                continue
+            written = store.save_valuation_rows(code, rows, source_tag="D1")
+            last = rows[-1]
+            print(
+                f"  {code}: {written} 行 · {rows[0].trade_date} ~ {last.trade_date} · "
+                f"PE {last.pe if last.pe is not None else '—'}（分位 "
+                f"{last.pe_pctile if last.pe_pctile is not None else '样本不足'}）· "
+                f"PB {last.pb if last.pb is not None else '—'}（分位 "
+                f"{last.pb_pctile if last.pb_pctile is not None else '样本不足'}）· {source}"
+            )
+            got += 1
+        print(f"  估值写入 {got} 只")
 
     if args.dividends:
         from src.assistant.data.dividend import fetch_dividend_events  # noqa: PLC0415
