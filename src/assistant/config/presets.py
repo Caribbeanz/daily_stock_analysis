@@ -276,11 +276,21 @@ PARAM_SPECS: dict[str, ParamSpec] = {
         provisional=True,
         description="财报事实的加减分上限（分），不做情绪打分（NG-4）",
     ),
+    # 分红 4.0 → 0.0（2026-11-27 定）：分红与股息率**退出评分**，只保留事实与风险。
+    # 依据一（区分度）：红利样本 20 只里 17 只在每个观测日都拿满连续分红加分，
+    # 该维度在红利池内几乎不区分标的——它不排序，只把所有标的整体抬高，档位移动来自
+    # 「整体平移」而不是「分辨好坏」。依据二（回放）：权重 4→2 时 123 个已成交回合的
+    # 净盈亏逐笔差 0 元、胜率/盈亏比完全不变，只少生成 62 条永远等不到成交的计划，
+    # 即它在这份样本上是门槛噪声而非收益变量。既然既不排序也不改收益，就不该占分值预算。
+    # 保留的是：① DIV-1「分红中断」仍是**严重级且 affects=True**（`dividend_adjustment`
+    # 与风险层是两条独立路径，权重为 0 不影响风险）；② DIV-2 除权临近；③ 纸面回看里
+    # 连续年数 / TTM 股息率 / 下次除权全部照常展示，只是不再折算成加减分。
+    # 想恢复只需把 standard 改回 2 或 4，`calc_version` 会随之变化。
     "w_dividend": ParamSpec(
         key="w_dividend", group=_W, label="分红权重", kind="float",
-        standard=4.0, minimum=0.0, maximum=20.0,
+        standard=0.0, minimum=0.0, maximum=20.0,
         provisional=True,
-        description="股息率与连续性的加减分上限（分）",
+        description="股息率与连续性的加减分上限（分）：默认 0＝只作事实与风险、不进评分",
     ),
     "w_valuation": ParamSpec(
         key="w_valuation", group=_W, label="估值权重", kind="float",

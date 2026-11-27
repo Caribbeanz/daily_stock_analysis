@@ -59,6 +59,18 @@ def test_default_preset_is_standard_and_has_all_keys() -> None:
     assert ps.describe() == "标准档"
 
 
+def test_dividend_stays_out_of_scoring() -> None:
+    """分红权重默认 0（2026-11-27 口径：分红退出评分，只作事实与风险）。
+
+    依据：红利样本 17/20 只每天都拿满连续分红加分——该维度在红利池内不区分标的，
+    只把所有人整体抬高；权重 4→2 的回放里已成交回合逐笔差 0 元。既然既不排序也不改
+    收益，就不该占分值预算。若有人把它调回正数，这个断言会先炸，逼出一次显式讨论。
+    """
+    assert float(PARAM_SPECS["w_dividend"].standard) == 0.0
+    # 风险层不归这个权重管：DIV-1 见 tests/assistant/test_risk.py 的对应用例
+    assert "只作事实" in PARAM_SPECS["w_dividend"].description
+
+
 def test_override_within_range_and_describe() -> None:
     ps = default_param_set().with_override("advice_margin", 0.12)
     assert ps.get("advice_margin") == pytest.approx(0.12)

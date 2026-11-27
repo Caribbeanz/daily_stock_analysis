@@ -225,9 +225,24 @@ def fundamental_adjustment(fund: FundamentalView | None, weight: float) -> tuple
 
 
 def dividend_adjustment(val: ValuationView | None, weight: float) -> tuple[float, tuple[str, ...]]:
-    """分红加减分：连续性加分、中断扣分（严重级风险另由风险层处理）。"""
+    """分红加减分：连续性加分、中断扣分（严重级风险另由风险层处理）。
+
+    ``weight <= 0`` ＝ 分红退出评分（当前默认，见 presets 里的说明）。此时仍然**读事实**
+    并写进说明——「不加分」和「没算」是两件事，说明里要能看出它算了、只是不计分；
+    DIV-1 / DIV-2 走风险层那条独立路径，**不受这个权重影响**。
+    """
     if val is None:
         return 0.0, ("分红数据缺失，标注缺失",)
+    if weight <= 0:
+        facts: list[str] = []
+        if val.dividend_interrupted:
+            facts.append("分红中断（DIV-1 另报严重级风险）")
+        elif val.dividend_continuity_years is not None:
+            facts.append(f"连续分红 {val.dividend_continuity_years} 年")
+        if val.dividend_yield is not None:
+            facts.append(f"TTM 股息率 {val.dividend_yield:.2f}%")
+        detail = "；".join(facts) if facts else "无可用分红事实"
+        return 0.0, (f"分红仅作事实、不进评分（{detail}）",)
     notes: list[str] = []
     adj = 0.0
     if val.dividend_interrupted:

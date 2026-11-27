@@ -19,10 +19,41 @@ from src.assistant.data.valuation import (
     valuation_view,
     valuation_view_from_rows,
 )
+from src.assistant.engine.scoring import dividend_adjustment
 from src.assistant.engine.stage import StageDebounceState
+from src.assistant.domain import ValuationView
 from src.assistant.enums import Action, Stage
 
 DAY = date(2026, 11, 26)
+
+
+class TestDividendScoringOff:
+    """分红退出评分（w_dividend=0）：0 分，但事实要留在说明里。"""
+
+    def test_weight_zero_gives_no_points_but_keeps_facts(self) -> None:
+        view = ValuationView(dividend_continuity_years=10, dividend_yield=3.07)
+
+        adj, notes = dividend_adjustment(view, 0.0)
+
+        assert adj == 0.0
+        joined = "；".join(notes)
+        assert "不进评分" in joined
+        assert "连续分红 10 年" in joined
+        assert "3.07%" in joined
+
+    def test_weight_zero_still_reports_interruption_as_fact(self) -> None:
+        view = ValuationView(dividend_continuity_years=0, dividend_interrupted=True)
+
+        adj, notes = dividend_adjustment(view, 0.0)
+
+        assert adj == 0.0
+        assert any("DIV-1" in note for note in notes)
+
+    def test_missing_data_is_still_flagged_when_weight_is_zero(self) -> None:
+        adj, notes = dividend_adjustment(None, 0.0)
+
+        assert adj == 0.0
+        assert any("缺失" in note for note in notes)
 
 
 def _points(values: list[float]) -> list[ValuationPoint]:

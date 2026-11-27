@@ -109,6 +109,24 @@ def test_value_trap_is_severe() -> None:
     assert "估值低不等于安全" in sec2.human_text
 
 
+def test_dividend_interruption_severe_even_with_weight_off() -> None:
+    """分红退出评分（w_dividend=0）≠ 分红退出风险：DIV-1 仍报严重级并影响建议。
+
+    两条独立路径：``dividend_adjustment`` 只折算分值，DIV-1 由风险层按事实判定。
+    若哪天有人拿「权重已经是 0」去短路风险层，这条会炸。
+    """
+    view = make_view(trending(150, 0.005))
+    view = replace(view, valuation=ValuationView(dividend_continuity_years=0, dividend_interrupted=True))
+    assert float(std_params().get("w_dividend")) == 0.0
+
+    summary = assess_risks(_ctx(view=view))
+
+    assert RiskCode.DIV_1 in _codes(summary)
+    div1 = next(s for s in summary.signals if s.code is RiskCode.DIV_1)
+    assert div1.level is RiskLevel.SEVERE
+    assert div1.affects_advice is True
+
+
 def test_three_warnings_not_upgraded_to_severe() -> None:
     """3 条警示 ≠ 1 条严重（禁止按数量叠加升级）。"""
     market = MarketView(regime="偏弱", history_regime=("偏弱", "偏弱", "偏弱"), advance_ratio=0.2)
