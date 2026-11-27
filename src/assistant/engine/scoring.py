@@ -146,14 +146,33 @@ def tech_score(
     return tech, parts, tuple(notes)
 
 
-def market_adjustment(market: MarketView | None, sector: SectorView | None, weight: float) -> tuple[float, tuple[str, ...]]:
-    """大盘/板块强弱加减分（**行情结构数据，非消息面情绪**，R4/R5）。"""
+def market_adjustment(
+    market: MarketView | None,
+    sector: SectorView | None,
+    weight: float,
+    *,
+    sector_up: float = 2.0,
+    sector_down: float = 2.0,
+) -> tuple[float, tuple[str, ...]]:
+    """大盘/板块强弱加减分（**行情结构数据，非消息面情绪**，R4/R5）。
+
+    两部分口径不同，别混着理解：
+
+    - **大盘**：档位(5 档) × ``w_market`` 的**比例**，所以大盘最多能吃满权重预算；
+    - **板块**：三档 → **可配置分值**（§4.4 P0-4 明确要求「可配置分值映射表」，
+      不直接用涨跌幅或单日 ``rs_t``），偏强 ``+sector_up``、偏弱 ``-sector_down``、中性 0。
+      用绝对分值而不是再乘权重，是因为板块与大盘共用一份预算时，比例制会让两者互相稀释，
+      调一个参数连带改另一个的效果。
+
+    合计仍裁剪到 ``[-weight, weight]``：低权重维度**不允许**吃掉技术面的主导地位（§5.1）。
+    板块降级（``degraded``）只注记、不扣分——拿不到数据不等于板块弱。
+    """
     if market is None and sector is None:
         return 0.0, ("大盘/板块数据缺失，按中性代入",)
     notes: list[str] = []
-    raw = 0.0
+    adj = 0.0
     if market is not None:
-        raw += {
+        ratio = {
             "强势": 1.0,
             "偏强": 0.6,
             "中性": 0.0,
@@ -164,10 +183,17 @@ def market_adjustment(market: MarketView | None, sector: SectorView | None, weig
             notes.append(f"未知大盘环境 {market.regime!r}，按中性代入")
         if market.regime_degraded:
             notes.append("大盘数据降级，仅注记不升级风险（MKT-3）")
+        adj += ratio * weight
     if sector is not None:
-        raw += {"偏强": 0.4, "中性": 0.0, "偏弱": -0.4}.get(sector.strength, 0.0)
-    adj = max(-weight, min(weight, raw * weight))
-    return adj, tuple(notes)
+        if sector.strength == "偏强":
+            adj += sector_up
+        elif sector.strength == "偏弱":
+            adj -= sector_down
+        elif sector.strength != "中性":
+            notes.append(f"未知板块档位 {sector.strength!r}，按中性代入")
+        if sector.degraded:
+            notes.append("板块数据降级，仅注记不扣分")
+    return max(-weight, min(weight, adj)), tuple(notes)
 
 
 def fundamental_adjustment(fund: FundamentalView | None, weight: float) -> tuple[float, tuple[str, ...]]:
@@ -263,7 +289,13 @@ def score_stock(
         alignment=alignment,
         box=box,
     )
-    m_adj, m_notes = market_adjustment(market, sector, float(params.get("w_market")))
+    m_adj, m_notes = market_adjustment(
+        market,
+        sector,
+        float(params.get("w_market")),
+        sector_up=float(params.get("sector_adj_up")),
+        sector_down=float(params.get("sector_adj_down")),
+    )
     f_adj, f_notes = fundamental_adjustment(view.fundamental, float(params.get("w_fundamental")))
     d_adj, d_notes = dividend_adjustment(view.valuation, float(params.get("w_dividend")))
     v_adj, v_notes = valuation_adjustment(view.valuation, float(params.get("w_valuation")), params)

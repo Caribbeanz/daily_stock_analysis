@@ -256,6 +256,20 @@ PARAM_SPECS: dict[str, ParamSpec] = {
         provisional=True,
         description="行情结构数据的加减分上限（分），非消息面情绪（R4/R5）",
     ),
+    # 板块三档 → 评分：需求 §4.4 P0-4 要求「可配置分值映射表」，不直接用涨跌幅或单日 rs_t。
+    # 分值上限落在 w_market 的预算内（偏强/偏弱各 ±2 分），三档之外没有别的档。
+    "sector_adj_up": ParamSpec(
+        key="sector_adj_up", group=_W, label="板块偏强加分", kind="float",
+        standard=2.0, minimum=0.0, maximum=6.0,
+        provisional=True,
+        description="sector_strength=偏强 时的评分加分（分）；中性固定 0",
+    ),
+    "sector_adj_down": ParamSpec(
+        key="sector_adj_down", group=_W, label="板块偏弱扣分", kind="float",
+        standard=2.0, minimum=0.0, maximum=6.0,
+        provisional=True,
+        description="sector_strength=偏弱 时的评分扣分（分，按负值计入）",
+    ),
     "w_fundamental": ParamSpec(
         key="w_fundamental", group=_W, label="基本面权重", kind="float",
         standard=6.0, minimum=0.0, maximum=20.0,

@@ -26,8 +26,10 @@ from src.assistant.data.storage import AssistantStore
 from src.assistant.domain import (
     Bar,
     MarketLine,
+    MarketView,
     PortfolioView,
     PositionView,
+    SectorView,
     StockView,
 )
 from src.assistant.engine.guard_chain import GuardChainInput, run_guard_chain
@@ -241,6 +243,16 @@ class AssistantPipeline:
     industry_resolver: IndustryResolver | None = None
     #: 同一天只算一次板块：板块指数是逐板块请求，重复调用会拖慢 20:00 推送
     _sector_cache: dict[date, tuple[dict, ...]] = field(default_factory=dict, repr=False)
+    #: 指数原始日线（大盘一句 + 板块 rs_t 历史共用，避免二次取数）
+    _index_bars_cache: dict[date, tuple[Bar, ...]] = field(default_factory=dict, repr=False)
+    #: 板块相对大盘的多日序列（按 日 × 板块 缓存）
+    _rs_cache: dict[tuple[date, str], tuple[float, ...]] = field(default_factory=dict, repr=False)
+    #: 个股 → 板块名（focus 模式解析结果）；空字典 = 未映射或未接入
+    _sector_map_cache: dict[date, dict[str, str]] = field(default_factory=dict, repr=False)
+    #: 代码 → SectorView（结论层评分与 SEC-1 用）
+    _sector_views_cache: dict[date, tuple[dict[str, SectorView], bool]] = field(
+        default_factory=dict, repr=False
+    )
 
     # ------------------------------------------------------------------
     # 对外入口
@@ -269,6 +281,8 @@ class AssistantPipeline:
             raise PipelineError(f"{day} 无可用标的，本次不产出（{detail}）")
 
         portfolio = self._portfolio(views)
+        market_view = self.market_view(day)
+        sector_views, sector_ready = self._sector_context(day)
         results = []
         for view in views:
             outcome = run_guard_chain(
@@ -278,6 +292,11 @@ class AssistantPipeline:
                     params=params,
                     calc_version=calc_version,
                     generated_at=now,
+                    market=market_view,
+                    sector=sector_views.get(view.code),
+                    # 板块区没接入（关闭/取数失败）时保持「只注记」的老行为；
+                    # 接入后按真实映射结果标，没映射上才出 SEC-3「映射失败」
+                    sector_mapped=True if not sector_ready else view.code in sector_views,
                     trading_days=self._trading_days(day),
                     expected_data_date=day,
                 )
@@ -380,32 +399,12 @@ class AssistantPipeline:
         if cached is not None:
             return cached
 
-        bars = self.market_bars
-        if bars is None:
-            if self.market_fetcher is None:
-                line = MarketLine(available=False)
-                self._market_cache[day] = line
-                return line
-            try:
-                # 200 个自然日足够 20 日均线 + 5 日斜率 + 缓冲带回溯，且不拖慢 20:00 推送
-                result = self.market_fetcher.fetch_index(
-                    self.settings.index_code,
-                    day - timedelta(days=200),
-                    day,
-                )
-                bars = result.bars
-            except Exception as exc:  # noqa: BLE001 - 大盘一句失败不能带走当日结论
-                logger.warning(
-                    "指数 %s 取数失败，大盘一句按数据缺失处理：%s: %s",
-                    self.settings.index_code,
-                    type(exc).__name__,
-                    exc,
-                )
-                line = MarketLine(available=False)
-                self._market_cache[day] = line
-                return line
+        ordered = list(self._index_bars(day))
+        if not ordered:
+            line = MarketLine(available=False)
+            self._market_cache[day] = line
+            return line
 
-        ordered = sorted(bars, key=lambda item: item.trade_date)
         line = market_line_from_bars(ordered, index_name=self.index_name)
         if line.available and ordered and ordered[-1].trade_date != day:
             # 指数当日尚未发布时不能把旧值说成今天：正文如实标注数据截止日
@@ -419,6 +418,116 @@ class AssistantPipeline:
             )
         self._market_cache[day] = line
         return line
+
+    def _index_bars(self, day: date) -> tuple[Bar, ...]:
+        """指数日线（升序），同日只取一次：大盘一句与板块 rs_t 历史共用同一份。
+
+        取数失败返回空元组并记日志——调用方按「缺失」处理，不拿别的日期顶替。
+        """
+        cached = self._index_bars_cache.get(day)
+        if cached is not None:
+            return cached
+        bars: Sequence[Bar] = self.market_bars or ()
+        if not bars and self.market_fetcher is not None:
+            try:
+                # 200 个自然日足够 20 日均线 + 5 日斜率 + 缓冲带回溯，且不拖慢 20:00 推送
+                bars = self.market_fetcher.fetch_index(
+                    self.settings.index_code, day - timedelta(days=200), day
+                ).bars
+            except Exception as exc:  # noqa: BLE001 - 大盘一句失败不能带走当日结论
+                logger.warning(
+                    "指数 %s 取数失败，大盘一句按数据缺失处理：%s: %s",
+                    self.settings.index_code,
+                    type(exc).__name__,
+                    exc,
+                )
+                bars = ()
+        out = tuple(sorted(bars, key=lambda item: item.trade_date))
+        self._index_bars_cache[day] = out
+        return out
+
+    def market_view(self, day: date) -> MarketView | None:
+        """大盘视图（评分与风险要的结构化版本）；数据缺失返回 ``None`` 而不是「中性」。
+
+        宽度（涨跌家数）在这里恒为缺失：本模块不做全市场宽度统计，按
+        ``advance_ratio=None`` + ``width_degraded=True`` 如实标注，风险侧的
+        「市场宽度恶化」因此不会触发（需求 §4.4：宽度是参考展示层）。
+        """
+        line = self.market_line(day)
+        if not line.available:
+            return None
+        return MarketView(
+            index_code=self.settings.index_code,
+            index_name=self.index_name,
+            pct_change=line.pct_change or 0.0,
+            regime=line.regime or "中性",
+            # 指数当日未发布 = 三档可能是旧值 → 标降级，只降置信度不改档（§4.4）
+            regime_degraded=bool(line.as_of and line.as_of < day),
+            advance_ratio=None,
+            width_degraded=True,
+        )
+
+    def _rs_history(self, name: str, day: date, *, depth: int = 10) -> tuple[float, ...]:
+        """板块相对大盘的**多日**序列（百分点），供 SEC-1「连续 N 日偏弱」。
+
+        单日 ``rs_t`` 只能展示、不能判连续（§4.4 硬约束），因此这里按共同交易日逐日算
+        「板块涨跌 − 大盘涨跌」；任一侧缺该日就不取值，不插值、不补零。
+        """
+        cached = self._rs_cache.get((day, name))
+        if cached is not None:
+            return cached
+        sec = self._sector_bars(name, day)
+        idx = self._index_bars(day)
+        out: list[float] = []
+        if len(sec) >= 2 and len(idx) >= 2:
+            index_pct: dict[date, float] = {}
+            for prev, cur in zip(idx, idx[1:]):
+                if prev.close > 0:
+                    index_pct[cur.trade_date] = (cur.close / prev.close - 1) * 100
+            for prev, cur in zip(sec, sec[1:]):
+                base = index_pct.get(cur.trade_date)
+                if base is None or prev.close <= 0:
+                    continue
+                out.append(round((cur.close / prev.close - 1) * 100 - base, 4))
+        result = tuple(out[-depth:])
+        self._rs_cache[(day, name)] = result
+        return result
+
+    def _sector_context(self, day: date) -> tuple[dict[str, SectorView], bool]:
+        """``({代码: 所属板块视图}, 板块区是否已接入)``，同日只算一次。
+
+        板块区未接入（关闭 / 一览取数失败 / 映射全失败）时返回 ``({}, False)``，
+        结论层据此保持「只有注记、不参与评分」的老行为，**不把「没数据」当成「板块弱」**。
+        """
+        cached = self._sector_views_cache.get(day)
+        if cached is not None:
+            return cached
+        rows = {str(row.get("sector_name") or ""): row for row in self.sector_rows(day)}
+        mapping = self._sector_map_cache.get(day) or {}
+        views: dict[str, SectorView] = {}
+        for code, name in mapping.items():
+            row = rows.get(name)
+            if row is None:
+                continue
+            history = list(self._rs_history(name, day))
+            if history and row.get("rs_t") is not None:
+                # 末位用快照的当日 rs_t：它是板块一览的当日值，比用指数序列推的更贴当日
+                history[-1] = float(row["rs_t"])
+            views[code] = SectorView(
+                sector_code=str(row.get("sector_code") or ""),
+                sector_name=name,
+                pct_change=float(row.get("pct_change") or 0.0),
+                strength=str(row.get("sector_strength") or "中性"),
+                rs_t=row.get("rs_t"),
+                history_rs_t=tuple(history),
+                up_count=row.get("up_count"),
+                down_count=row.get("down_count"),
+                lead_stock=str(row.get("lead_stock") or ""),
+                degraded=bool(row.get("degraded")),
+            )
+        result = (views, bool(rows))
+        self._sector_views_cache[day] = result
+        return result
 
     #: 调度层直接把它当 ``generate`` 传进去
     generate = payload
@@ -490,7 +599,7 @@ class AssistantPipeline:
 
         market = self.market_line(day)
         market_pct = market.pct_change if market.available else None
-        picked = self._focus_sectors(overview)
+        picked = self._focus_sectors(overview, day)
         if not picked:
             picked = self._pick_sectors(overview.rows)
         rows: list[dict] = []
@@ -524,7 +633,7 @@ class AssistantPipeline:
         self._sector_cache[day] = result
         return result
 
-    def _focus_sectors(self, overview: Any) -> list[Any]:
+    def _focus_sectors(self, overview: Any, day: date) -> list[Any]:
         """focus 模式：只取持仓/自选所属板块，按当日涨跌降序。
 
         映射不上（或没注入解析器）就返回空，由调用方退回 ``market`` 两端——
@@ -534,6 +643,7 @@ class AssistantPipeline:
             return []
         if self.industry_resolver is None:
             logger.info("未注入行业解析器，板块区退回「市场强弱两端」")
+            self._sector_map_cache[day] = {}
             return []
         boards = {row.sector_name: row.sector_code for row in overview.rows if row.sector_code}
         codes = self.codes()
@@ -546,7 +656,10 @@ class AssistantPipeline:
             return []
         if not resolved:
             logger.info("本次 %d 只标的都未映射到板块，退回「市场强弱两端」", len(codes))
+            self._sector_map_cache[day] = {}
             return []
+        # 映射结果留下：结论层要靠它把「个股」接到「所属板块视图」，不重复 resolve
+        self._sector_map_cache[day] = {code: ref.sector_name for code, ref in resolved.items()}
         by_name = overview.by_name()
         picked: list[Any] = []
         seen: set[str] = set()

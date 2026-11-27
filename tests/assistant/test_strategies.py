@@ -71,8 +71,8 @@ class TestRegistry:
 
 class TestFingerprint:
     def test_rules_version_bumped_for_strategy_ledger(self) -> None:
-        # 2.6.1 收入战法清单；2.6.2 又把分数带按分布回看定稿（D-5）
-        assert RULES_VERSION == "rules-2.6.2"
+        # 2.6.1 收入战法清单；2.6.2 分数带定稿（D-5）；2.6.3 板块三档进评分
+        assert RULES_VERSION == "rules-2.6.3"
 
     def test_default_fingerprint_carries_enabled_ids(self) -> None:
         assert RuleFingerprint(param_hash="p").strategy_ids == enabled_strategy_ids()
